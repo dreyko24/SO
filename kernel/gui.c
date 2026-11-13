@@ -88,6 +88,52 @@ static void l1_to_utf8(const unsigned char *s,int n,char *d){
     d[k]=0;
 }
 
+/* Vortex OS emblem, quantized from the official user-supplied image. */
+static const char vortex_icon_data[] =
+    "000000000000000002a8"
+    "25a800000002a8295558"
+    "0555560002a68a555550"
+    "09555500296095555560"
+    "0155560a560955555540"
+    "02555625681555555500"
+    "00555699825555555600"
+    "00955619096000255400"
+    "00255616260280005800"
+    "00055626200296802000"
+    "00015526000009580000"
+    "0000558a000002660000"
+    "00001541800000990000"
+    "00020560800008960000"
+    "00008258200004160000"
+    "00002095000004140000"
+    "00000609600224980000"
+    "00000980200224980000"
+    "00000268002614a00000"
+    "00000096829898600000"
+    "00000025556052800000"
+    "00000081698152000000"
+    "00000090960562000000"
+    "00000014201548000000"
+    "00000005825580000000"
+    "00000001555500000000"
+    "00000002555600000000"
+    "00000000955400000000"
+    "00000000255800000000"
+    "00000000096000000000"
+    "00000000024000000000";
+static int vortex_hex(char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:0;}
+static void vortex_logo(int x,int y,int w,int alpha){
+    if(w<=0)return;int h=w*31/40;if(h<1)h=1;
+    for(int yy=0;yy<31;yy++)for(int xx=0;xx<40;xx++){
+        int k=yy*20+(xx>>2)*2;
+        int v=(vortex_hex(vortex_icon_data[k])<<4)|vortex_hex(vortex_icon_data[k+1]);
+        int idx=(v>>(6-2*(xx&3)))&3;if(!idx)continue;
+        int x0=x+xx*w/40,x1=x+(xx+1)*w/40,y0=y+yy*h/31,y1=y+(yy+1)*h/31;
+        if(x1<=x0)x1=x0+1;if(y1<=y0)y1=y0+1;
+        fill(x0,y0,x1-x0,y1-y0,idx==1?0x22234f:0x8067d5,alpha);
+    }
+}
+
 /* ---------------- fondo de pantalla ---------------- */
 /* Fondo: se calcula con 8 bits fraccionarios por canal y se cuantiza con una matriz de Bayer 4x4 (sin bandas). */
 static const unsigned char BAYER[16]={0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5};
@@ -122,7 +168,7 @@ static uint32_t *get_thumb(int i){
 static void build_wall(void){
     for(int y=0;y<gh;y++) for(int x=0;x<gw;x++) wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
     uint32_t *save=bb; bb=wall; clip_reset();                                   /* marca de agua: la corona */
-    int cw=gw*18/100; crown(gw*74/100,gh*38/100,cw,0xffffff,0xffffff,38);
+    int cw=gw*18/100; vortex_logo(gw*74/100,gh*38/100,cw,38);
     bb=save;
 }
 
@@ -263,7 +309,7 @@ static Win *open_app(int type){
     if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
     order[nord++]=wi; dirty=1;
-    if(type==A_BROWSER) nav(w,"kng://inicio",0);
+    if(type==A_BROWSER) nav(w,"vortex://inicio",0);
     return w;
 }
 static int ext_is(const FsNode *f,const char *e);
@@ -315,24 +361,24 @@ static void term_cmd(Win *w,char *line){
     else if(!k_strcmp(cmd,"df")){ int f,d2,by; fs_usage(&f,&d2,&by); char b[100]=""; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,d2); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes\n"); tp(w,b); }
     else if(!k_strcmp(cmd,"instalar-sistema")){
         uint32_t n=0;
-        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Vortex OS en el disco duro\".\n"); }
+        if(!vortex_disk_image||!vortex_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Vortex OS en el disco duro\".\n"); }
         else if(disk_init()){ tp(w,"No se encontro un disco duro (IDE, SATA o NVMe).\n"); }
         else {
             char b[140]="Disco: "; cat(b,140,disk_kind()); cat(b,140," "); cat(b,140,disk_model()); cat(b,140,", "); cat_int(b,140,(int)(disk_sectors()/2048)); cat(b,140," MB\n"); tp(w,b);
             if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Vortex OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
             else {
                 tp(w,"Instalando... no apagues la PC (de 1 a 3 minutos).\n"); dirty=1; render();
-                int r=kng_install();
+                int r=vortex_install();
                 if(r==0) tp(w,"LISTO: Vortex OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
                 else { char e2[80]="No se pudo instalar (error "; cat_int(e2,80,r); cat(e2,80,r==-3?": disco demasiado chico)\n":r==-4?": error al escribir el disco)\n":")\n"); tp(w,e2); }
             }
         } }
-    else if(!k_strcmp(cmd,"guardar")){ int r=kngfs_save(); tp(w,r==0?"guardado en disco\n":kngfs_active()?"no se pudo guardar (disco lleno o error)\n":"no hay disco KNGFS montado (usa: disco formatear si)\n"); }
+    else if(!k_strcmp(cmd,"guardar")){ int r=vortexfs_save(); tp(w,r==0?"guardado en disco\n":vortexfs_active()?"no se pudo guardar (disco lleno o error)\n":"no hay disco KNGFS montado (usa: disco formatear si)\n"); }
     else if(!k_strcmp(cmd,"disco")){
-        if(!k_strcmp(arg,"formatear si")){ int r=kngfs_format(); tp(w,r==0?"disco listo: los archivos se guardan solos\n":"no se pudo (no hay disco IDE/SATA o error de escritura)\n"); }
-        else { char b[120]=""; if(disk_init()==0){ cat(b,120,disk_kind()); cat(b,120,": "); cat(b,120,disk_model()); cat(b,120,", "); cat_int(b,120,(int)(disk_sectors()/2048)); cat(b,120," MB, "); cat(b,120,kngfs_active()?"montado (guardado automatico)":"SIN formato kng"); }
+        if(!k_strcmp(arg,"formatear si")){ int r=vortexfs_format(); tp(w,r==0?"disco listo: los archivos se guardan solos\n":"no se pudo (no hay disco IDE/SATA o error de escritura)\n"); }
+        else { char b[120]=""; if(disk_init()==0){ cat(b,120,disk_kind()); cat(b,120,": "); cat(b,120,disk_model()); cat(b,120,", "); cat_int(b,120,(int)(disk_sectors()/2048)); cat(b,120," MB, "); cat(b,120,vortexfs_active()?"montado (guardado automatico)":"SIN formato vortex"); }
             else cat(b,120,"no se encontro disco duro IDE ni SATA");
-            tp(w,b); tp(w,"\n"); if(disk_init()==0 && !kngfs_active()) tp(w,"Para usarlo: disco formatear si   (ATENCION: borra el inicio de ese disco)\n"); } }
+            tp(w,b); tp(w,"\n"); if(disk_init()==0 && !vortexfs_active()) tp(w,"Para usarlo: disco formatear si   (ATENCION: borra el inicio de ese disco)\n"); } }
     else if(!k_strcmp(cmd,"write")){
         char *t=arg; while(*t&&*t!=' ') t++; char nm[32]; int l=(int)(t-arg); if(l>31) l=31; memcpy(nm,arg,(size_t)l); nm[l]=0; while(*t==' ') t++;
         if(!l||!fs_create(w->cwd,nm,t,k_strlen(t))) tp(w,"write: uso: write <archivo> <texto>\n"); }
@@ -383,10 +429,10 @@ static void s_walk(FsNode *d,const char *q){
         a_raw("</li>"); s_found++;
     }
 }
-/* /Sistema/kng.cfg: lineas clave=valor. cfg_set cambia o agrega una sola linea y conserva las demas. */
+/* /Sistema/vortex.cfg: lineas clave=valor. cfg_set cambia o agrega una sola linea y conserva las demas. */
 static void cfg_set(const char *key,const char *val){
     FsNode *d=fs_resolve(fs_root(),"/Sistema"); if(!d||!d->dir) return;
-    FsNode *f=fs_find(d,"kng.cfg"); char out[1024]; int o=0, kl=k_strlen(key), done=0;
+    FsNode *f=fs_find(d,"vortex.cfg"); char out[1024]; int o=0, kl=k_strlen(key), done=0;
     if(f&&f->data){ const char *p=f->data; int i=0;
         while(i<f->size){ int e=i; while(e<f->size&&p[e]!='\n') e++;
             int len=e-i, same=len>kl && ci_find(p+i,kl,key)==0 && p[i+kl]=='=';
@@ -394,10 +440,10 @@ static void cfg_set(const char *key,const char *val){
             else if(len>0 && o+len+1<1000){ memcpy(out+o,p+i,(size_t)len); o+=len; out[o++]='\n'; }
             i=e+1; } }
     if(!done){ for(int k=0;key[k]&&o<1000;k++) out[o++]=key[k]; if(o<1000) out[o++]='='; for(int k=0;val[k]&&o<1000;k++) out[o++]=val[k]; if(o<1000) out[o++]='\n'; }
-    fs_create(d,"kng.cfg",out,o);
+    fs_create(d,"vortex.cfg",out,o);
 }
 static int cfg_get(const char *key,char *val,int max){
-    val[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return 0;
+    val[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f||!f->data) return 0;
     int kl=k_strlen(key), i=0;
     while(i<f->size){ int e=i; while(e<f->size&&f->data[e]!='\n') e++;
         if(e-i>kl && ci_find(f->data+i,kl,key)==0 && f->data[i+kl]=='='){ int l=e-i-kl-1; if(l>max-1) l=max-1; memcpy(val,f->data+i+kl+1,(size_t)l); val[l]=0; for(int k=0;val[k];k++) if(val[k]=='\r') val[k]=0; return 1; }
@@ -407,8 +453,8 @@ static int cfg_get(const char *key,char *val,int max){
 static int layout_from_name(const char *n){ return !k_strcmp(n,"latam")?KBD_LATAM:!k_strcmp(n,"es")?KBD_ES:!k_strcmp(n,"us")?KBD_US:-1; }
 static const char *layout_code(int l){ return l==KBD_LATAM?"latam":l==KBD_ES?"es":"us"; }
 static void set_layout(int l){ kbd_set_layout(l); cfg_set("teclado",layout_code(l)); dirty=1; }
-static void cfg_search_url(const char *q,char *out,int max){      /* buscador=http://.../?q=%s en /Sistema/kng.cfg */
-    out[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return;
+static void cfg_search_url(const char *q,char *out,int max){      /* buscador=http://.../?q=%s en /Sistema/vortex.cfg */
+    out[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f||!f->data) return;
     const char *d=f->data; int i=0;
     while(i<f->size){ int e=i; while(e<f->size && d[e]!='\n') e++;
         if(e-i>9 && ci_find(d+i,9,"buscador=")==0){
@@ -425,12 +471,12 @@ static const char *build_search(const char *url,int *len){
     k_strcpy(srckey,url,sizeof srckey); srcbuf[0]=0;
     char q[100]; q[0]=0; { const char *p=url; while(*p && !(p[0]=='q'&&p[1]=='=') ) p++; if(*p) urldec(q,sizeof q,p+2); }
     a_raw("<title>Buscar</title><h1>Buscar</h1>");
-    if(!q[0]){ a_raw("<p>Escribe una o varias palabras en la barra de direcciones y pulsa Enter.</p><hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>"); *len=k_strlen(srcbuf); return srcbuf; }
+    if(!q[0]){ a_raw("<p>Escribe una o varias palabras en la barra de direcciones y pulsa Enter.</p><hr><p><a href=\"vortex://inicio\">Volver al inicio</a></p>"); *len=k_strlen(srcbuf); return srcbuf; }
     a_raw("<p>Resultados para: <b>"); a_html(q); a_raw("</b></p>");
     static const struct { const char *u, *t, *kw; } PG[]={
-        {"kng://inicio","Inicio","inicio bienvenida enlaces home principal"},
-        {"kng://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
-        {"kng://acerca","Acerca de Vortex OS","acerca kernel autor sistema version nick kng"}};
+        {"vortex://inicio","Inicio","inicio bienvenida enlaces home principal"},
+        {"vortex://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
+        {"vortex://acerca","Acerca de Vortex OS","acerca kernel autor sistema version nick vortex"}};
     int any=0;
     for(int i=0;i<3;i++) if(ci_find(PG[i].t,k_strlen(PG[i].t),q)>=0 || ci_find(PG[i].kw,k_strlen(PG[i].kw),q)>=0){
         if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
@@ -442,22 +488,22 @@ static const char *build_search(const char *url,int *len){
     a_raw("<h2>Web</h2>");
     { char eu[192]; cfg_search_url(q,eu,sizeof eu);
       if(eu[0]){ a_raw("<p><a href=\""); a_html(eu); a_raw("\">Buscar en el servidor configurado</a></p>");
-                 if(k_startswith(eu,"https://")) a_raw("<p>Aviso: esa direccion usa https y kng aun no tiene TLS.</p>"); }
-      else a_raw("<p>No hay buscador web configurado. Los buscadores grandes usan https (kng aun no tiene TLS). Para usar uno por http, agrega en /Sistema/kng.cfg una linea como: buscador=http://10.0.2.2:8080/search?q=%s</p>"); }
-    a_raw("<hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>");
+                 if(k_startswith(eu,"https://")) a_raw("<p>Aviso: esa direccion usa https y vortex aun no tiene TLS.</p>"); }
+      else a_raw("<p>No hay buscador web configurado. Los buscadores grandes usan https (vortex aun no tiene TLS). Para usar uno por http, agrega en /Sistema/vortex.cfg una linea como: buscador=http://10.0.2.2:8080/search?q=%s</p>"); }
+    a_raw("<hr><p><a href=\"vortex://inicio\">Volver al inicio</a></p>");
     *len=k_strlen(srcbuf); return srcbuf;
 }
 static int is_http(const char *u);
 static void esc_into(char *o,int max,const char *s2);
 static const char *page_src(Win *w,int *len){
     const char *b=html_builtin(w->url,len); if(b) return b;
-    if(k_startswith(w->url,"kng://buscar")) return build_search(w->url,len);
+    if(k_startswith(w->url,"vortex://buscar")) return build_search(w->url,len);
     if(is_http(w->url)){
         if(w->doc){ *len=w->doclen; return w->doc; }
         rawbuf[0]=0;
         if(w->loading){ cat(rawbuf,sizeof rawbuf,"<title>Cargando...</title><h1>Cargando...</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><p>Esperando respuesta del servidor.</p>"); }
         else { cat(rawbuf,sizeof rawbuf,"<title>Error</title><h1>No se pudo abrir la pagina</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->err[0]?w->err:"Error desconocido");
-               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>Si buscabas en la web: ejecuta <b>tools/kng-proxy.py</b> en tu PC (puerto 8080).</p><p><a href=\"kng://inicio\">Ir al inicio</a></p>"); }
+               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>Si buscabas en la web: ejecuta <b>tools/vortex-proxy.py</b> en tu PC (puerto 8080).</p><p><a href=\"vortex://inicio\">Ir al inicio</a></p>"); }
         *len=k_strlen(rawbuf); return rawbuf;
     }
     if(k_startswith(w->url,"file://")){
@@ -475,7 +521,7 @@ static const char *page_src(Win *w,int *len){
             *len=k; return rawbuf;
         }
     }
-    return html_builtin("kng://error",len);
+    return html_builtin("vortex://error",len);
 }
 static Win *http_owner;
 static void doc_free(Win *w){
@@ -584,7 +630,7 @@ static void browser_go_typed(Win *w){
     int has=0; for(int i=0;w->ebuf[i]&&w->ebuf[i+2];i++) if(w->ebuf[i]==':'&&w->ebuf[i+1]=='/'&&w->ebuf[i+2]=='/') has=1;
     int dot=0, sp=0; for(int i=0;w->ebuf[i];i++){ if(w->ebuf[i]=='.') dot=1; if(w->ebuf[i]==' ') sp=1; }
     u[0]=0;
-    if(has && k_startswith(w->ebuf,"https://")){                                   /* https: a traves de kng-proxy si esta configurado */
+    if(has && k_startswith(w->ebuf,"https://")){                                   /* https: a traves de vortex-proxy si esta configurado */
         char b[192]; cfg_search_url("",b,sizeof b);
         if(k_startswith(b,"http://")){ int e=7; while(b[e]&&b[e]!='/') e++; b[e]=0; k_strcpy(u,b,sizeof u); cat(u,sizeof u,"/go?u="); urlenc(u,sizeof u,w->ebuf); }
         else k_strcpy(u,w->ebuf,sizeof u);
@@ -592,9 +638,9 @@ static void browser_go_typed(Win *w){
     else if(has) k_strcpy(u,w->ebuf,sizeof u);
     else if(w->ebuf[0]=='/'){ cat(u,sizeof u,"file://"); cat(u,sizeof u,w->ebuf); }
     else if((dot||k_startswith(w->ebuf,"localhost")) && !sp){ cat(u,sizeof u,"http://"); cat(u,sizeof u,w->ebuf); }
-    else if(!k_strcmp(w->ebuf,"inicio")||!k_strcmp(w->ebuf,"ayuda")||!k_strcmp(w->ebuf,"acerca")||!k_strcmp(w->ebuf,"error")){ cat(u,sizeof u,"kng://"); cat(u,sizeof u,w->ebuf); }
-    else { cfg_search_url(w->ebuf,u,sizeof u);                                          /* palabras sueltas: buscador web (kng-proxy) o busqueda local */
-           if(!u[0]){ cat(u,sizeof u,"kng://buscar?q="); urlenc(u,sizeof u,w->ebuf); } }
+    else if(!k_strcmp(w->ebuf,"inicio")||!k_strcmp(w->ebuf,"ayuda")||!k_strcmp(w->ebuf,"acerca")||!k_strcmp(w->ebuf,"error")){ cat(u,sizeof u,"vortex://"); cat(u,sizeof u,w->ebuf); }
+    else { cfg_search_url(w->ebuf,u,sizeof u);                                          /* palabras sueltas: buscador web (vortex-proxy) o busqueda local */
+           if(!u[0]){ cat(u,sizeof u,"vortex://buscar?q="); urlenc(u,sizeof u,w->ebuf); } }
     nav(w,u,1);
 }
 
@@ -1105,9 +1151,9 @@ static void draw_window(int wi,int focused){
     clip_set(cx,cy,cw,ch);
     switch(w->type){
     case A_ABOUT:{
-        crown(cx+cw/2-60,cy+24,120,0xe9c46a,ACCENT,255);
+        vortex_logo(cx+cw/2-60,cy+24,120,255);
         int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",0xffffff);
-        { char vb[80]="kng-kernel " KNG_VERSION " (" KNG_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
+        { char vb[80]="vortex-kernel " VORTEX_VERSION " (" VORTEX_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
         text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
         text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
         break; }
@@ -1127,7 +1173,7 @@ static void draw_window(int wi,int focused){
             if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
                 int bw=(int)pw<cw?(int)pw:cw, bh=(int)ph<ch?(int)ph:ch;
                 blit32(cx,cy,(const uint32_t*)(const void*)(d+off),(int)(bpl/4),bw,bh);
-            } else text(cx+20,cy+20,"El servidor X usa un formato que kng aun no muestra (se necesita 32 bits).",0xd6dbe8);
+            } else text(cx+20,cy+20,"El servidor X usa un formato que vortex aun no muestra (se necesita 32 bits).",0xd6dbe8);
         } else { text(cx+20,cy+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8); text(cx+20,cy+44,"Inicia: pantalla   (en la terminal)",C_DIM); }
         break; }
     case A_FILES:{
@@ -1211,8 +1257,8 @@ static void draw_window(int wi,int focused){
         b[0]=0; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,dr); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes"); text(cx+20,cy+110,b,C_TXT);
         rrect(cx+20,cy+134,cw-40,14,7,0x10111b,255); { int pct=by*100/(KNGFS_CAP); if(pct<1&&by>0) pct=1; if(pct>100) pct=100; if(pct) rrect(cx+20,cy+134,(cw-40)*pct/100,14,7,ACCENT,255); }
         text_bold(cx+20,cy+164,"Disco",C_TXT);
-        b[0]=0; if(disk_sectors()){ cat(b,100,disk_model()); cat(b,100,kngfs_active()?"  (guardado automatico)":"  (sin formato kng)"); } else cat(b,100,"sin disco (los archivos se pierden al apagar)");
-        text(cx+20,cy+186,b,disk_sectors()&&kngfs_active()?0x7ee787:C_DIM);
+        b[0]=0; if(disk_sectors()){ cat(b,100,disk_model()); cat(b,100,vortexfs_active()?"  (guardado automatico)":"  (sin formato vortex)"); } else cat(b,100,"sin disco (los archivos se pierden al apagar)");
+        text(cx+20,cy+186,b,disk_sectors()&&vortexfs_active()?0x7ee787:C_DIM);
         text_bold(cx+20,cy+216,"Red",C_TXT);
         { char nb[90]; net_info(nb,sizeof nb); nb[44]=0; text(cx+20,cy+238,nb,net_state()>=2?0x7ee787:C_DIM); }
         b[0]=0; cat(b,100,"Ventanas: "); cat_int(b,100,nord); cat(b,100,"   Activo: "); cat_int(b,100,(int)(kticks()/6000)); cat(b,100," min"); text(cx+20,cy+266,b,C_DIM);
@@ -1302,10 +1348,10 @@ static void draw_window(int wi,int focused){
                 rrect(lx,ly2+3,14,14,4,SCOL[i],255); text(lx+22,ly2,SCAT[i],C_TXT); hsize(sstat[i],s1,24); text(lx+226-text_w(s1),ly2,s1,C_DIM); }
             int dy=oy+206; text_bold(cx+20,dy,"Disco (donde se guardan tus datos al apagar)",C_TXT);
             if(disk_init()==0){
-                uint64_t cap=(uint64_t)disk_sectors()*512u, used=kngfs_active()?(uint64_t)kngfs_last_size():0;
+                uint64_t cap=(uint64_t)disk_sectors()*512u, used=vortexfs_active()?(uint64_t)vortexfs_last_size():0;
                 hsize(cap,s1,24); b[0]=0; cat(b,96,disk_kind()); cat(b,96,": "); cat(b,96,disk_model()); cat(b,96,", "); cat(b,96,s1); text(cx+20,dy+24,b,C_DIM);
                 uint64_t seg[1]={used}; uint32_t col[1]={ACCENT}; stor_bar(cx+20,dy+48,cw-40,22,seg,col,1,cap);
-                if(kngfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
+                if(vortexfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
                     button(cx+20,dy+104,150,28,"Guardar ahora",1); }
                 else { text(cx+20,dy+78,"Este disco aun no guarda datos de Vortex OS.",0xffb86b);
                     button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
@@ -1314,18 +1360,18 @@ static void draw_window(int wi,int focused){
         } else {
             char b[96];
             text_bold(cx+20,oy+10,"Sistema",C_TXT);
-            b[0]=0; cat(b,96,"Kernel: kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
+            b[0]=0; cat(b,96,"Kernel: vortex-kernel " VORTEX_VERSION " (" VORTEX_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
             b[0]=0; cat(b,96,"Memoria RAM: "); { char s1[24]; hsize((uint64_t)kram_kb()*1024u,s1,24); cat(b,96,s1); } text(cx+20,oy+60,b,C_DIM);
             b[0]=0; cat(b,96,"Pantalla: "); cat_int(b,96,gw); cat(b,96," x "); cat_int(b,96,gh); text(cx+20,oy+82,b,C_DIM);
             b[0]=0; cat(b,96,"Tiempo encendido: "); cat_int(b,96,(int)(kticks()/6000)); cat(b,96," min"); text(cx+20,oy+104,b,C_DIM);
             { char nb[90]; net_info(nb,sizeof nb); text(cx+20,oy+126,nb,C_DIM); }
-            b[0]=0; cat(b,96,"Disco: "); if(disk_init()==0){ cat(b,96,disk_kind()); cat(b,96,", "); cat(b,96,kngfs_active()?"guardando datos":"sin usar"); } else cat(b,96,"ninguno"); text(cx+20,oy+148,b,C_DIM);
+            b[0]=0; cat(b,96,"Disco: "); if(disk_init()==0){ cat(b,96,disk_kind()); cat(b,96,", "); cat(b,96,vortexfs_active()?"guardando datos":"sin usar"); } else cat(b,96,"ninguno"); text(cx+20,oy+148,b,C_DIM);
             button(cx+20,cy+ch-44,110,28,"Reiniciar",0); button(cx+142,cy+ch-44,110,28,"Apagar",0);
         }
         break; }
     }
     clip_reset();
-    { int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
+    { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
       clip_set(x+1,y+1,w->w-40,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
@@ -1333,7 +1379,7 @@ static void draw_window(int wi,int focused){
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Vortex OS",C_TXT);
+    vortex_logo(12,4,25,255); text(40,6,"Vortex OS",C_TXT);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
@@ -1352,7 +1398,7 @@ static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0xffffff,10);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: crown(x+9,y+11,34,0xe9c46a,ACCENT,255); break;
+    case 0: vortex_logo(x+9,y+11,34,255); break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
     case 2: rrect(x+9,y+14,16,9,3,0xe0a62d,255); rrect(x+9,y+19,34,22,4,0xf5b83d,255); fill(x+13,y+25,26,2,0xffffff,70); break;
@@ -1528,7 +1574,7 @@ void gui_frame(void){
     { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
-    snake_tick(t); kngfs_tick();
+    snake_tick(t); vortexfs_tick();
     if(dirty||dr1x>dr0x) render();
     else if(cursor_dirty){ cursor_restore(); cursor_draw(); cursor_dirty=0; }
 }
@@ -1586,9 +1632,9 @@ static void settings_click(int lx,int ly,int cw,int ch){
     } else if(set_tab==2){
         int dy=206;
         if(in_rect(lx,y,20,dy+104,260,28)&&disk_init()==0){
-            if(kngfs_active()){ if(in_rect(lx,y,20,dy+104,150,28)) (void)kngfs_save(); }
+            if(vortexfs_active()){ if(in_rect(lx,y,20,dy+104,150,28)) (void)vortexfs_save(); }
             else if(!fmt_confirm) fmt_confirm=1;
-            else { fmt_confirm=0; (void)kngfs_format(); }
+            else { fmt_confirm=0; (void)vortexfs_format(); }
             dirty=1; return; }
         if(in_rect(lx,y,cw-170,dy+104,150,28)){ FsNode *tr=trash_dir(); if(tr) while(tr->child) fs_remove(tr->child); dirty=1; return; }
         if(fmt_confirm){ fmt_confirm=0; dirty=1; }
@@ -1819,7 +1865,7 @@ void gui_key(int c){
 
 /* despues de cargar el sistema base: se lee lo guardado en el disco (encima) y se aplican los ajustes guardados */
 void gui_storage_ready(void){
-    (void)kngfs_mount(); fs_track=1;
+    (void)vortexfs_mount(); fs_track=1;
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
     build_wall(); dsk_sync(); dirty=1;
@@ -1845,7 +1891,7 @@ void gui_panic(const char *name,const char *ipname,uint64_t ip,uint64_t err,uint
     clip_base(0,0,gw,gh); clip_reset();
     fill(0,0,gw,gh,0x2a0a0e,255);
     int x=gw/2-260, y=gh/2-130; if(x<20) x=20; if(y<20) y=20;
-    crown(x,y,48,0xe9c46a,0xb5373c,255);
+    vortex_logo(x,y,48,255);
     text_big(x+64,y+6,"Error fatal del kernel",0xffffff);
     char b[120]; b[0]=0; cat(b,120,"Excepcion: "); cat(b,120,name); text_bold(x,y+72,b,0xffd6d6);
     b[0]=0; cat(b,120,ipname); cat(b,120," = "); hex_into(b,120,ip); text(x,y+104,b,0xffffff);
