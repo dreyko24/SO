@@ -50,13 +50,13 @@ entrada(){ # titulo kernel modulos video
   echo 'insmod all_video'
   echo 'insmod gzio'
   if [ "$DEBIAN" = 1 ]; then
-    entrada "Königreich OS - 64 bits con Debian (grafico)" kng-kernel64.elf "$DEB" "$VIDEO"
-    entrada "Königreich OS - 64 bits con Debian (modo texto)" kng-kernel64-text.elf "$DEB" "$TEXTO"
+    entrada "Vortex OS - 64 bits con Debian (grafico)" kng-kernel64.elf "$DEB" "$VIDEO"
+    entrada "Vortex OS - 64 bits con Debian (modo texto)" kng-kernel64-text.elf "$DEB" "$TEXTO"
   fi
-  entrada "Königreich OS - 64 bits (grafico)" kng-kernel64.elf "$R64" "$VIDEO"
-  entrada "Königreich OS - 32 bits (grafico)" kng-kernel.elf "" "$VIDEO"
-  entrada "Königreich OS - 64 bits (modo texto)" kng-kernel64-text.elf "$R64" "$TEXTO"
-  entrada "Königreich OS - 32 bits (modo texto)" kng-kernel-text.elf "" "$TEXTO"
+  entrada "Vortex OS - 64 bits (grafico)" kng-kernel64.elf "$R64" "$VIDEO"
+  entrada "Vortex OS - 32 bits (grafico)" kng-kernel.elf "" "$VIDEO"
+  entrada "Vortex OS - 64 bits (modo texto)" kng-kernel64-text.elf "$R64" "$TEXTO"
+  entrada "Vortex OS - 32 bits (modo texto)" kng-kernel-text.elf "" "$TEXTO"
   echo 'submenu "Resolucion de pantalla (elige una y vuelve al menu)" {'
   for r in 1920x1080x32 1600x900x32 1366x768x32 1280x1024x32 1280x720x32 1024x768x32 800x600x32; do
     printf '  menuentry "%s" { set kng_res=%s; export kng_res; configfile /boot/grub/grub.cfg }\n' "$r" "$r"
@@ -69,7 +69,7 @@ if [ "$KNG_SIN_INSTALADOR" != 1 ] && bash tools/mkdisk.sh; then
   DEBIAN=$DEBIAN python3 - <<'PY'
 import os
 p='build/iso/boot/grub/grub.cfg'; s=open(p).read()
-e=("menuentry \"INSTALAR Königreich OS en el disco duro de esta PC\" {\n"
+e=("menuentry \"INSTALAR Vortex OS en el disco duro de esta PC\" {\n"
    "    if [ \"$grub_platform\" = efi ]; then set gfxpayload=keep; else set gfxpayload=1024x768x32,1280x1024x32,1366x768x32,800x600x32,1024x768x24,800x600x24; fi\n"
    "    echo \"Cargando el instalador (puede tardar 1 o 2 minutos)...\"\n"
    "    multiboot /boot/kng-kernel64.elf instalador\n"
