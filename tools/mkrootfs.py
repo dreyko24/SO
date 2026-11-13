@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Arma out/rootfs.cpio (formato cpio newc) para kng: programas de prueba + enlazador dinamico y libc del PC (copias reales).
+"""Arma out/rootfs.cpio (formato cpio newc) para vortex: programas de prueba + enlazador dinamico y libc del PC (copias reales).
 Uso: python3 tools/mkrootfs.py [salida.cpio]            Necesita gcc con libc estatica (libc6-dev).
      python3 tools/mkrootfs.py --debian [salida.cpio]   Solo programas ESTATICOS (sin libc del PC): para ponerlos encima de un Debian real."""
 import os, subprocess, sys, tempfile, shutil
@@ -18,7 +18,7 @@ try:
     cc(['-static', '-no-pie'], 'hola-static', u('hola-glibc.c'))
     cc(['-pthread', '-static-pie'], 'multi-pie', u('multi.c'))
     cc(['-pthread', '-static', '-no-pie'], 'multi-static', u('multi.c'))
-    cc(['-static'], 'kng-xinput', u('kng-xinput.c'), True)
+    cc(['-static'], 'vortex-xinput', u('vortex-xinput.c'), True)
     if DEB:
         cc(['-static'], 'nettest', u('nettest.c'), True)
         cc(['-static'], 'memtest', u('memtest.c'), True)
