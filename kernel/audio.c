@@ -19,6 +19,7 @@ const char *audio_error(void){return "Audio simulado en host";}
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
+typedef unsigned long long u64;
 static inline u32 pci_rd(int b,int d,int f,int o){
     u32 a=0x80000000u|((u32)b<<16)|((u32)d<<11)|((u32)f<<8)|(o&252u);
     __asm__ volatile("outl %0,%1"::"a"(a),"Nd"((u16)0xCF8));
@@ -45,6 +46,7 @@ static FsNode *hold;
 static u32 size,rate,frames,srcidx,frac,datarate;
 static int channels,bits;
 static const char *err="Sin dispositivo AC'97";
+static int eq4(const u8 *p,const char *s){for(int i=0;i<4;i++)if(p[i]!=(u8)s[i])return 0;return 1;}
 static u16 rd16(const u8 *x){return (u16)x[0]|((u16)x[1]<<8);}
 static u32 rd32(const u8 *x){return (u32)x[0]|((u32)x[1]<<8)|((u32)x[2]<<16)|((u32)x[3]<<24);}
 int audio_hardware(void){
@@ -83,17 +85,17 @@ void audio_stop(void){
 static int parse(FsNode *file){
     if(!file||file->dir||!file->data||file->size<44)return -1;
     const u8 *d=(const u8*)file->data;u32 n=(u32)file->size;
-    if(memcmp(d,"RIFF",4)||memcmp(d+8,"WAVE",4))return -1;
+    if(!eq4(d,"RIFF")||!eq4(d+8,"WAVE"))return -1;
     int fmt=0;const u8 *data=0;u32 bytes=0;
     for(u32 p=12;p+8<=n;){
         u32 l=rd32(d+p+4);if(l>n-p-8)break;
-        if(!memcmp(d+p,"fmt ",4)&&l>=16){
+        if(eq4(d+p,"fmt ")&&l>=16){
             const u8 *v=d+p+8;
             if(rd16(v)!=1)return -1;
             channels=rd16(v+2);rate=rd32(v+4);bits=rd16(v+14);
             fmt=1;
         }
-        if(!memcmp(d+p,"data",4)){data=d+p+8;bytes=l;}
+        if(eq4(d+p,"data")){data=d+p+8;bytes=l;}
         p+=8+l+(l&1);
     }
     if(!fmt||!data||channels<1||channels>2||(bits!=8&&bits!=16)||rate<8000||rate>96000)return -1;
