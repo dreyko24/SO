@@ -23,7 +23,7 @@ Capturas de la interfaz: carpeta `docs/` (generadas con el mismo código de la i
 
 ## Construir la ISO (Windows + WSL)
 1. Una sola vez, en WSL: `sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin xorriso mtools python3`
-2. Doble clic en `Construir-ISO.cmd` (o `wsl bash tools/build-iso.sh`). Resultado: `out/VortexOS-vortex.iso`.
+2. Doble clic en `Construir-ISO.cmd` (o `wsl bash tools/build-iso.sh`). Resultado: `out/VortexOS.iso`.
 
 ## Probarla
 - Máquina virtual **BIOS/Legacy** (no UEFI), 256 MB de RAM o más, **ratón PS/2**, tarjeta de red **Intel e1000** (o RTL8139) en modo **NAT**.
