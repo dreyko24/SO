@@ -1,4 +1,4 @@
-// Ajustes de apt para Konigreich OS (kng): se ejecuta como root, sin usuario de descarga aparte,
+// Ajustes de apt para Vortex OS (vortex): se ejecuta como root, sin usuario de descarga aparte,
 // y no se guardan los .deb descargados (el sistema vive en memoria, cada MB cuenta).
 APT::Sandbox::User "root";
 APT::Keep-Downloaded-Packages "false";
