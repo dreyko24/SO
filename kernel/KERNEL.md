@@ -1,4 +1,4 @@
-# Königreich OS — kernels propios `kng-kernel` (32 y 64 bits)
+# Vortex OS — kernels propios `vortex-kernel` (32 y 64 bits)
 
 Dos kernels escritos desde cero (C + ensamblador), sin código de Linux. Comparten la interfaz gráfica (`gfx/gui/fs/html`) y la pila de red (`net.c`).
 Arrancan con GRUB (Multiboot 1, BIOS). Referencias: documentación pública (Intel SDM, OSDev, RFC, manuales de Intel/Realtek).
