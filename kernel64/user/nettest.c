@@ -1,4 +1,4 @@
-/* nettest.c — prueba de red, senales y E/S de eventos con glibc normal (se ejecuta dentro de kng).
+/* nettest.c — prueba de red, senales y E/S de eventos con glibc normal (se ejecuta dentro de vortex).
  * Uso: nettest <puerto-tcp> <puerto-udp>   (el servidor de prueba corre en el PC anfitrion: 10.0.2.2) */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -112,8 +112,8 @@ static void test_local(void){
     CHECK(r==1&&newfd>=0,"recvmsg recibe un descriptor");
     if(newfd>=0){ write(newfd,"zz",2); char z[4]={0}; r=read(pf[0],z,2); CHECK(r==2&&z[0]=='z',"el descriptor recibido escribe en el pipe original"); }
     /* AF_UNIX con nombre */
-    unlink("/tmp/kng-test.sock");
-    int ls=socket(AF_UNIX,SOCK_STREAM,0); struct sockaddr_un ua; memset(&ua,0,sizeof ua); ua.sun_family=AF_UNIX; strcpy(ua.sun_path,"/tmp/kng-test.sock");
+    unlink("/tmp/vortex-test.sock");
+    int ls=socket(AF_UNIX,SOCK_STREAM,0); struct sockaddr_un ua; memset(&ua,0,sizeof ua); ua.sun_family=AF_UNIX; strcpy(ua.sun_path,"/tmp/vortex-test.sock");
     CHECK(bind(ls,(struct sockaddr*)&ua,sizeof ua)==0&&listen(ls,4)==0,"AF_UNIX bind+listen");
     pid_t p=fork();
     if(p==0){ int cs=socket(AF_UNIX,SOCK_STREAM,0); if(connect(cs,(struct sockaddr*)&ua,sizeof ua)<0) _exit(2); write(cs,"hola unix",9); char bb[16]; ssize_t n=read(cs,bb,sizeof bb); _exit(n==5?0:3); }
@@ -136,7 +136,7 @@ static void test_net(int tcp_port,int udp_port){
     if(s>=0){
         const char *rq="GET /hola HTTP/1.0\r\nHost: x\r\n\r\n"; CHECK(write(s,rq,strlen(rq))==(ssize_t)strlen(rq),"TCP send");
         char buf[4096]; int tot=0; ssize_t n; while((n=read(s,buf+tot,sizeof buf-1-tot))>0) tot+=(int)n; buf[tot]=0;
-        CHECK(tot>0&&strstr(buf,"KNG-HTTP-OK"),"TCP recibe la respuesta hasta el cierre (EOF)");
+        CHECK(tot>0&&strstr(buf,"VORTEX-HTTP-OK"),"TCP recibe la respuesta hasta el cierre (EOF)");
         close(s);
     }
     /* TCP: descarga grande (ventana, segmentos, retransmision) */
