@@ -1,0 +1,25 @@
+name: vortex-escritorio-host
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+concurrency:
+  group: vortex-host-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias del simulador
+        run: sudo apt-get update && sudo apt-get install -y gcc python3 python3-pil
+      - name: Pruebas de escritorio con AddressSanitizer
+        run: OUTDIR=$PWD/host-capturas python3 tools/hostgui.py
+      - name: Guardar capturas host
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vortex-hostgui
+          path: host-capturas/*.png
+          if-no-files-found: ignore
