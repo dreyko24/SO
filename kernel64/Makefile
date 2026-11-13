@@ -3,7 +3,7 @@ CC      = gcc
 K       = ../kernel
 KFLAGS  = -m64 -std=gnu11 -O2 -ffreestanding -fno-pie -no-pie -mcmodel=small -mno-red-zone -fno-stack-protector -fno-asynchronous-unwind-tables -fno-builtin -fno-tree-loop-distribute-patterns -mgeneral-regs-only -Wall -Wextra -nostdlib -I$(K) -DVORTEX_ARCH='"x86_64, 64 bits"'
 LDFLAGS = -m64 -T linker64.ld -nostdlib -static -no-pie -Wl,-z,noexecstack -Wl,--build-id=none -Wl,-z,max-page-size=4096
-OBJS    = kernel64.o proc64.o proc64s.o sock.o blob64.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o video.o usb.o audio.o zip.o media_logo.o
+OBJS    = kernel64.o proc64.o proc64s.o sock.o blob64.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o video.o usb.o usb_storage.o audio.o zip.o media_logo.o
 
 UFLAGS = -m64 -O2 -ffreestanding -fPIE -pie -nostdlib -fno-stack-protector -Wl,-z,max-page-size=4096 -Wl,--build-id=none -Wl,-e,_start -Wl,--no-dynamic-linker
 
