@@ -1,0 +1,22 @@
+name: vortex-jpeg-nativo
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+concurrency:
+  group: vortex-jpeg-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  jpeg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Pillow y compilador
+        run: sudo apt-get update && sudo apt-get install -y gcc python3 python3-pil
+      - name: Generar JPEG de prueba con Pillow
+        run: python3 -c "from PIL import Image; Image.new('RGB',(128,96),(160,80,40)).save('jpeg-real.jpg',quality=95)"
+      - name: Verificar JPEG decodificado por Vortex OS
+        run: |
+          gcc -O2 -std=gnu11 -Wall -Wextra -fsanitize=address,undefined -I kernel tests/jpeg_test.c kernel/image.c kernel/jpeg.c kernel/third_party/picojpeg.c -o /tmp/jpeg-vortex
+          ASAN_OPTIONS=detect_leaks=0 /tmp/jpeg-vortex jpeg-real.jpg
