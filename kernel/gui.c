@@ -1463,7 +1463,9 @@ static void draw_window(int wi,int focused){
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    vortex_logo(12,4,25,255); text(40,6,"Vortex OS",C_TXT);
+    rrect(8,2,142,24,6,appmenu_open?ACCENT:0x252842,255);
+    text_bold(20,6,"Aplicaciones",0xffffff);
+    text(135,6,appmenu_open?"^":"v",C_TXT);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
@@ -1516,6 +1518,34 @@ static void draw_dock(void){
     }
 }
 
+/* Menu de aplicaciones de la barra superior (no requiere una ventana). */
+typedef struct {const char *label; int app,tab;} AppMenuEntry;
+static const AppMenuEntry APPMENU[]={
+    {"Explorador de archivos",A_FILES,0},{"Galeria de imagenes",A_MEDIA,0},
+    {"Musica",A_MEDIA,1},{"Videos",A_MEDIA,2},{"Dispositivos USB",A_MEDIA,3},
+    {"Navegador",A_BROWSER,0},{"Terminal",A_TERM,0},{"Notas",A_NOTES,0},
+    {"Calculadora",A_CALC,0},{"Monitor del sistema",A_MONITOR,0},
+    {"Ajustes",A_SETTINGS,0},{"Programas Linux",A_PROGS,0},
+    {"Acerca de Vortex OS",A_ABOUT,0}
+};
+#define APPMENU_N ((int)(sizeof APPMENU/sizeof APPMENU[0]))
+static int appmenu_hit(int x,int y){
+    int yy=y-BARH-28;
+    if(x<8||x>=244||yy<0||yy>=APPMENU_N*28)return -1;
+    return yy/28;
+}
+static void appmenu_draw(void){
+    if(!appmenu_open)return;
+    int x=8,y=BARH+4,w=236,h=APPMENU_N*28+14;
+    rrect(x+4,y+4,w,h,12,0x000000,80);
+    rrect(x,y,w,h,10,0x21253b,255);
+    text_bold(x+16,y+9,"Aplicaciones",0xffffff);
+    for(int i=0;i<APPMENU_N;i++){
+        int ry=y+24+i*28;
+        if(i&1)rrect(x+4,ry,w-8,27,5,0xffffff,9);
+        text(x+16,ry+5,APPMENU[i].label,C_TXT);
+    }
+}
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
 
 static int ddrag=-1, ddx, ddy, dmoved, dlast=-1; static uint32_t dlastt;
@@ -1639,7 +1669,7 @@ static void render(void){
         int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
         if(!hidden) draw_window(order[k],k==nord-1);
     }
-    draw_topbar(); draw_dock();
+    draw_topbar(); draw_dock(); appmenu_draw();
     if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
         rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
     mu_draw();
@@ -1778,12 +1808,23 @@ static void app_click(Win *w,int lx,int ly){
     }
 }
 static void on_press(void){
+    if(appmenu_open){
+        int i=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
+        if(i>=0&&i<APPMENU_N){Win *w=open_app(APPMENU[i].app);
+            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[i].tab;w->scroll=0;}
+        }
+        return;
+    }
     if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
     if(dren>=0) dren_commit();
     int d=dock_hit(mx,my);
     if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
+    if(my<BARH){
+        if(mx>=8&&mx<151){appmenu_open=1;dirty=1;return;}
+        if(mx>gw-48)open_app(A_SETTINGS);
+        return;
+    }
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
@@ -1804,6 +1845,7 @@ static void on_press(void){
       else if(dsel>=0){ dsel=-1; dirty=1; } }
 }
 static void on_rpress(void){                                         /* boton derecho: menu contextual */
+    if(appmenu_open){appmenu_open=0;dirty=1;}
     if(mu_open){ mu_open=0; dirty=1; }
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
@@ -1881,7 +1923,9 @@ void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
 static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
+    if(appmenu_open&&c==27){appmenu_open=0;dirty=1;return;}
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
+    if(c==0x40D){Win *w=open_app(A_MEDIA);if(w)w->media_tab=0;dirty=1;return;}
     if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
     int top=win_top();
     if(top<0){                                                      /* sin ventanas: las teclas son para el icono elegido del escritorio */
@@ -1941,6 +1985,13 @@ void gui_key(int c){
         else if(c=='%') calc_press(w,'%');
         break;
     case A_SNAKE: snake_key(w,c); break;
+    case A_MEDIA:
+        if(c==KEY_DOWN)scroll_by(&w->scroll,1,10000);
+        else if(c==KEY_UP)scroll_by(&w->scroll,-1,10000);
+        else if(c==KEY_PGDN)scroll_by(&w->scroll,8,10000);
+        else if(c==KEY_PGUP)scroll_by(&w->scroll,-8,10000);
+        else if(c>='1'&&c<='4'){w->media_tab=c-'1';w->scroll=0;dirty=1;}
+        break;
     case A_VIEWER:
         if(c==KEY_DOWN) scroll_by(&w->scroll,1,100000); else if(c==KEY_UP) scroll_by(&w->scroll,-1,100000);
         else if(c==KEY_PGDN) scroll_by(&w->scroll,20,100000); else if(c==KEY_PGUP) scroll_by(&w->scroll,-20,100000);
