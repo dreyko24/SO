@@ -34,8 +34,12 @@ jobs:
           python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -usb -drive if=none,id=stick,format=raw,file=pendrive.img -device usb-storage,bus=usb-bus.0,drive=stick > usb-gui.log 2>&1
           tail -100 usb-gui.log
           grep -Fq "USB FAT32 real leido" usb-gui.log || { echo "FALLO: no detecto ni leyo la memoria USB"; exit 1; }
-          grep -Fq "VORTEX.PNG" usb-gui.log || true
+          grep -Fq "archivo VORTEX.PNG (1965 bytes) importado" usb-gui.log || { echo "FALLO: FAT32 no se leyo realmente"; exit 1; }
+          grep -Fq "[vortex-image] decoded" usb-gui.log || { echo "FALLO: no se pudo abrir la foto del USB"; exit 1; }
+          grep -Fq "[vortex-usb] imagen importada desde dispositivo real" usb-gui.log || { echo "FALLO: la imagen no se copio de USB a /Imagenes"; exit 1; }
+          grep -Fq "[vortex-wallpaper] updated" usb-gui.log || { echo "FALLO: no se aplico la foto de USB como fondo"; exit 1; }
           test -s capturas/04-archivos-usb.png
+          test -s capturas/06-fondo-desde-usb.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
