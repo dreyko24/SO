@@ -21,5 +21,5 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           gh release view iso-latest >/dev/null 2>&1 || gh release create iso-latest --title "ISO mas reciente" --notes "ISO de Vortex OS con Debian real. Se reemplaza en cada construccion." --prerelease
-          gh release upload iso-latest out/VortexOS-vortex.iso out/VortexOS-vortex.iso.sha256 --clobber
+          gh release upload iso-latest out/VortexOS.iso out/VortexOS.iso.sha256 --clobber
           gh release edit iso-latest --notes "ISO de Vortex OS con Debian real. Construido: $(date -u +%F' '%H:%M) UTC, commit ${GITHUB_SHA::7}"
