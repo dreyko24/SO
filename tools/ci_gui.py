@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prueba el escritorio grafico de kng en QEMU como lo haria una persona: mueve el raton, hace clics, escribe y saca capturas.
+"""Prueba el escritorio grafico de vortex en QEMU como lo haria una persona: mueve el raton, hace clics, escribe y saca capturas.
 Uso: ci_gui.py guion.txt -- qemu-system-x86_64 ... (con -monitor unix:/tmp/gmon.sock,server,nowait y -serial stdio)
 Ordenes del guion: esperar S | raton X Y | clic | doble | der | arrastrar X Y | tecla NOMBRE | escribir TEXTO | captura NOMBRE"""
 import os, socket, subprocess, sys, threading, time, zlib, struct
