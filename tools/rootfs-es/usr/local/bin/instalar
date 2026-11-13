@@ -39,7 +39,7 @@ for p in "$@"; do
     chromium) lista="$lista $pantalla_base chromium" ;;
     firefox) lista="$lista $pantalla_base firefox-esr" ;;
     libreoffice)
-      lista="$lista $pantalla_base libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-math libreoffice-l10n-es fonts-noto-core" ;;
+      lista="$lista $pantalla_base libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-math libreoffice-l10n-es libreoffice-gtk3 libreoffice-style-colibre hunspell-es hyphen-es mythes-es fonts-noto-core fonts-crosextra-carlito fonts-crosextra-caladea" ;;
     openoffice)
       lista="$lista $pantalla_base"; OO=1 ;;
     *) lista="$lista $p" ;;
