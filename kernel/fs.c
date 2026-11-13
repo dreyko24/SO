@@ -284,8 +284,10 @@ static void put(FsNode *d,const char *name,const char *txt){ fs_create(d,name,tx
 void fs_init(void){
     root=newnode(0,"",1);
     FsNode *esc=fs_mkdir(root,"Escritorio"), *doc=fs_mkdir(root,"Documentos"), *img=fs_mkdir(root,"Imagenes"),
+            *music=fs_mkdir(root,"Musica"), *videos=fs_mkdir(root,"Videos"),
            *sys=fs_mkdir(root,"Sistema"), *prog=fs_mkdir(root,"Programas");
-    (void)esc; (void)img;
+    (void)esc; (void)img; (void)music; (void)videos;
+    put(doc,"multimedia.txt","Vortex OS incluye visor PNG (8 bits), BMP (24/32 bits) y PPM P6. Abre Aplicaciones > Galeria.\nEl menu contextual de imagenes permite usarlas como fondo de pantalla.\nMusica y video aun no tienen reproductor nativo. El acceso a memorias USB esta en desarrollo.\n");
     put(doc,"bienvenida.txt","Bienvenido a Vortex OS\n\nEste es un sistema operativo propio, con kernel propio (vortex-kernel).\nNo es Linux ni usa codigo de Linux.\n\nPuedes explorar los archivos, abrir la terminal,\ncambiar colores y fondos en Ajustes, y probar el navegador.\n\nLos archivos viven en memoria: al reiniciar se pierden\n(todavia no hay controlador de disco).\n");
     put(doc,"notas.txt","Notas\n-----\n- Crear controlador de disco\n- Pasar el kernel a 64 bits\n- Red (tarjeta virtual) para el navegador\n");
     put(doc,"pagina.html","<title>Mi pagina</title><h1>Hola, Vortex</h1><p>Esta pagina es un archivo del sistema, abierto con el navegador de vortex.</p><p><a href=\"vortex://inicio\">Volver al inicio</a></p>");
