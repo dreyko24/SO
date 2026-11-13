@@ -1,0 +1,18 @@
+# Prueba interactiva del menu Aplicaciones, la galeria y el visor nativo.
+captura 01-escritorio
+raton 75 14
+clic
+esperar 1
+captura 02-menu-aplicaciones
+raton 94 96
+clic
+esperar 1
+captura 03-galeria
+raton 210 197
+clic
+esperar 2
+captura 04-visor-logo
+raton 640 530
+clic
+esperar 2
+captura 05-fondo-personalizado
