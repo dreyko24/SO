@@ -10,8 +10,10 @@
 #include "zip.h"
 #include "image.h"
 #include "usb.h"
+#include "audio.h"
+#include "video.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -31,6 +33,7 @@ typedef struct {
     FsNode *dir, *sel, *last; int scroll; uint32_t lastclick;                    /* archivos / visor */
     FsNode *file;                                                                /* visor */
     VImage picture; int media_tab; /* multimedia */
+    VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
@@ -211,6 +214,7 @@ static void win_close(int wi){
     int k=0; while(k<nord && order[k]!=wi) k++;
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
+    if(wins[wi].type==A_AUDIO)audio_stop();
     vimage_release(&wins[wi].picture);
     nord--; wins[wi].used=0; dirty=1;
 }
@@ -330,6 +334,8 @@ static Win *open_app(int type){
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
     case A_OFFICE:   w->w=520; w->h=440; set_title(w,"LibreOffice - Oficina"); break;
+    case A_AUDIO:    w->w=520; w->h=240; set_title(w,"Vortex Musica"); break;
+    case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
@@ -349,8 +355,18 @@ static void open_file(FsNode *n){
         Win *b=open_app(A_BROWSER); char u[192]="file://"; char p[80]; fs_path(n,p,sizeof p); cat(u,sizeof u,p); if(b) nav(b,u,1);
     } else if(n->size<NOTEMAX && (ext_is(n,"txt")||ext_is(n,"md")||ext_is(n,"sh")||ext_is(n,"py")||ext_is(n,"c")||ext_is(n,"h")||ext_is(n,"json")||ext_is(n,"css")||ext_is(n,"js")||ext_is(n,"csv")||ext_is(n,"conf")||ext_is(n,"cfg")||ext_is(n,"log")||(!*ext_of(n->name)&&(!n->size||n->data[0]!=0x7f)))){
         Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
+    } else if(ext_is(n,"wav")){
+        Win *a=open_app(A_AUDIO);
+        if(a){a->file=n;set_title(a,n->name);(void)audio_play(n);dirty=1;}
+    } else if(ext_is(n,"avi")){
+        Win *a=open_app(A_VIDEO);
+        if(a){a->file=n;set_title(a,n->name);
+            a->movie_play=(vvideo_open((const unsigned char*)n->data,n->size,&a->movie)==0);
+            a->movie_frame=0;a->movie_next=kticks();dirty=1;
+            kserial_puts(a->movie_play?"[vortex-video] AVI cargado\n":"[vortex-video] AVI no compatible\n");
+        }
     } else { Win *v=open_app(A_VIEWER); if(v){
-        v->file=n;v->scroll=0;set_title(v,n->name);
+        v->file=n;v->scroll=0;set_title(v->file->name);
         if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")){
             int rc=vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
             kserial_puts(rc==0?"[vortex-image] decoded\n":"[vortex-image] invalid\n");
