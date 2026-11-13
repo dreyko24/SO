@@ -7,7 +7,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <poll.h>
-#include "../kernel/kng.h"
+#include "../kernel/vortex.h"
 void *kmalloc(size_t n){ return malloc(n); }
 void kfree(void *p){ free(p); }
 static uint32_t T;
