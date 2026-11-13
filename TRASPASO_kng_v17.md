@@ -1,17 +1,17 @@
-# Traspaso: Königreich OS (kng) v17 — SO propio, SIN Linux
+# Traspaso: Vortex OS (vortex) v17 — SO propio, SIN Linux
 
-Pega esto al otro Claude junto con `KonigreichOS_kng_v17.zip`.
+Pega esto al otro Claude junto con `VortexOS_vortex_v17.zip`.
 
 ## Contexto
 - Nick (Lima, habla español, respuestas MUY breves). Su ingeniero no quiere kernel Linux. Desde v17 el proyecto es un SO aparte: nada de Debian/Linux/live-build. Identidad propia.
 - Pedido: kernel propio, interfaz gráfica básica parecida (no calco) al escritorio de referencia, gestor de archivos, navegador, ajustes, terminal, arranque propio, gráficos y 32 y 64 bits (prioridad), periféricos reducidos. Se puede sacrificar cosas.
 - Honestidad: todo el código es propio (teoría de OSDev/specs); no copiar código GPL de Linux. Fuente DejaVu Sans Mono (licencia libre) citada.
-- Nick construye la ISO y prueba él; entregar zips versionados `kng_vN`. Si faltan tokens, parar y entregar.
+- Nick construye la ISO y prueba él; entregar zips versionados `vortex_vN`. Si faltan tokens, parar y entregar.
 
-## Contenido (kernel/, i386, Multiboot 1, kng-kernel 0.5)
+## Contenido (kernel/, i386, Multiboot 1, vortex-kernel 0.5)
 - Kernel: GDT/TSS ring 3, IDT, PIC, PIT, teclado PS/2 (flechas), ratón PS/2, RTC, paginación, PMM bitmap, heap 64 MB, planificador expropiativo, ELF32, syscalls `int 0x80` (fork/exec/wait/brk…).
 - Interfaz (gfx.c, gui.c, fs.c, html.c, font.h): framebuffer 1024x768x32 pedido a GRUB, escritorio, dock, ventanas, apps Archivos/Terminal/Navegador/Ajustes/Acerca de. FS en RAM.
-- Dos ELF: `kng-kernel.elf` (video) y `kng-kernel-text.elf`.
+- Dos ELF: `vortex-kernel.elf` (video) y `vortex-kernel-text.elf`.
 - ISO: `tools/build-iso.sh` (GRUB BIOS, `grub-mkrescue -d /usr/lib/grub/i386-pc`), `Construir-ISO.cmd` (WSL).
 
 ## Estado de pruebas
