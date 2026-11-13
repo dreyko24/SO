@@ -18,7 +18,7 @@ head = """#include <stdint.h>
 static uint32_t page_dir[1024] __attribute__((aligned(4096)));
 static uint32_t pmm_next,pmm_end,pages_alloc;
 """
-open('/tmp/kng_hosttest.c', 'w').write(head + s[a:b] + s[c:d] + open('hosttest_main.c').read())
-subprocess.check_call(['gcc', '-O1', '-w', '-fsanitize=address,undefined', '-o', '/tmp/kng_hosttest', '/tmp/kng_hosttest.c'])
+open('/tmp/vortex_hosttest.c', 'w').write(head + s[a:b] + s[c:d] + open('hosttest_main.c').read())
+subprocess.check_call(['gcc', '-O1', '-w', '-fsanitize=address,undefined', '-o', '/tmp/vortex_hosttest', '/tmp/vortex_hosttest.c'])
 env = dict(os.environ, ASAN_OPTIONS='detect_leaks=0')
-sys.exit(subprocess.call(['/tmp/kng_hosttest'], env=env))
+sys.exit(subprocess.call(['/tmp/vortex_hosttest'], env=env))
