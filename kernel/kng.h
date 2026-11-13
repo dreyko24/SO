@@ -1,11 +1,11 @@
-/* kng.h — API minima que el kernel ofrece a la interfaz grafica y a las apps (tambien la usa el simulador del host). */
-#ifndef KNG_H
-#define KNG_H
+/* vortex.h — API minima que el kernel ofrece a la interfaz grafica y a las apps (tambien la usa el simulador del host). */
+#ifndef VORTEX_H
+#define VORTEX_H
 #include <stdint.h>
 #include <stddef.h>
-#define KNG_VERSION "0.7"
-#ifndef KNG_ARCH
-#define KNG_ARCH "i386, 32 bits"
+#define VORTEX_VERSION "0.7"
+#ifndef VORTEX_ARCH
+#define VORTEX_ARCH "i386, 32 bits"
 #endif
 void *kmalloc(size_t n);
 void  kfree(void *p);
