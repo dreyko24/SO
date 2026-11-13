@@ -42,7 +42,7 @@ static FsNode *parent_at(long dirfd,const char *path,char *leaf,int *err){      
     FsNode *d=fs_resolve(fs_root(),full); if(!d){ *err=ENOENT; return 0; } if(!d->dir){ *err=ENOTDIR; return 0; }
     return d;
 }
-/* los archivos que crean los programas de Linux fuera de las carpetas propias de kng no se guardan en el disco de kng */
+/* los archivos que crean los programas de Linux fuera de las carpetas propias de vortex no se guardan en el disco de vortex */
 static void mark_sys(FsNode *n){
     char p[256]; fs_path(n,p,sizeof p);
     n->sys=!(k_startswith(p,"/Escritorio")||k_startswith(p,"/Documentos")||k_startswith(p,"/Imagenes")||k_startswith(p,"/Sistema"));
@@ -70,7 +70,7 @@ static FsNode *procfd_refresh(void){
         char nm[8],tg[300]; int k=0; char t[8]; int v=i; do{ t[k++]=(char)('0'+v%10); v/=10; }while(v); for(int j=0;j<k;j++) nm[j]=t[k-1-j]; nm[k]=0;
         FD *f=&CP->fd[i]; tg[0]=0;
         if(f->type==2||f->type==10) fs_path(f->node,tg,sizeof tg); else if(f->type==1) k_strcpy(tg,"/dev/console",sizeof tg); else if(f->type==5) k_strcpy(tg,"socket:[1]",sizeof tg);
-        else if(f->type==3||f->type==4) k_strcpy(tg,"pipe:[1]",sizeof tg); else if(f->type==12) k_strcpy(tg,"/memfd:kng (deleted)",sizeof tg); else k_strcpy(tg,"anon_inode:[kng]",sizeof tg);
+        else if(f->type==3||f->type==4) k_strcpy(tg,"pipe:[1]",sizeof tg); else if(f->type==12) k_strcpy(tg,"/memfd:vortex (deleted)",sizeof tg); else k_strcpy(tg,"anon_inode:[vortex]",sizeof tg);
         FsNode *l=fs_symlink(d,nm,tg); if(l) l->sys=1;
     }
     return d;
@@ -248,12 +248,12 @@ static u64 sys_readlinkat(long dirfd,u64 path_va,u64 buf,u64 size){
     char path[PATH_MAX_]; int e=upath(path_va,path); if(e) return RET_ERR(-e);
     char full[PATH_MAX_+100]; e=path_full(dirfd,path,full,sizeof full); if(e) return RET_ERR(-e);
     char tgt[300]; tgt[0]=0;
-    if(!k_strcmp(full,"/proc/self/exe")) k_strcpy(tgt,CP->exe[0]?CP->exe:"/bin/kng-app",sizeof tgt);
+    if(!k_strcmp(full,"/proc/self/exe")) k_strcpy(tgt,CP->exe[0]?CP->exe:"/bin/vortex-app",sizeof tgt);
     else if(!k_strcmp(full,"/proc/self/cwd")) k_strcpy(tgt,CP->cwd,sizeof tgt);
     else if(k_startswith(full,"/proc/self/fd/")){ int fd=0; const char *q=full+14; while(*q>='0'&&*q<='9') fd=fd*10+(*q++-'0');
         if(fd>=MAXFD||!CP->fd[fd].type) return RET_ERR(ENOENT);
         FD *f=&CP->fd[fd]; if(f->type==2||f->type==10) fs_path(f->node,tgt,sizeof tgt); else if(f->type==1) k_strcpy(tgt,"/dev/console",sizeof tgt); else if(f->type==5) k_strcpy(tgt,"socket:[1]",sizeof tgt);
-        else if(f->type==3||f->type==4) k_strcpy(tgt,"pipe:[1]",sizeof tgt); else if(f->type==12) k_strcpy(tgt,"/memfd:kng (deleted)",sizeof tgt); else k_strcpy(tgt,"anon_inode:[kng]",sizeof tgt); }
+        else if(f->type==3||f->type==4) k_strcpy(tgt,"pipe:[1]",sizeof tgt); else if(f->type==12) k_strcpy(tgt,"/memfd:vortex (deleted)",sizeof tgt); else k_strcpy(tgt,"anon_inode:[vortex]",sizeof tgt); }
     else { int err=ENOENT; FsNode *n=fs_resolve_nf(fs_root(),full); (void)err; if(!n) return RET_ERR(ENOENT); if(!n->link) return RET_ERR(EINVAL); k_strcpy(tgt,n->link,sizeof tgt); }
     u64 l=(u64)k_strlen(tgt); if(l>size) l=size; return ucopy_to(CP,buf,tgt,l)?RET_ERR(EFAULT):l;
 }
@@ -277,7 +277,7 @@ static u64 sys_access_at(long dirfd,u64 path_va){
 }
 static u64 sys_exists_nf(long dirfd,u64 path_va,int follow);
 static u64 sys_exists_noop(long dirfd,u64 path_va){ return sys_exists_nf(dirfd,path_va,1); }
-static u64 sys_exists_nf(long dirfd,u64 path_va,int follow){        /* chmod/chown/utimes...: kng no guarda permisos ni fechas; solo se comprueba que exista */
+static u64 sys_exists_nf(long dirfd,u64 path_va,int follow){        /* chmod/chown/utimes...: vortex no guarda permisos ni fechas; solo se comprueba que exista */
     char path[PATH_MAX_]; int e=upath(path_va,path); if(e) return RET_ERR(-e);
     int err=ENOENT; return lookup_at(dirfd,path,follow,&err)?0:RET_ERR(err);
 }
