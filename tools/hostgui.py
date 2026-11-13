@@ -6,6 +6,8 @@ here = os.path.dirname(os.path.abspath(__file__)); out = os.environ.get('OUTDIR'
 subprocess.check_call(['gcc', '-O1', '-g', '-w', '-fsanitize=address,undefined', '-DHOSTGUI', '-o', '/tmp/hostgui',
     os.path.join(here, 'hostgui.c'),
     os.path.join(here, '../kernel/image.c'),
+    os.path.join(here, '../kernel/jpeg.c'),
+    os.path.join(here, '../kernel/third_party/picojpeg.c'),
     os.path.join(here, '../kernel/zip.c'),
     os.path.join(here, '../kernel/usb.c'),
     os.path.join(here, '../kernel/usb_storage.c'),
