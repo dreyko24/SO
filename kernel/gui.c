@@ -1466,9 +1466,7 @@ static void draw_window(int wi,int focused){
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    rrect(8,2,142,24,6,appmenu_open?ACCENT:0x252842,255);
-    text_bold(20,6,"Aplicaciones",0xffffff);
-    text(135,6,appmenu_open?"^":"v",C_TXT);
+    text_bold(16,6,"Vortex OS",0xffffff);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
@@ -1479,15 +1477,19 @@ static void draw_topbar(void){
 #define NDOCK 10
 #define TILE 52
 static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
-static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
-static const char *DOCK_LBL[NDOCK]={"Inicio","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0x1a1d33,255);
     clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
     rrect(x,y,TILE,TILE,13,0xffffff,10);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: vortex_logo(x+9,y+11,34,255); break;
+    case 0: /* Acceso a todas las aplicaciones: icono de cuadricula, no logotipo del SO. */
+        for(int row=0;row<3;row++)for(int col=0;col<3;col++)
+            rrect(x+11+col*11,y+11+row*11,8,8,2,
+                  (row==1&&col==1)?0x9b87f7:0xc8d2f7,255);
+        break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
     case 2: rrect(x+9,y+14,16,9,3,0xe0a62d,255); rrect(x+9,y+19,34,22,4,0xf5b83d,255); fill(x+13,y+25,26,2,0xffffff,70); break;
@@ -1516,7 +1518,8 @@ static void draw_dock(void){
         int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
         if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,70);
         draw_icon(i,x,y);
-        for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
+        if(i==0&&appmenu_open)circle(x+TILE/2,by+bh-5,3,0xffffff,255);
+        else for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
         if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
     }
 }
@@ -1533,13 +1536,15 @@ static const AppMenuEntry APPMENU[]={
 };
 #define APPMENU_N ((int)(sizeof APPMENU/sizeof APPMENU[0]))
 static int appmenu_hit(int x,int y){
-    int yy=y-BARH-28;
-    if(x<8||x>=244||yy<0||yy>=APPMENU_N*28)return -1;
-    return yy/28;
+    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    int px=bx+7, py=by-APPMENU_N*28-42;
+    if(x<px||x>=px+244||y<py+28||y>=py+28+APPMENU_N*28)return -1;
+    return (y-py-28)/28;
 }
 static void appmenu_draw(void){
     if(!appmenu_open)return;
-    int x=8,y=BARH+4,w=236,h=APPMENU_N*28+32;
+    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    int x=bx+7,y=by-APPMENU_N*28-42,w=244,h=APPMENU_N*28+32;
     rrect(x+4,y+4,w,h,12,0x000000,80);
     rrect(x,y,w,h,10,0x21253b,255);
     text_bold(x+16,y+9,"Aplicaciones",0xffffff);
@@ -1821,13 +1826,10 @@ static void on_press(void){
     if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
     if(dren>=0) dren_commit();
     int d=dock_hit(mx,my);
-    if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
+    if(d>=0){ if(d==0){appmenu_open=!appmenu_open;kserial_puts("[vortex-apps] menu abierto\n");}
+        else open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    if(my<BARH){
-        if(mx>=8&&mx<151){appmenu_open=1;dirty=1;return;}
-        if(mx>gw-48)open_app(A_SETTINGS);
-        return;
-    }
+    if(my<BARH){if(mx>gw-48)open_app(A_SETTINGS);return;}
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
