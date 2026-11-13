@@ -11,7 +11,7 @@
 #include "image.h"
 #include "usb.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -329,6 +329,7 @@ static Win *open_app(int type){
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
+    case A_OFFICE:   w->w=520; w->h=440; set_title(w,"LibreOffice - Oficina"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
@@ -1531,7 +1532,7 @@ static const AppMenuEntry APPMENU[]={
     {"Musica",A_MEDIA,1},{"Videos",A_MEDIA,2},{"Dispositivos USB",A_MEDIA,3},
     {"Navegador",A_BROWSER,0},{"Terminal",A_TERM,0},{"Notas",A_NOTES,0},
     {"Calculadora",A_CALC,0},{"Monitor del sistema",A_MONITOR,0},
-    {"Ajustes",A_SETTINGS,0},{"Programas Linux",A_PROGS,0},
+    {"Ajustes",A_SETTINGS,0},{"LibreOffice",A_OFFICE,0},{"Programas Linux",A_PROGS,0},
     {"Acerca de Vortex OS",A_ABOUT,0}
 };
 #define APPMENU_N ((int)(sizeof APPMENU/sizeof APPMENU[0]))
