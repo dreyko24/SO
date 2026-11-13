@@ -1,11 +1,11 @@
-# Traspaso: Königreich OS (kng) v18 — 32 y 64 bits + red
+# Traspaso: Vortex OS (vortex) v18 — 32 y 64 bits + red
 
-Pega esto al otro Claude junto con `KonigreichOS_kng_v18.zip`.
+Pega esto al otro Claude junto con `VortexOS_vortex_v18.zip`.
 
 ## Contexto
 - Nick (Lima, español, respuestas MUY breves, poco chat). SO propio, SIN Linux/Debian (su ingeniero no quiere kernel Linux). Todo el código es propio; no copiar código GPL de Linux.
 - Prioridades que dio: **32 y 64 bits a la vez** (no sustituir uno por otro), **red**. Pospuestos: USB, apps como procesos de usuario, disco/persistencia.
-- Nick genera la ISO y prueba él (WSL en Windows). Zips versionados `kng_vN`. Si faltan tokens, parar y entregar lo avanzado. No afirmar que algo funciona sin haberlo probado.
+- Nick genera la ISO y prueba él (WSL en Windows). Zips versionados `vortex_vN`. Si faltan tokens, parar y entregar lo avanzado. No afirmar que algo funciona sin haberlo probado.
 
 ## Estructura
 - `kernel/` kernel de 32 bits (Multiboot, ring 3, ELF, fork/exec, syscalls) + código compartido: `gfx.c gui.c fs.c html.c net.c font.h`.
@@ -20,7 +20,7 @@ Pega esto al otro Claude junto con `KonigreichOS_kng_v18.zip`.
 - Verificado en host: net.c (nettest), PMM/ELF/clone/brk, GUI (capturas en `docs/`), compilación sin avisos de ambos kernels (-m32 y -m64), cabeceras Multiboot, desensamblado de `boot64.S`.
 - **NUNCA ejecutado en QEMU/VM** (el sandbox no tiene QEMU ni red para instalarlo): arranque GRUB, paso a modo largo, framebuffer, ratón PS/2, controladores e1000/RTL8139 sobre la tarjeta virtual real, ring 3 y planificador.
 - PRIMER PASO: generar la ISO, arrancar en VM BIOS/Legacy (e1000, NAT) y arreglar lo que falle. Sospechosos: `boot64.S`; validación de framebuffer en `kmain`/`kmain64`; `e_init` (reset/RCTL/TCTL, esperas con `kticks` requieren interrupciones activas: `net_init` se llama tras `sti`); `r_init`; mapeo sin cache ≥2 GB.
-- Depurar con `kng-kernel*-text.elf` (salida por VGA y COM1) y serie a archivo en la VM.
+- Depurar con `vortex-kernel*-text.elf` (salida por VGA y COM1) y serie a archivo en la VM.
 
 ## Siguiente (orden sugerido)
 1. Verificar arranque (arriba) y red real en VM.
