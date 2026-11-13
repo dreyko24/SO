@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
-#include "../kernel/kng.h"
+#include "../kernel/vortex.h"
 void *kmalloc(size_t n){ return malloc(n); }
 void kfree(void *p){ free(p); }
 static uint32_t T=1000;
@@ -14,7 +14,7 @@ void (*kcon_hook)(char);
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
-    if(!strcmp(l,"info")) out("kng-kernel 0.5 (i386, Multiboot)\nParte de Königreich OS.\n");
+    if(!strcmp(l,"info")) out("vortex-kernel 0.5 (i386, Multiboot)\nParte de Vortex OS.\n");
     else if(!strcmp(l,"uptime")) out("12.3 s\n");
     else { out("comando desconocido: "); out(l); out(" (prueba 'help')\n"); }
 }
@@ -31,7 +31,7 @@ static const char FK_PAGE[]="<html><head><title>Pagina de prueba</title><style>b
  "<li><a href=\"http://otro.test:8080/x?y=1\">Otro sitio</a></li><li><a href=\"#ancla\">Ancla</a></li></ul>"
  "<table><tr><td>uno</td><td>dos</td></tr></table><h3>Titulo tres</h3><p><i>enfasis</i> y <strong>fuerte</strong>.</p><img src=\"x.png\" alt=\"logo\"></body></html>";
 int http_get(const char *url){ k_strcpy(fk_url,url,sizeof fk_url); fk_err[0]=0;
-    if(k_startswith(url,"https://")){ k_strcpy(fk_err,"HTTPS no esta soportado todavia (kng no tiene TLS). Usa una direccion http://",sizeof fk_err); return -1; }
+    if(k_startswith(url,"https://")){ k_strcpy(fk_err,"HTTPS no esta soportado todavia (vortex no tiene TLS). Usa una direccion http://",sizeof fk_err); return -1; }
     fk_state=0; fk_wait=3; return 0; }
 int http_poll(void){ if(fk_state) return fk_state; if(--fk_wait>0) return 0; if(strstr(fk_url,"fallo")){ k_strcpy(fk_err,"No se pudo resolver el nombre: fallo.test",sizeof fk_err); fk_state=-1; } else fk_state=1; return fk_state; }
 char *http_take(int *len){ char *b=malloc(sizeof FK_PAGE); memcpy(b,FK_PAGE,sizeof FK_PAGE); *len=sizeof FK_PAGE-1; return b; }
@@ -76,7 +76,7 @@ int main(void){
     dclick(170,150);                        /* Documentos (primera fila) */
     shot("02c_archivos_documentos");
     closeall();
-    dock(3); typestr("help\\ls /\\cd /Documentos\\ls\\cat notas.txt\\write hola.txt Hola desde kng\\cat hola.txt\\info\\"); shot("03_terminal");
+    dock(3); typestr("help\\ls /\\cd /Documentos\\ls\\cat notas.txt\\write hola.txt Hola desde vortex\\cat hola.txt\\info\\"); shot("03_terminal");
     closeall();
     dock(1); shot("04_navegador");
     click(190,254); shot("05_navegador_enlace");
@@ -110,15 +110,15 @@ int main(void){
     /* buscador */
     dock(1);
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("bienvenida\\"); } shot("09_buscar");
-    { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("kng\\"); } shot("09b_buscar_kng");
-    { Win *b=&wins[win_top()]; if(strcmp(b->url,"http://10.0.2.2:8080/search?q=kng")){ puts(b->url); puts("FALLO buscador web url"); return 1; } }
+    { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("vortex\\"); } shot("09b_buscar_vortex");
+    { Win *b=&wins[win_top()]; if(strcmp(b->url,"http://10.0.2.2:8080/search?q=vortex")){ puts(b->url); puts("FALLO buscador web url"); return 1; } }
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("https://es.wikipedia.org/wiki/Kernel\\"); if(strncmp(b->url,"http://10.0.2.2:8080/go?u=https%3A%2F%2Fes.wikipedia.org",55)){ puts(b->url); puts("FALLO https por proxy"); return 1; } }
-    { FsNode *cf=fs_resolve(fs_root(),"/Sistema/kng.cfg"); fs_write(cf,"idioma=es\n",10); }                 /* sin buscador web: busqueda local */
-    { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("kng\\"); if(!strstr(b->url,"kng://buscar?q=kng")){ puts(b->url); puts("FALLO buscador local"); return 1; } }
+    { FsNode *cf=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); fs_write(cf,"idioma=es\n",10); }                 /* sin buscador web: busqueda local */
+    { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("vortex\\"); if(!strstr(b->url,"vortex://buscar?q=vortex")){ puts(b->url); puts("FALLO buscador local"); return 1; } }
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("zzzzqq nada\\"); } shot("09c_buscar_vacio");
     closeall();
     /* notas */
-    dock(4); typestr("Hola desde Notas\nSegunda linea escrita con el teclado de kng."); { Win *n=&wins[win_top()]; click(n->x+1+86+20,n->y+TB+16); } shot("10_notas");
+    dock(4); typestr("Hola desde Notas\nSegunda linea escrita con el teclado de vortex."); { Win *n=&wins[win_top()]; click(n->x+1+86+20,n->y+TB+16); } shot("10_notas");
     { FsNode *f=fs_resolve(fs_root(),"/Documentos/nota.txt"); if(!f||f->size<20){ puts("FALLO guardar nota"); return 1; } }
     closeall();
     /* calculadora */
@@ -132,12 +132,12 @@ int main(void){
     closeall();
     /* disco y sistema de archivos: formatear, guardar, copiar, mover, renombrar, recargar */
     dock(3); typestr("disco\\disco formatear si\\cd /Documentos\\write a.txt hola disco\\cp a.txt b.txt\\mv b.txt /Escritorio\\ren a.txt z.txt\\mkdir sub\\cp /Sistema sub\\df\\"); shot("17_disco_terminal");
-    T+=1000; kngfs_tick();
+    T+=1000; vortexfs_tick();
     if(!fs_resolve(fs_root(),"/Escritorio/b.txt")||!fs_resolve(fs_root(),"/Documentos/z.txt")||fs_resolve(fs_root(),"/Documentos/a.txt")||!fs_resolve(fs_root(),"/Documentos/sub/Sistema/version.txt")){ puts("FALLO cp/mv/ren"); return 1; }
     closeall();
-    { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); fs_write(z,"CAMBIADO",8); fs_remove(fs_resolve(fs_root(),"/Escritorio/b.txt")); T+=1000; kngfs_tick(); }
+    { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); fs_write(z,"CAMBIADO",8); fs_remove(fs_resolve(fs_root(),"/Escritorio/b.txt")); T+=1000; vortexfs_tick(); }
     { fs_write(fs_resolve(fs_root(),"/Documentos/z.txt"),"basura",6); fs_create(fs_root(),"temporal.txt","x",1); }       /* cambios sin guardar: se pierden al "reiniciar" */
-    if(kngfs_mount()){ puts("FALLO montar"); return 1; }
+    if(vortexfs_mount()){ puts("FALLO montar"); return 1; }
     { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); if(!z||z->size!=8||memcmp(z->data,"CAMBIADO",8)||fs_resolve(fs_root(),"/temporal.txt")||fs_resolve(fs_root(),"/Escritorio/b.txt")){ puts("FALLO persistencia"); return 1; } puts("DISCO OK"); }
     dock(8); shot("18_monitor"); closeall();
     /* escritorio modular: arrastrar icono y widget, abrir con doble clic */
@@ -153,7 +153,7 @@ int main(void){
     /* teclado: distribuciones, tildes en terminal/notas/navegador, persistencia y selector en Ajustes */
     { dock(3); typestr("teclado latam\\");
       if(kbd_layout()!=KBD_LATAM){ puts("FALLO teclado latam"); return 1; }
-      { FsNode *cf=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!cf||!strstr(cf->data,"teclado=latam")||!strstr(cf->data,"idioma=")){ puts("FALLO cfg teclado"); return 1; } }
+      { FsNode *cf=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!cf||!strstr(cf->data,"teclado=latam")||!strstr(cf->data,"idioma=")){ puts("FALLO cfg teclado"); return 1; } }
       #define SC(b) gui_key(kbd_feed(b))
       SC(0x2A); SC(0x08); SC(0xA8); SC(0xAA);                 /* Shift+7 en Latam = '/' */
       SC(0x27); SC(0xA7);                                     /* n con tilde */
