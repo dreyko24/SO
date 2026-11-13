@@ -1,6 +1,6 @@
 #ifndef FS_H
 #define FS_H
-#include "kng.h"
+#include "vortex.h"
 #define FS_NAME 96
 typedef struct FsNode {
     char name[FS_NAME]; int dir; struct FsNode *parent, *child, *next; char *data; int size; int sys; int dev;
