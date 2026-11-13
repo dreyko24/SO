@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Maneja el kernel de kng en QEMU por el puerto serie: espera el indicador "kng> ", manda un comando, espera a que vuelva el indicador.
+"""Maneja el kernel de vortex en QEMU por el puerto serie: espera el indicador "vortex> ", manda un comando, espera a que vuelva el indicador.
 Uso: ci_drive.py <archivo-de-comandos> <registro.log> -- <comando de qemu...>
 Cada linea del archivo:  [segundos|]comando     (segundos = tiempo maximo de espera, por omision 30). Las lineas con # se ignoran.
 Linea especial:  @esperar N   (espera N segundos sin mandar nada)
@@ -65,7 +65,7 @@ def reader():
         log.write(b); log.flush()
 threading.Thread(target=reader, daemon=True).start()
 cmd_actual = ['']
-PROMPT = os.environ.get('KNG_PROMPT', 'kng> ').encode()   # en modo grafico la terminal muestra '/> '
+PROMPT = os.environ.get('VORTEX_PROMPT', 'vortex> ').encode()   # en modo grafico la terminal muestra '/> '
 def listo():
     with lock:
         b = bytes(buf)
@@ -82,7 +82,7 @@ def espera(t):
         if listo(): return True
         time.sleep(0.2)
     return False
-INICIO = os.environ.get('KNG_INICIO', '').encode()                   # si se da, se espera este texto en vez del indicador (escritorio sin terminal)
+INICIO = os.environ.get('VORTEX_INICIO', '').encode()                   # si se da, se espera este texto en vez del indicador (escritorio sin terminal)
 if INICIO:
     fin0 = time.time() + 420
     while time.time() < fin0 and INICIO not in bytes(buf) and p.poll() is None: time.sleep(0.5)
