@@ -1,10 +1,10 @@
-# LibreOffice real con ventana en el servidor X (Xvfb) de kng
+# LibreOffice real con ventana en el servidor X (Xvfb) de vortex
 240|actualizar
 1500|instalar libreoffice-writer fonts-dejavu-core xvfb x11-utils xauth
 20|ejecutar /bin/mkdir -p /var/lib/xvfb /tmp/.X11-unix
 20|ejecutar /usr/bin/Xvfb :0 -screen 0 1024x768x24 -fbdir /var/lib/xvfb -ac -nolisten tcp &
 @esperar 8
-20|ejecutar /bin/kng-xinput &
+20|ejecutar /bin/vortex-xinput &
 @esperar 2
 20|rastro 1
 20|ejecutar /usr/bin/soffice --writer --norestore --nologo -env:UserInstallation=file:///tmp/lo2 &
