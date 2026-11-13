@@ -6,4 +6,6 @@
 FsNode *zip_create(FsNode *src, FsNode *dir, const char *name);
 /* Extrae el .zip 'zf' dentro de la carpeta 'dest'. Devuelve cuantos archivos extrajo, o -1 si el archivo no es un zip valido. */
 int zip_extract(FsNode *zf, FsNode *dest);
+/* Descomprime un flujo zlib/DEFLATE completo. Verifica Adler32. */
+int zip_inflate_zlib(const uint8_t *in,int n,uint8_t *out,int outmax);
 #endif
