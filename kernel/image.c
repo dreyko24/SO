@@ -129,6 +129,7 @@ int vimage_decode(const unsigned char *d,int n,VImage *out){
     if(!out)return -1;out->pixels=0;out->w=out->h=0;
     if(!d||n<=0)return -1;
     if(n>=8&&d[0]==137&&d[1]=='P'&&d[2]=='N'&&d[3]=='G')return png_decode(d,n,out);
+    if(n>=2&&d[0]==0xff&&d[1]==0xd8)return vjpeg_decode(d,n,out);
     if(n>=2&&d[0]=='B'&&d[1]=='M')return bmp_decode(d,n,out);
     if(n>=2&&d[0]=='P'&&d[1]=='6')return ppm_decode(d,n,out);
     return -1;
