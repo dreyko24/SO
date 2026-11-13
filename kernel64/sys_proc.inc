@@ -65,15 +65,15 @@ static int gen_proc(const char *path,char *o,int max){
         if(!k_strcmp(p,"meminfo")){
             u64 used,fr; kheap_info(&used,&fr); u64 tot=kram_kb(); u64 fk=fr/1024;
             PS("MemTotal:       "); PU(tot); PS(" kB\nMemFree:        "); PU(fk); PS(" kB\nMemAvailable:   "); PU(fk); PS(" kB\nBuffers:        0 kB\nCached:         0 kB\nSwapCached:     0 kB\nSwapTotal:      0 kB\nSwapFree:       0 kB\n"); return n; }
-        if(!k_strcmp(p,"version")){ PS("Linux version 6.1.0-kng (kng@konigreich) (gcc) #1 SMP kng-compat\n"); return n; }
+        if(!k_strcmp(p,"version")){ PS("Linux version 6.1.0-vortex (vortex@konigreich) (gcc) #1 SMP vortex-compat\n"); return n; }
         if(!k_strcmp(p,"uptime")){ u32 k=kticks(); PU(k/100); PS("."); PU((k%100)/10); PU(k%10); PS(" "); PU(k/100); PS(".00\n"); return n; }
         if(!k_strcmp(p,"loadavg")){ PS("0.00 0.00 0.00 1/"); int c=0; for(int i=0;i<MAXT;i++) if(tasks[i].state!=T_FREE&&tasks[i].state!=T_ZOMBIE) c++; PU(c); PS(" "); PU(next_tid); PS("\n"); return n; }
         if(!k_strcmp(p,"stat")){ u32 k=kticks(); PS("cpu  "); PU(k); PS(" 0 0 0 0 0 0 0 0 0\ncpu0 "); PU(k); PS(" 0 0 0 0 0 0 0 0 0\nbtime 1700000000\nprocesses "); PU(next_tid); PS("\n"); return n; }
         if(!k_strcmp(p,"filesystems")){ PS("nodev\trootfs\nnodev\tproc\nnodev\ttmpfs\n"); return n; }
         if(!k_strcmp(p,"mounts")){ PS("rootfs / rootfs rw 0 0\nproc /proc proc rw 0 0\ntmpfs /dev tmpfs rw 0 0\n"); return n; }
-        if(!k_strcmp(p,"sys/kernel/osrelease")){ PS("6.1.0-kng\n"); return n; }
+        if(!k_strcmp(p,"sys/kernel/osrelease")){ PS("6.1.0-vortex\n"); return n; }
         if(!k_strcmp(p,"sys/kernel/ostype")){ PS("Linux\n"); return n; }
-        if(!k_strcmp(p,"sys/kernel/hostname")){ PS("kng\n"); return n; }
+        if(!k_strcmp(p,"sys/kernel/hostname")){ PS("vortex\n"); return n; }
         if(!k_strcmp(p,"sys/kernel/pid_max")){ PS("32768\n"); return n; }
         if(!k_strcmp(p,"sys/kernel/threads-max")){ PS("4096\n"); return n; }
         if(!k_strcmp(p,"sys/kernel/random/boot_id")){ PS("6b6e6700-0000-4000-8000-"); PX(0x1000000000ull|kticks()); PS("\n"); return n; }
