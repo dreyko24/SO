@@ -28,7 +28,7 @@ static void sample_wav(FsNode *dir){
 static void sample_avi(FsNode *dir){
     if(!dir||fs_find(dir,"Prueba-de-video.avi"))return;
     enum {W=96,H=64,FRAMES=12,FRAME=W*H*3};
-    unsigned total=12+(8+56)+(12+(8+56)+(8+40))+(12+FRAMES*(8+FRAME));
+    unsigned total=12+12+(8+56)+(12+(8+56)+(8+40))+(12+FRAMES*(8+FRAME));
     unsigned char *b=kmalloc(total);if(!b)return;
     memset(b,0,total);
     puttag(b,"RIFF");put32(b+4,total-8);puttag(b+8,"AVI ");
