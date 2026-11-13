@@ -1,4 +1,4 @@
-/* gui.c — escritorio de Königreich OS: fondo, barra, dock, ventanas y aplicaciones integradas.
+/* gui.c — escritorio de Vortex OS: fondo, barra, dock, ventanas y aplicaciones integradas.
  * Todo se dibuja por software en un backbuffer; el cursor se pinta directo sobre el frontbuffer. */
 #include "gui.h"
 #include "kbd.h"
@@ -245,11 +245,11 @@ static Win *open_app(int type){
     Win *w=&wins[wi]; memset(w,0,sizeof *w); w->used=1; w->type=type;
     int off=(nord%5)*28;
     switch(type){
-    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Königreich OS"); break;
+    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Vortex OS"); break;
     case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Navegador"); break;
     case A_FILES:    w->w=660; w->h=440; set_title(w,"Archivos"); w->dir=fs_root(); break;
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
-                     memset(w->grid,' ',sizeof w->grid); tp(w,"Königreich OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
+                     memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
     case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
     case A_VIEWER:   w->w=600; w->h=420; set_title(w,"Visor de texto"); break;
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
@@ -315,15 +315,15 @@ static void term_cmd(Win *w,char *line){
     else if(!k_strcmp(cmd,"df")){ int f,d2,by; fs_usage(&f,&d2,&by); char b[100]=""; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,d2); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes\n"); tp(w,b); }
     else if(!k_strcmp(cmd,"instalar-sistema")){
         uint32_t n=0;
-        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Konigreich OS en el disco duro\".\n"); }
+        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Vortex OS en el disco duro\".\n"); }
         else if(disk_init()){ tp(w,"No se encontro un disco duro (IDE, SATA o NVMe).\n"); }
         else {
             char b[140]="Disco: "; cat(b,140,disk_kind()); cat(b,140," "); cat(b,140,disk_model()); cat(b,140,", "); cat_int(b,140,(int)(disk_sectors()/2048)); cat(b,140," MB\n"); tp(w,b);
-            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Konigreich OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
+            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Vortex OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
             else {
                 tp(w,"Instalando... no apagues la PC (de 1 a 3 minutos).\n"); dirty=1; render();
                 int r=kng_install();
-                if(r==0) tp(w,"LISTO: Konigreich OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
+                if(r==0) tp(w,"LISTO: Vortex OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
                 else { char e2[80]="No se pudo instalar (error "; cat_int(e2,80,r); cat(e2,80,r==-3?": disco demasiado chico)\n":r==-4?": error al escribir el disco)\n":")\n"); tp(w,e2); }
             }
         } }
@@ -430,7 +430,7 @@ static const char *build_search(const char *url,int *len){
     static const struct { const char *u, *t, *kw; } PG[]={
         {"kng://inicio","Inicio","inicio bienvenida enlaces home principal"},
         {"kng://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
-        {"kng://acerca","Acerca de Königreich OS","acerca kernel autor sistema version nick kng"}};
+        {"kng://acerca","Acerca de Vortex OS","acerca kernel autor sistema version nick kng"}};
     int any=0;
     for(int i=0;i<3;i++) if(ci_find(PG[i].t,k_strlen(PG[i].t),q)>=0 || ci_find(PG[i].kw,k_strlen(PG[i].kw),q)>=0){
         if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
@@ -838,9 +838,9 @@ static const char *NEWN[]={"Nueva carpeta","Nuevo documento.txt","Nueva pagina.h
 static const char *NEWT[]={"","",
     "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>Nueva pagina</title></head>\n<body>\n<h1>Hola</h1>\n<p>Escribe aqui.</p>\n</body>\n</html>\n",
     "# Titulo\n\nEscribe aqui.\n",
-    "#!/bin/sh\necho \"Hola desde Konigreich OS\"\n",
-    "print(\"Hola desde Konigreich OS\")\n",
-    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Konigreich OS\\n\");\n    return 0;\n}\n",
+    "#!/bin/sh\necho \"Hola desde Vortex OS\"\n",
+    "print(\"Hola desde Vortex OS\")\n",
+    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Vortex OS\\n\");\n    return 0;\n}\n",
     "{\n  \"nombre\": \"valor\"\n}\n",""};
 static FsNode *fm_unz;                                              /* ultima carpeta extraida de un .zip */
 static void fm_do(int act,Win *w,FsNode *dir,FsNode *t){
@@ -1106,7 +1106,7 @@ static void draw_window(int wi,int focused){
     switch(w->type){
     case A_ABOUT:{
         crown(cx+cw/2-60,cy+24,120,0xe9c46a,ACCENT,255);
-        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Königreich OS",0xffffff);
+        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",0xffffff);
         { char vb[80]="kng-kernel " KNG_VERSION " (" KNG_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
         text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
         text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
@@ -1286,7 +1286,7 @@ static void draw_window(int wi,int focused){
             } else {
                 text(cx+20,oy+42,"En este equipo la resolucion la pone el menu de arranque:",C_DIM);
                 text(cx+20,oy+64,"al encender, entra en \"Resolucion de pantalla\", elige una",C_DIM);
-                text(cx+20,oy+84,"y luego arranca Konigreich OS. Por defecto usa la mayor",C_DIM);
+                text(cx+20,oy+84,"y luego arranca Vortex OS. Por defecto usa la mayor",C_DIM);
                 text(cx+20,oy+104,"disponible hasta 1920 x 1080.",C_DIM);
             }
         } else if(set_tab==2){
@@ -1307,7 +1307,7 @@ static void draw_window(int wi,int focused){
                 uint64_t seg[1]={used}; uint32_t col[1]={ACCENT}; stor_bar(cx+20,dy+48,cw-40,22,seg,col,1,cap);
                 if(kngfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
                     button(cx+20,dy+104,150,28,"Guardar ahora",1); }
-                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Konigreich OS.",0xffb86b);
+                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Vortex OS.",0xffb86b);
                     button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
             } else { text(cx+20,dy+24,"No se encontro un disco duro (IDE o SATA).",C_DIM); text(cx+20,dy+44,"Sin disco, lo que hagas se pierde al apagar.",0xffb86b); }
             button(cx+cw-170,dy+104,150,28,"Vaciar Papelera",0);
@@ -1333,7 +1333,7 @@ static void draw_window(int wi,int focused){
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Königreich OS",C_TXT);
+    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Vortex OS",C_TXT);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
