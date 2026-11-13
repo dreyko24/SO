@@ -9,5 +9,6 @@ typedef struct {
     uint32_t *pixels; /* 0x00RRGGBB */
 } VImage;
 int vimage_decode(const unsigned char *data,int size,VImage *out);
+int vjpeg_decode(const unsigned char *data,int size,VImage *out);
 void vimage_release(VImage *img);
 #endif
