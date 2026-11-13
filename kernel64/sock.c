@@ -5,7 +5,7 @@
  * los datos pasan directo de un socket al otro dentro del kernel. Se engancha a la pila de red (net.c) por sock_ip_hook y
  * sock_tick_hook; la pila vieja (HTTP/DNS/DHCP del propio kernel) sigue funcionando al lado.
  * Codigo propio a partir de las especificaciones (RFC 793, 768). */
-#include "kng.h"
+#include "vortex.h"
 #include "net.h"
 #include "sock.h"
 
