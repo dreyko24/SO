@@ -840,8 +840,8 @@ static const char *type_name(const FsNode *f){
     if(f->dir) return "Carpeta";
     if(f->link) return "Enlace";
     static const char *E[][2]={{"txt","Texto"},{"md","Markdown"},{"html","Pagina web"},{"htm","Pagina web"},{"sh","Script"},{"py","Python"},{"c","Codigo C"},{"h","Cabecera C"},
-        {"json","JSON"},{"zip","Archivo ZIP"},{"png","Imagen PNG"},{"jpg","Imagen JPG"},{"jpeg","Imagen JPG"},{"gif","Imagen GIF"},{"bmp","Imagen BMP"},{"pdf","Documento PDF"},
-        {"deb","Paquete Debian"},{"exe","Programa Windows"},{"bat","Script Windows"},{"rar","Archivo RAR"},{"7z","Archivo 7z"},{"mp3","Audio"},{"mp4","Video"},{"docx","Documento Word"},{"xlsx","Hoja Excel"},{"css","Hoja de estilo"},{"js","JavaScript"},{"csv","Tabla CSV"},{"log","Registro"},{"conf","Configuracion"},{"cfg","Configuracion"},{"elf","Programa"}};
+        {"json","JSON"},{"zip","Archivo ZIP"},{"ppm","Imagen PPM"},{"png","Imagen PNG"},{"jpg","Imagen JPG"},{"jpeg","Imagen JPG"},{"gif","Imagen GIF"},{"bmp","Imagen BMP"},{"pdf","Documento PDF"},
+        {"deb","Paquete Debian"},{"exe","Programa Windows"},{"bat","Script Windows"},{"rar","Archivo RAR"},{"7z","Archivo 7z"},{"wav","Audio WAV"},{"flac","Audio FLAC"},{"ogg","Audio OGG"},{"mp3","Audio MP3"},{"mp4","Video MP4"},{"webm","Video WebM"},{"mkv","Video MKV"},{"avi","Video AVI"},{"docx","Documento Word"},{"xlsx","Hoja Excel"},{"css","Hoja de estilo"},{"js","JavaScript"},{"csv","Tabla CSV"},{"log","Registro"},{"conf","Configuracion"},{"cfg","Configuracion"},{"elf","Programa"}};
     for(unsigned i=0;i<sizeof E/sizeof *E;i++) if(ext_is(f,E[i][0])) return E[i][1];
     if(f->size>=4&&f->data&&f->data[0]==0x7f&&f->data[1]=='E'&&f->data[2]=='L'&&f->data[3]=='F') return "Programa";
     return "Archivo";
@@ -857,7 +857,7 @@ static uint32_t ftype_col(const FsNode *f){
     if(ext_is(f,"sh")||ext_is(f,"py")||ext_is(f,"c")||ext_is(f,"js")) return 0x22c55e;
     if(ext_is(f,"md")) return 0x3b82f6;
     if(ext_is(f,"json")) return 0xeab308;
-    if(ext_is(f,"png")||ext_is(f,"jpg")||ext_is(f,"gif")) return 0xec4899;
+    if(ext_is(f,"png")||ext_is(f,"bmp")||ext_is(f,"ppm")||ext_is(f,"jpg")||ext_is(f,"gif")) return 0xec4899;
     return 0;
 }
 static void draw_ficon(int x,int y,const FsNode *f){                /* icono pequeno de la lista (24 px) */
@@ -1536,7 +1536,7 @@ static int appmenu_hit(int x,int y){
 }
 static void appmenu_draw(void){
     if(!appmenu_open)return;
-    int x=8,y=BARH+4,w=236,h=APPMENU_N*28+14;
+    int x=8,y=BARH+4,w=236,h=APPMENU_N*28+32;
     rrect(x+4,y+4,w,h,12,0x000000,80);
     rrect(x,y,w,h,10,0x21253b,255);
     text_bold(x+16,y+9,"Aplicaciones",0xffffff);
