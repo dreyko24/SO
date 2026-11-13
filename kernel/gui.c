@@ -1347,7 +1347,8 @@ static void draw_window(int wi,int focused){
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
             int n=dir?fs_list(dir,fl,FLMAX):0;
             text(cx+20,cy+54,dirs[w->media_tab],C_DIM);
-            if(w->media_tab!=0)text(cx+20,cy+78,"Reproduccion de audio y video pendiente.",0xffb86b);
+            if(w->media_tab==1)text(cx+20,cy+78,"Abre WAV PCM. Requiere tarjeta AC'97.",C_DIM);
+            else if(w->media_tab==2)text(cx+20,cy+78,"Abre AVI RGB sin compresion.",C_DIM);
             else text(cx+20,cy+78,"Haz clic en una imagen para abrirla.",C_DIM);
             int max=(ch-115)/32;if(max<1)max=1;
             if(w->scroll>k_max(0,n-max))w->scroll=k_max(0,n-max);
@@ -1757,6 +1758,20 @@ void gui_frame(void){
     { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
+    audio_tick();
+    {static uint32_t next_audio;
+     if((int)(t-next_audio)>=0){next_audio=t+15;
+        for(int j=0;j<nord;j++)if(wins[order[j]].type==A_AUDIO)dwin(&wins[order[j]]);
+     }
+     for(int j=0;j<nord;j++){Win *w=&wins[order[j]];
+        if(w->type!=A_VIDEO||!w->movie_play||!w->movie.frames)continue;
+        if((int)(t-w->movie_next)<0)continue;
+        if(w->movie_frame+1<w->movie.frames){w->movie_frame++;
+            w->movie_next=t+k_max(1,100/w->movie.fps);
+            dwin(w);
+        }else{w->movie_play=0;dwin(w);}
+     }
+    }
     snake_tick(t); vortexfs_tick();
     if(dirty||dr1x>dr0x) render();
     else if(cursor_dirty){ cursor_restore(); cursor_draw(); cursor_dirty=0; }
@@ -1844,6 +1859,17 @@ static void app_click(Win *w,int lx,int ly){
     case A_VIEWER:
         if(w->picture.pixels&&in_rect(lx,ly,cw-167,ch-38,155,28)&&w->file)
             (void)wallpaper_from_file(w->file);
+        break;
+    case A_AUDIO:
+        if(in_rect(lx,ly,20,ch-48,160,30)){
+            if(audio_active())audio_pause(!audio_paused());
+            else if(w->file)(void)audio_play(w->file);
+            dirty=1;
+        }else if(in_rect(lx,ly,194,ch-48,138,30)){audio_stop();dirty=1;}
+        break;
+    case A_VIDEO:
+        if(in_rect(lx,ly,18,ch-35,156,27)&&w->movie.frames>0){w->movie_play=!w->movie_play;w->movie_next=kticks();dirty=1;}
+        else if(in_rect(lx,ly,188,ch-35,132,27)){w->movie_frame=0;w->movie_play=w->movie.frames>0;w->movie_next=kticks();dirty=1;}
         break;
     case A_MEDIA:{
         for(int i=0;i<4;i++)if(in_rect(lx,ly,12+i*136,12,130,28)){
