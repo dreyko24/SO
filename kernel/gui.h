@@ -1,6 +1,6 @@
 #ifndef GUI_H
 #define GUI_H
-#include "kng.h"
+#include "vortex.h"
 #define KEY_UP 0x11
 #define KEY_DOWN 0x12
 #define KEY_LEFT 0x13
