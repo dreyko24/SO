@@ -7,7 +7,7 @@ raton 215 724
 clic
 esperar 1
 captura 02-menu-aplicaciones
-raton 215 348
+raton 215 326
 clic
 esperar 1
 captura 03-galeria
