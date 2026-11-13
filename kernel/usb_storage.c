@@ -176,7 +176,7 @@ static int enumerate(void){
         if(type==4&&len>=9)
             classok=desc[p+5]==8&&desc[p+6]==6&&desc[p+7]==0x50;
         if(type==5&&len>=7&&classok&&(desc[p+3]&3)==2){
-            int m=rd16(desc+p+4);if(m<=0||m>64)continue;
+            int m=rd16(desc+p+4);if(m<=0||m>64){p+=len;continue;}
             if(desc[p+2]&0x80){epin=desc[p+2]&15;mpin=(u8)m;}
             else{epout=desc[p+2]&15;mpout=(u8)m;}
         }
@@ -212,7 +212,9 @@ static int fatmount(void){
     fat_sector=part+reserved;
     first_data=fat_sector+nfats*fat_size;
     if(first_data>=block_count)return -5;
-    last_fat_lba=0xffffffffu;return 0;
+    last_fat_lba=0xffffffffu;
+    kprintf("[vortex-usb] BPB part=%u root=%u spc=%u fat=%u first=%u sectors=%u\n",part,root_cluster,sectors_per_cluster,fat_sector,first_data,block_count);
+    return 0;
 }
 static u32 fatnext(u32 cluster){
     u32 lba=fat_sector+cluster/128u;
@@ -258,7 +260,8 @@ static int readfile(u32 cl,u32 len,FsNode *dir,const char *name){
         }
     }
     if(got==len){FsNode *f=fs_create(dir,name,(char*)buf,(int)len);
-        if(f){f->dev=1;imported++;}}
+        if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado\n",name,len);}
+        else kprintf("[vortex-usb] sin memoria para el archivo %s\n",name);}
     kfree(buf);
     return got==len?0:-1;
 }
@@ -270,6 +273,7 @@ static void readdir_usb(u32 first,FsNode *dst,int depth){
         u32 base;if(cluster_lba(c,&base))break;
         for(u32 s=0;s<sectors_per_cluster;s++){
             u8 sec[512];if(readsector(base+s,sec))return;
+            if(depth==0&&cnt==1&&s==0)kprintf("[vortex-usb] raiz lba=%u e0=%x attr=%x e1=%x\n",base+s,(u32)sec[0],(u32)sec[11],(u32)sec[32]);
             for(int j=0;j<16;j++){
                 const u8 *e=sec+j*32;
                 if(e[0]==0)return;
@@ -308,7 +312,9 @@ int usb_storage_probe(void){
     if(!dir){status("Sin memoria para mostrar USB");return -4;}
     dir->dev=1;imported=depth_count=0;
     readdir_usb(root_cluster,dir,0);
-    ready=1;found=1;ever=1;status("USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
+    ready=1;found=1;ever=1;
+    kprintf("[vortex-usb] importados=%d entradas, raiz=%u\n",imported,root_cluster);
+    status("USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
     return 1;
 }
 int usb_storage_ready(void){return ready;}
