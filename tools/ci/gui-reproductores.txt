@@ -1,0 +1,24 @@
+# Test del reproductor multimedia con archivos nativos creados por Vortex OS
+captura 01-escritorio
+raton 5 80
+clic
+raton 215 724
+clic
+raton 222 354
+clic
+esperar 1
+captura 02-biblioteca-audio
+raton 210 203
+clic
+esperar 2
+captura 03-audio-wav-reproduciendo
+raton 215 724
+clic
+raton 220 382
+clic
+esperar 1
+captura 04-biblioteca-video
+raton 210 203
+clic
+esperar 2
+captura 05-video-avi-reproduciendo
