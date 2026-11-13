@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recibe archivos que kng sube con `curl -T archivo http://10.0.2.2:PUERTO/nombre` (PUT) y los guarda en ./subidas/. Solo para el CI."""
+"""Recibe archivos que vortex sube con `curl -T archivo http://10.0.2.2:PUERTO/nombre` (PUT) y los guarda en ./subidas/. Solo para el CI."""
 import http.server, os, sys
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 18091
 os.makedirs('subidas', exist_ok=True)
