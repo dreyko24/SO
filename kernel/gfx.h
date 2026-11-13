@@ -1,6 +1,6 @@
 #ifndef GFX_H
 #define GFX_H
-#include "kng.h"
+#include "vortex.h"
 extern int gw, gh;                 /* tamano de pantalla */
 extern uint32_t *bb;               /* backbuffer gw*gh, formato 0x00RRGGBB */
 int  gfx_init(uint32_t *front, int w, int h, int pitch_bytes);   /* 0 ok */
