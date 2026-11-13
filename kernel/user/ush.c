@@ -2,9 +2,9 @@
 static int streq(const char*a,const char*b){ while(*a&&*a==*b){a++;b++;} return *a==*b; }
 void _start(void){
     char line[64];
-    puts_("\nkng-sh: shell de usuario (ring 3). help | pid | exit | utest crash forktest\n");
+    puts_("\nvortex-sh: shell de usuario (ring 3). help | pid | exit | utest crash forktest\n");
     for(;;){
-        puts_("kng$ ");
+        puts_("vortex$ ");
         int n=0;
         for(;;){
             char c; if(read(0,&c,1)!=1) continue;
@@ -19,7 +19,7 @@ void _start(void){
         if(streq(line,"pid")){ putnum(getpid()); puts_(" (padre "); putnum(getppid()); puts_(")\n"); continue; }
         int pid=fork();
         if(pid<0){ puts_("fork fallo\n"); continue; }
-        if(pid==0){ exec(line); puts_("kng-sh: no existe: "); puts_(line); puts_("\n"); exit(127); }
+        if(pid==0){ exec(line); puts_("vortex-sh: no existe: "); puts_(line); puts_("\n"); exit(127); }
         int st=0; waitpid(pid,&st,0);
         puts_("[estado "); putnum(st>>8); puts_((st&0x7F)?" (matado por excepcion)]\n":"]\n");
     }
