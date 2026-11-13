@@ -1,4 +1,4 @@
-/* ulib.h — mini libc de modo usuario para kng-kernel (syscalls con numeros de Linux i386). */
+/* ulib.h — mini libc de modo usuario para vortex-kernel (syscalls con numeros de Linux i386). */
 #ifndef ULIB_H
 #define ULIB_H
 typedef unsigned int u32;
