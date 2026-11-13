@@ -3,13 +3,13 @@
  * Que hay: GDT/TSS, CR3 propia por proceso (la imagen del kernel, bajo 4 MB, va en todas pero solo supervisor; el resto del
  * kernel solo se ve con la CR3 del kernel), cargador ELF64 (PIE y de direccion fija, con enlazador dinamico), pila inicial
  * con argv/envp/auxv, planificador por turnos con varias tareas, fork/clone/execve/wait4/exit, hilos (CLONE_VM|CLONE_THREAD),
- * futex, pipes, descriptores de archivo sobre el sistema de archivos de kng y llamadas al sistema con la ABI de Linux x86-64.
+ * futex, pipes, descriptores de archivo sobre el sistema de archivos de vortex y llamadas al sistema con la ABI de Linux x86-64.
  *
  * Limites conocidos: las senales con manejador del usuario aun no se entregan (kill/terminar si funcionan); fork copia toda la
  * memoria (sin copy-on-write); un solo nucleo de CPU; sin sockets para programas de usuario todavia. */
 #include <stdint.h>
 #include <stddef.h>
-#include "kng.h"
+#include "vortex.h"
 #include "fs.h"
 static uint32_t fs_now_fn(void);
 static uint64_t wall_sec(void);
@@ -468,8 +468,8 @@ static FsNode *resolve_parent(const char *path,char *leaf){      /* carpeta cont
 #include "sys_proc.inc"
 static void etc_defaults(void){
     FsNode *root=fs_root(), *etc=root?fs_find(root,"etc"):0; if(!etc) return;
-    static const struct { const char *n,*d; } L[]={{"hosts","127.0.0.1 localhost\n10.0.2.15 kng\n"},{"hostname","kng\n"},{"passwd","root:x:0:0:root:/root:/bin/sh\nnobody:x:65534:65534:nobody:/:/bin/false\n"},
-        {"group","root:x:0:\nnogroup:x:65534:\n"},{"nsswitch.conf","passwd: files\ngroup: files\nhosts: files dns\n"},{"os-release","NAME=\"Koenigreich OS\"\nID=kng\nPRETTY_NAME=\"Koenigreich OS (kng)\"\n"},{"machine-id","6b6e6700000040008000000000000001\n"}};
+    static const struct { const char *n,*d; } L[]={{"hosts","127.0.0.1 localhost\n10.0.2.15 vortex\n"},{"hostname","vortex\n"},{"passwd","root:x:0:0:root:/root:/bin/sh\nnobody:x:65534:65534:nobody:/:/bin/false\n"},
+        {"group","root:x:0:\nnogroup:x:65534:\n"},{"nsswitch.conf","passwd: files\ngroup: files\nhosts: files dns\n"},{"os-release","NAME=\"Koenigreich OS\"\nID=vortex\nPRETTY_NAME=\"Koenigreich OS (vortex)\"\n"},{"machine-id","6b6e6700000040008000000000000001\n"}};
     for(unsigned i=0;i<sizeof L/sizeof *L;i++) if(!fs_find(etc,L[i].n)){ FsNode *n=fs_create(etc,L[i].n,L[i].d,k_strlen(L[i].d)); if(n) n->sys=1; }
 }
 static void refresh_resolv(void){
@@ -601,7 +601,7 @@ static u64 sys_brk(u64 want){
     if(want>CP->brk){ if(umap_range(CP,CP->brk,want-CP->brk)) return CP->brk; }
     CP->brk=want; return CP->brk;
 }
-static const char *UN[6]={"Linux","kng","6.1.0-kng","kng-compat 1","x86_64","(none)"};
+static const char *UN[6]={"Linux","vortex","6.1.0-vortex","vortex-compat 1","x86_64","(none)"};
 
 static u64 sys_clone(struct regs *r,u64 flags,u64 stack,u64 ptid,u64 ctid,u64 tls){
     int thread=(flags&0x10000)!=0;
