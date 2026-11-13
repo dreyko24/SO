@@ -1,0 +1,42 @@
+name: vortex-reproductores
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+concurrency:
+  group: vortex-media-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  multimedia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 gcc gcc-multilib binutils python3 grub-pc-bin grub-efi-amd64-bin xorriso mtools cpio
+      - name: Compilar sistemas propios
+        run: |
+          make -C kernel64
+          make -C kernel
+          python3 tools/mkrootfs.py --debian vortex-extra.cpio
+      - name: Probar controladora AC97, WAV PCM y video AVI
+        run: |
+          mkdir -p g/boot/grub
+          cp kernel64/vortex-kernel64.elf vortex-extra.cpio g/boot/
+          printf 'set timeout=0\ninsmod all_video\nmenuentry "Vortex OS" {\n  set gfxpayload=1024x768x32\n  multiboot /boot/vortex-kernel64.elf\n  module /boot/vortex-extra.cpio\n  boot\n}\n' > g/boot/grub/grub.cfg
+          grub-mkrescue -o media-boot.iso g >/tmp/grub.log 2>&1 || { cat /tmp/grub.log; exit 1; }
+          python3 tools/ci_gui.py tools/ci/gui-reproductores.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom media-boot.iso -boot d -vga std -display none -serial stdio -m 2G -audiodev wav,id=s0,path=vortex-salida.wav -device AC97,audiodev=s0 > media-gui.log 2>&1
+          tail -100 media-gui.log
+          grep -Fq "[vortex-audio] AC97 detectado" media-gui.log || { echo "ERROR: no hay audio AC97"; exit 1; }
+          grep -Fq "[vortex-audio] WAV PCM:" media-gui.log || { echo "ERROR: WAV no se inicio"; exit 1; }
+          grep -Fq "[vortex-video] AVI cargado" media-gui.log || { echo "ERROR: AVI no se cargo"; exit 1; }
+          test -s capturas/05-video-avi-reproduciendo.png
+          test -s vortex-salida.wav || { echo "ERROR: no hubo salida de audio WAV"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vortex-reproductores
+          path: |
+            media-gui.log
+            vortex-salida.wav
+            capturas/*.png
