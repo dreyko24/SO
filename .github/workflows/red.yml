@@ -1,5 +1,5 @@
 name: tarjetas-de-red
-# Arranca kng (64 bits, texto) con distintos modelos de tarjeta de red de QEMU y comprueba DHCP, ping y DNS.
+# Arranca vortex (64 bits, texto) con distintos modelos de tarjeta de red de QEMU y comprueba DHCP, ping y DNS.
 on: workflow_dispatch
 jobs:
   red:
@@ -14,7 +14,7 @@ jobs:
       - name: Probar cada tarjeta
         run: |
           for m in e1000 e1000e igb rtl8139 virtio-net-pci pcnet; do
-            QMON=/tmp/qmon.sock KELF=kernel64/kng-kernel64-text.elf python3 tools/ci_drive.py tools/ci/red.txt red-$m.log -- qemu-system-x86_64 -monitor unix:/tmp/qmon.sock,server,nowait -kernel kernel64/kng-kernel64-text.elf -display none -serial stdio -m 1G -nic user,model=$m > /dev/null 2>&1 || true
+            QMON=/tmp/qmon.sock KELF=kernel64/vortex-kernel64-text.elf python3 tools/ci_drive.py tools/ci/red.txt red-$m.log -- qemu-system-x86_64 -monitor unix:/tmp/qmon.sock,server,nowait -kernel kernel64/vortex-kernel64-text.elf -display none -serial stdio -m 1G -nic user,model=$m > /dev/null 2>&1 || true
             if grep -aq "respuesta de 10.0.2.2" red-$m.log; then r=OK; else r=FALLO; fi
             echo "PRUEBA red $m: $r   ($(grep -a -m1 -E 'Red:|tarjeta' red-$m.log | tr -d '\r' | cut -c1-90))"
           done
