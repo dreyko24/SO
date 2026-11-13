@@ -10,6 +10,7 @@
 #include "zip.h"
 #include "image.h"
 #include "usb.h"
+#include "usb_storage.h"
 #include "audio.h"
 #include "video.h"
 
