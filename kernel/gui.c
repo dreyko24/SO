@@ -814,7 +814,7 @@ static void dsk_moveto(int i,int x,int y);
 static FsNode *fl[FLMAX];                                          /* lista de la carpeta que se dibuja o se toca (la interfaz es de un solo hilo) */
 static char clip_path[200]; static int clip_cut;                   /* portapapeles: ruta del elemento y si fue "cortar" */
 enum { M_OPEN=1, M_OPENNEW, M_COPY, M_CUT, M_PASTE, M_RENAME, M_DELETE, M_ZIP, M_UNZIP, M_DESK, M_PROPS,
-       M_NEWDIR, M_NEWTXT, M_NEWHTML, M_NEWMD, M_NEWSH, M_NEWPY, M_NEWC, M_NEWJSON, M_NEWEMPTY, M_TERM, M_EMPTYTRASH, M_REFRESH };
+       M_NEWDIR, M_NEWTXT, M_NEWHTML, M_NEWMD, M_NEWSH, M_NEWPY, M_NEWC, M_NEWJSON, M_NEWEMPTY, M_TERM, M_EMPTYTRASH, M_REFRESH, M_WALLPAPER };
 typedef struct { const char *l; int act; } MItem;
 static MItem mu_it[26]; static int mu_n, mu_open, mu_x, mu_y, mu_w, mu_h, mu_hover=-1, mu_win=-1;
 static char mu_target[200], mu_dir[200];
@@ -929,6 +929,7 @@ static void fm_do(int act,Win *w,FsNode *dir,FsNode *t){
         else if(ext_is(t,"zip")){ fm_unz=0; fm_do(M_UNZIP,w,t->parent,t); if(fm_unz){ if(w){ w->dir=fm_unz; w->sel=0; w->scroll=0; } else fm_open_dir(fm_unz,1); } }   /* abrir un .zip: se extrae y se muestra */
         else open_file(t);
         break;
+    case M_WALLPAPER: fm_status(w,t&&wallpaper_from_file(t)==0?"Fondo de pantalla actualizado":"Imagen invalida (PNG/BMP/PPM)"); break;
     case M_OPENNEW: if(t&&t->dir) fm_open_dir(t,1); break;
     case M_COPY: case M_CUT:
         if(!t) break;
@@ -1002,6 +1003,7 @@ static void mu_show(int x,int y,int wi,FsNode *dir,FsNode *t){
     FsNode *tr=trash_dir();
     if(t){
         mu_add("Abrir",M_OPEN); if(t->dir) mu_add("Abrir en otra ventana",M_OPENNEW);
+        if(!t->dir&&(ext_is(t,"png")||ext_is(t,"bmp")||ext_is(t,"ppm")))mu_add("Usar como fondo de pantalla",M_WALLPAPER);
         mu_add("-",0); mu_add("Cortar         Ctrl+X",M_CUT); mu_add("Copiar         Ctrl+C",M_COPY); if(t->dir&&clip_path[0]) mu_add("Pegar dentro",M_PASTE);
         mu_add("-",0); mu_add("Cambiar nombre Ctrl+R",M_RENAME); mu_add("Comprimir en .zip",M_ZIP); if(!t->dir&&ext_is(t,"zip")) mu_add("Extraer aqui",M_UNZIP);
         if(t->parent!=desk_dir()) mu_add("Copiar al Escritorio",M_DESK);
