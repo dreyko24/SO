@@ -1,4 +1,4 @@
-# Pruebas de Debian real sobre kng (ejecutadas por tools/ci_drive.py). Formato:  [segundos|]comando
+# Pruebas de Debian real sobre vortex (ejecutadas por tools/ci_drive.py). Formato:  [segundos|]comando
 20|ejecutar /bin/uname -a
 20|ejecutar /bin/sh -c "echo A; /bin/ls /etc | /usr/bin/head -3; echo B"
 20|ejecutar /bin/busybox echo busybox-ok
