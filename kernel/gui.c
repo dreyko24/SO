@@ -1296,6 +1296,40 @@ static void draw_window(int wi,int focused){
             }
         }
         break; }
+    case A_AUDIO:{
+        text_bold(cx+20,cy+18,"Reproductor de audio WAV",C_TXT);
+        text(cx+20,cy+45,w->file?w->file->name:"Sin archivo",C_DIM);
+        int ok=audio_active(),progress=audio_progress();
+        rrect(cx+20,cy+81,cw-40,18,8,0x0b0e1a,255);
+        if(progress>0)rrect(cx+20,cy+81,(cw-40)*progress/100,18,8,ACCENT,255);
+        char b[80]="Progreso: ";cat_int(b,80,progress);cat(b,80,"%");text(cx+22,cy+109,b,C_TXT);
+        text(cx+22,cy+135,ok?(audio_paused()?"Pausado":"Reproduciendo PCM por AC'97"):audio_error(),ok?0x7ee787:0xf59e0b);
+        button(cx+20,cy+ch-48,160,30,ok?(audio_paused()?"Reanudar":"Pausar"):"Reproducir",0);
+        button(cx+194,cy+ch-48,138,30,"Detener",0);
+        text(cx+18,cy+ch-14,"WAV PCM 8/16-bit, mono/estereo. Tarjeta AC'97.",C_DIM);
+        break; }
+    case A_VIDEO:{
+        fill(cx,cy,cw,ch,0x090d16,255);
+        if(w->movie.frames>0){
+            int dw=w->movie.w,dh=w->movie.h,aw=cw-24,ah=ch-73;
+            if(dw>aw){dh=dh*aw/dw;dw=aw;}
+            if(dh>ah){dw=dw*ah/dh;dh=ah;}
+            if(dw<1)dw=1;if(dh<1)dh=1;
+            int px=cx+(cw-dw)/2,py=cy+8+(ah-dh)/2;
+            for(int y=0;y<dh;y++){int sy=y*w->movie.h/dh;
+                for(int x=0;x<dw;x++)px_blend(px+x,py+y,
+                   vvideo_rgb(&w->movie,w->movie_frame,x*w->movie.w/dw,sy),255);}
+            char b[100]="Cuadro ";cat_int(b,100,w->movie_frame+1);cat(b,100," de ");cat_int(b,100,w->movie.frames);cat(b,100,"   AVI RGB ");
+            cat_int(b,100,w->movie.w);cat(b,100," x ");cat_int(b,100,w->movie.h);
+            text(cx+16,cy+ch-57,b,C_TXT);
+        }else{
+            text(cx+20,cy+25,"Video incompatible o archivo danado.",0xffb86b);
+            text(cx+20,cy+56,"Admitido: AVI con video RGB sin compresion.",C_DIM);
+            text(cx+20,cy+84,"MP4, H.264 y WebM requieren otros decodificadores.",C_DIM);
+        }
+        button(cx+18,cy+ch-35,156,27,w->movie_play?"Pausa":"Reproducir",0);
+        button(cx+188,cy+ch-35,132,27,"Reiniciar",0);
+        break; }
     case A_MEDIA:{
         static const char *tabs[]={"Imagenes","Musica","Videos","USB"};
         for(int i=0;i<4;i++)button(cx+12+i*136,cy+12,130,28,tabs[i],w->media_tab==i);
