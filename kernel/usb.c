@@ -1,6 +1,11 @@
 /* Deteccion de controladores USB PCI, sin afirmar compatibilidad de almacenamiento. */
 #include "usb.h"
 #include "vortex.h"
+#ifdef HOSTGUI
+int usb_controllers(void){return 0;}
+int usb_first_controller_type(void){return -1;}
+const char *usb_controller_name(int t){(void)t;return "simulado";}
+#else
 static inline void out32(unsigned short p,unsigned v){__asm__ volatile("outl %0,%1"::"a"(v),"Nd"(p));}
 static inline unsigned in32(unsigned short p){unsigned v;__asm__ volatile("inl %1,%0":"=a"(v):"Nd"(p));return v;}
 static unsigned pcir(int b,int d,int f,int off){
@@ -32,3 +37,5 @@ const char *usb_controller_name(int t){
     if(t==0x30)return "XHCI (USB 3.x)";
     return t<0?"ninguno":"controlador USB";
 }
+
+#endif /* HOSTGUI */
