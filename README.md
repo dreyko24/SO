@@ -1,4 +1,4 @@
-# Königreich OS (kng) — sistema operativo propio, 32 y 64 bits
+# Vortex OS (núcleo KNG) — sistema operativo propio, 32 y 64 bits
 
 Sistema operativo **independiente**: dos kernels propios (`kng-kernel` de 32 y de 64 bits), interfaz gráfica propia, gestor de archivos,
 terminal, navegador con red, ajustes. **No es Linux, no usa Debian y no incluye código de Linux.**
