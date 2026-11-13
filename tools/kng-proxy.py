@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""kng-proxy: puente para que Königreich OS (que solo habla http y HTML sencillo) pueda buscar y leer la web moderna.
+"""vortex-proxy: puente para que Vortex OS (que solo habla http y HTML sencillo) pueda buscar y leer la web moderna.
 
-Se ejecuta en TU PC (Windows o WSL), no dentro de kng:      python3 tools/kng-proxy.py
+Se ejecuta en TU PC (Windows o WSL), no dentro de vortex:      python3 tools/vortex-proxy.py
 Escucha en el puerto 8080. Desde la maquina virtual (red NAT) el PC anfitrion es 10.0.2.2.
   /search?q=texto   busca (DuckDuckGo por defecto; &e=brave, google o bing para cambiar de motor) y devuelve una pagina simple
   /go?u=URL         descarga cualquier http/https y lo reduce a HTML basico (titulos, parrafos, enlaces)
-Solo biblioteca estandar de Python. El codigo de kng sigue sin tener TLS: el cifrado lo hace este programa en tu PC."""
+Solo biblioteca estandar de Python. El codigo de vortex sigue sin tener TLS: el cifrado lo hace este programa en tu PC."""
 import sys, re, html, urllib.request, urllib.parse
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-UA = "Mozilla/5.0 (X11; Linux x86_64) kng-proxy/1.0"
+UA = "Mozilla/5.0 (X11; Linux x86_64) vortex-proxy/1.0"
 KEEP = {"h1", "h2", "h3", "h4", "p", "br", "hr", "ul", "ol", "li", "b", "strong", "i", "em", "pre", "a"}
 BLOCK = {"p", "div", "tr", "section", "article", "header", "footer", "table", "h1", "h2", "h3", "h4", "li", "ul", "ol", "pre"}
 SKIP = {"script", "style", "svg", "noscript", "template", "iframe", "form", "select", "button"}
 MAXOUT = 90_000
-LINKS = {}      # id corto -> url (las direcciones de kng son de 192 caracteres como maximo)
+LINKS = {}      # id corto -> url (las direcciones de vortex son de 192 caracteres como maximo)
 ORDER = []
 
 def short(url):
@@ -89,9 +89,9 @@ def fetch(url):
     return raw.decode(enc, "replace"), ctype, final
 
 def page(title, body, q=None, eng=None):
-    top = '<p><a href="kng://inicio">Inicio</a> | <b>kng-proxy</b>'
+    top = '<p><a href="vortex://inicio">Inicio</a> | <b>vortex-proxy</b>'
     if q:
-        top += ' | <a href="kng://buscar?q=%s">Archivos de kng</a></p><p>Buscar con: ' % urllib.parse.quote_plus(q)
+        top += ' | <a href="vortex://buscar?q=%s">Archivos de vortex</a></p><p>Buscar con: ' % urllib.parse.quote_plus(q)
         top += " | ".join(("<b>%s</b>" if k == eng else '<a href="/search?q=%%s&e=%s">%%s</a>' % k) % ((n,) if k == eng else (urllib.parse.quote_plus(q), n)) for k, (n, _) in ENGINES.items())
     return ("<title>%s</title>%s</p><hr>%s" % (html.escape(title or "Pagina"), top, body))[:MAXOUT]
 
@@ -105,7 +105,7 @@ def render(url, q=None, eng=None):
     return page(s.title.strip() or final, "<h2>%s</h2>%s" % (html.escape(s.title.strip()), body) if s.title.strip() else body, q, eng)
 
 class H(BaseHTTPRequestHandler):
-    def log_message(self, f, *a): sys.stderr.write("[kng-proxy] " + (f % a) + "\n")
+    def log_message(self, f, *a): sys.stderr.write("[vortex-proxy] " + (f % a) + "\n")
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); qs = urllib.parse.parse_qs(u.query); q = None
         try:
@@ -122,7 +122,7 @@ class H(BaseHTTPRequestHandler):
                 url = LINKS.get(u.path[3:])
                 body = render(url) if url else page("Enlace vencido", "<p>Ese enlace ya no esta en memoria. Vuelve a buscar.</p>")
             else:
-                body = page("kng-proxy", "<h1>kng-proxy</h1><p>Usa /search?q=palabras o /go?u=http://sitio</p>")
+                body = page("vortex-proxy", "<h1>vortex-proxy</h1><p>Usa /search?q=palabras o /go?u=http://sitio</p>")
             code = 200
         except Exception as e:
             code, body = 502, page("Error", "<h1>No se pudo cargar</h1><p>%s</p>" % html.escape(str(e)))
@@ -132,5 +132,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
-    print("kng-proxy escuchando en el puerto %d (desde la VM: http://10.0.2.2:%d/search?q=hola)" % (port, port))
+    print("vortex-proxy escuchando en el puerto %d (desde la VM: http://10.0.2.2:%d/search?q=hola)" % (port, port))
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
