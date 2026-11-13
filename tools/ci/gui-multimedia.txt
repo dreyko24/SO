@@ -1,5 +1,9 @@
 # Prueba interactiva del menu Aplicaciones, la galeria y el visor nativo.
 captura 01-escritorio
+# El primer clic sincroniza el raton PS/2 de QEMU (al arrancar aun esta centrado).
+raton 5 80
+clic
+esperar 1
 raton 75 14
 clic
 esperar 1
