@@ -135,6 +135,18 @@ static int inflate_raw(const uint8_t *in,int n,uint8_t *out,int outmax){
     return r.err?-1:o;
 }
 
+/* PNG usa el mismo motor DEFLATE que los archivos ZIP, con cabecera zlib. */
+int zip_inflate_zlib(const uint8_t *in,int n,uint8_t *out,int outmax){
+    if(!in||!out||n<6||outmax<0)return -1;
+    int cmf=in[0],flg=in[1];
+    if((cmf&15)!=8||(cmf>>4)>7||((cmf<<8)|flg)%31||(flg&32))return -1;
+    int r=inflate_raw(in+2,n-6,out,outmax);
+    if(r<0)return -1;
+    uint32_t a=1,b=0;
+    for(int i=0;i<r;i++){a=(a+out[i])%65521u;b=(b+a)%65521u;}
+    uint32_t expected=((uint32_t)in[n-4]<<24)|((uint32_t)in[n-3]<<16)|((uint32_t)in[n-2]<<8)|in[n-1];
+    return ((b<<16)|a)==expected?r:-1;
+}
 /* ---------- crear el .zip ---------- */
 typedef struct { Buf zip, cd; int count; } ZW;
 static void z_entry(ZW *z,const char *name,const uint8_t *data,int len,int isdir){
