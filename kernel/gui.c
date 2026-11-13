@@ -13,6 +13,7 @@
 #include "usb_storage.h"
 #include "audio.h"
 #include "video.h"
+#include "media_demo.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO };
 #define SGW 20
@@ -2152,6 +2153,7 @@ int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
     fb_front=fb; fb_bpp0=pitch_bytes>=w*4?32:24;
     wall=kmalloc((size_t)w*h*4); if(!wall) return -1;
     if(!fs_root()){ fs_init(); }
+    vortex_media_examples();
     { FsNode *images=fs_resolve(fs_root(),"/Imagenes");
       if(images&&!fs_find(images,"Logo-Vortex.png")){
           int size=(int)(vortex_demo_png_end-vortex_demo_png_start);
