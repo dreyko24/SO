@@ -8,7 +8,7 @@
 20|rastro 0
 20|ejecutar /bin/ls -l /var/lib/xvfb /tmp/.X11-unix
 60|ejecutar /usr/bin/xdpyinfo
-20|ejecutar /bin/kng-xinput &
+20|ejecutar /bin/vortex-xinput &
 @esperar 3
 20|ejecutar /usr/bin/xlogo &
 @esperar 6
