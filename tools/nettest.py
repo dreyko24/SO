@@ -3,7 +3,7 @@
 ARP, DHCP, DNS, ICMP y un servidor TCP/HTTP con perdidas de paquetes. Verifica ademas todas las sumas de comprobacion."""
 import os, struct, subprocess, select, sys, random, time
 HERE=os.path.dirname(os.path.abspath(__file__))
-exe="/tmp/kng_nettest"
+exe="/tmp/vortex_nettest"
 cmd=["gcc","-g","-O1","-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-Wall","-Wno-unused-function","-o",exe,
      os.path.join(HERE,"nettest_main.c")]
 r=subprocess.run(cmd,capture_output=True,text=True)
@@ -50,7 +50,7 @@ def hdr(status,extra,body=None,cl=True):
     h=b"HTTP/1.0 "+status+b"\r\n"+extra
     if body is not None and cl: h+=b"Content-Length: %d\r\n"%len(body)
     return h+b"\r\n"
-HOME=b"<title>Hola</title><h1>Hola kng</h1><p>Prueba de red</p>"
+HOME=b"<title>Hola</title><h1>Hola vortex</h1><p>Prueba de red</p>"
 def respond(path):
     """devuelve (bytes, expected_body, loss)"""
     if path==b"/":
@@ -168,7 +168,7 @@ def handle(f):
         if pl[0]==8:
             r=bytes([0,0,0,0])+pl[4:]; r=r[:2]+struct.pack("!H",cks(r))+r[4:]
             send(eth(state["cli_mac"],GW_MAC,0x0800,ip_pkt(dst,src,1,r)))
-        elif pl[0]==0 and src==CL_IP and pl[8:]==b'hola-kng': state["echo_ok"]=True
+        elif pl[0]==0 and src==CL_IP and pl[8:]==b'hola-vortex': state["echo_ok"]=True
     elif proto==6: tcp_in(src,dst,pl)
 
 r1,w1=os.pipe(); r2,w2=os.pipe(); r3,w3=os.pipe()
@@ -200,7 +200,7 @@ while proc.poll() is None and time.time()-t0<240:
             os.write(w3,b'.')      # sincronia: esta trama ya fue atendida
         if state["bound"] and not state["echo_sent"]:
             state["echo_sent"]=True
-            e=bytes([8,0,0,0,0,1,0,1])+b"hola-kng"; e=e[:2]+struct.pack("!H",cks(e))+e[4:]
+            e=bytes([8,0,0,0,0,1,0,1])+b"hola-vortex"; e=e[:2]+struct.pack("!H",cks(e))+e[4:]
             os.write(w1,struct.pack("<H",len(eth(state["cli_mac"],GW_MAC,0x0800,ip_pkt(GW_IP,CL_IP,1,e)))) + eth(state["cli_mac"],GW_MAC,0x0800,ip_pkt(GW_IP,CL_IP,1,e)))
             a=struct.pack("!HHBBH",1,0x0800,6,4,1)+GW_MAC+GW_IP+b'\0'*6+CL_IP
             fr=eth(b'\xff'*6,GW_MAC,0x0806,a); os.write(w1,struct.pack("<H",len(fr))+fr)
@@ -248,7 +248,7 @@ l=get("http://example.test/a b?x=1"); check(l and "OK" in l,"ruta con espacio")
 check(any(r.startswith(b"GET /a%20b?x=1 HTTP/1.0\r\nHost: example.test\r\n") for r in requests),"peticion con ruta codificada y Host")
 check(any(r.startswith(b"GET /big HTTP/1.0\r\nHost: example.test\r\n") for r in requests),"peticion GET /big (tras redireccion relativa)")
 check(any(b"Host: 93.184.216.34\r\n" in r for r in requests),"Host con IP literal")
-check(all(b"Connection: close\r\n" in r and b"User-Agent: KonigreichOS" in r for r in requests),"cabeceras Connection y User-Agent")
+check(all(b"Connection: close\r\n" in r and b"User-Agent: VortexOS" in r for r in requests),"cabeceras Connection y User-Agent")
 check("HTTP 200" in out and "Prueba de red" in out,"comando wget muestra el texto")
 check(state["arp_ok"],"el cliente responde ARP")
 check("example.test" in dns_q and "nx.test" in dns_q,"el cliente hizo consultas DNS")
