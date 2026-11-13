@@ -66,6 +66,7 @@ static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static VImage custom_wall;
 static int appmenu_open;
+extern const unsigned char vortex_demo_png_start[],vortex_demo_png_end[];
 static void cfg_set(const char *key,const char *val);
 static int cfg_get(const char *key,char *val,int max);
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
@@ -2027,6 +2028,12 @@ int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
     fb_front=fb; fb_bpp0=pitch_bytes>=w*4?32:24;
     wall=kmalloc((size_t)w*h*4); if(!wall) return -1;
     if(!fs_root()){ fs_init(); }
+    { FsNode *images=fs_resolve(fs_root(),"/Imagenes");
+      if(images&&!fs_find(images,"Logo-Vortex.png")){
+          int size=(int)(vortex_demo_png_end-vortex_demo_png_start);
+          if(size>0&&size<1024*1024)fs_create(images,"Logo-Vortex.png",(const char*)vortex_demo_png_start,size);
+      }
+    }
     build_wall();
     dobj_init(); mx=w/2; my=h/2; dirty=1; cursor_dirty=1; clk_next=0;
     kproc_done=term_done;
