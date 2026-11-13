@@ -432,7 +432,7 @@ static void s_walk(FsNode *d,const char *q){
 /* /Sistema/vortex.cfg: lineas clave=valor. cfg_set cambia o agrega una sola linea y conserva las demas. */
 static void cfg_set(const char *key,const char *val){
     FsNode *d=fs_resolve(fs_root(),"/Sistema"); if(!d||!d->dir) return;
-    FsNode *f=fs_find(d,"vortex.cfg"); char out[1024]; int o=0, kl=k_strlen(key), done=0;
+    FsNode *f=fs_find(d,"vortex.cfg"); if(!f) f=fs_find(d,"kng.cfg"); /* migrar configuraciones existentes */ char out[1024]; int o=0, kl=k_strlen(key), done=0;
     if(f&&f->data){ const char *p=f->data; int i=0;
         while(i<f->size){ int e=i; while(e<f->size&&p[e]!='\n') e++;
             int len=e-i, same=len>kl && ci_find(p+i,kl,key)==0 && p[i+kl]=='=';
@@ -443,7 +443,7 @@ static void cfg_set(const char *key,const char *val){
     fs_create(d,"vortex.cfg",out,o);
 }
 static int cfg_get(const char *key,char *val,int max){
-    val[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f||!f->data) return 0;
+    val[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f) f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return 0;
     int kl=k_strlen(key), i=0;
     while(i<f->size){ int e=i; while(e<f->size&&f->data[e]!='\n') e++;
         if(e-i>kl && ci_find(f->data+i,kl,key)==0 && f->data[i+kl]=='='){ int l=e-i-kl-1; if(l>max-1) l=max-1; memcpy(val,f->data+i+kl+1,(size_t)l); val[l]=0; for(int k=0;val[k];k++) if(val[k]=='\r') val[k]=0; return 1; }
@@ -454,7 +454,7 @@ static int layout_from_name(const char *n){ return !k_strcmp(n,"latam")?KBD_LATA
 static const char *layout_code(int l){ return l==KBD_LATAM?"latam":l==KBD_ES?"es":"us"; }
 static void set_layout(int l){ kbd_set_layout(l); cfg_set("teclado",layout_code(l)); dirty=1; }
 static void cfg_search_url(const char *q,char *out,int max){      /* buscador=http://.../?q=%s en /Sistema/vortex.cfg */
-    out[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f||!f->data) return;
+    out[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/vortex.cfg"); if(!f) f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return;
     const char *d=f->data; int i=0;
     while(i<f->size){ int e=i; while(e<f->size && d[e]!='\n') e++;
         if(e-i>9 && ci_find(d+i,9,"buscador=")==0){
