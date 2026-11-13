@@ -18,7 +18,7 @@ static uint32_t color(uint32_t rgb,int alpha){
 void vimage_release(VImage *im){if(im&&im->pixels)kfree(im->pixels);if(im){im->pixels=0;im->w=0;im->h=0;}}
 static int png_decode(const uint8_t *d,int n,VImage *out){
     static const uint8_t sig[8]={137,80,78,71,13,10,26,10};
-    if(n<45||memcmp(d,sig,8))return -1;
+    if(n<45)return -1;for(int i=0;i<8;i++)if(d[i]!=sig[i])return -1;
     uint32_t w=0,h=0,ct=0,depth=0,idat=0;int seen=0,interlace=0,haveEnd=0;
     uint8_t palette[768]={0},trans[256];int palN=0;
     for(int i=0;i<256;i++)trans[i]=255;
