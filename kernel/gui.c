@@ -392,7 +392,7 @@ static void open_file(FsNode *n){
         }
     } else { Win *v=open_app(A_VIEWER); if(v){
         v->file=n;v->scroll=0;set_title(v,v->file->name);
-        if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")){
+        if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")||ext_is(n,"jpg")||ext_is(n,"jpeg")){
             int rc=vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
             kserial_puts(rc==0?"[vortex-image] decoded\n":"[vortex-image] invalid\n");
         }
@@ -1048,7 +1048,7 @@ static void mu_show(int x,int y,int wi,FsNode *dir,FsNode *t){
     FsNode *tr=trash_dir();
     if(t){
         mu_add("Abrir",M_OPEN); if(t->dir) mu_add("Abrir en otra ventana",M_OPENNEW);
-        if(!t->dir&&(ext_is(t,"png")||ext_is(t,"bmp")||ext_is(t,"ppm")))mu_add("Usar como fondo de pantalla",M_WALLPAPER);
+        if(!t->dir&&(ext_is(t,"png")||ext_is(t,"bmp")||ext_is(t,"ppm")||ext_is(t,"jpg")||ext_is(t,"jpeg")))mu_add("Usar como fondo de pantalla",M_WALLPAPER);
         mu_add("-",0); mu_add("Cortar         Ctrl+X",M_CUT); mu_add("Copiar         Ctrl+C",M_COPY); if(t->dir&&clip_path[0]) mu_add("Pegar dentro",M_PASTE);
         mu_add("-",0); mu_add("Cambiar nombre Ctrl+R",M_RENAME); mu_add("Comprimir en .zip",M_ZIP); if(!t->dir&&ext_is(t,"zip")) mu_add("Extraer aqui",M_UNZIP);
         if(t->parent!=desk_dir()) mu_add("Copiar al Escritorio",M_DESK);
@@ -1304,7 +1304,7 @@ static void draw_window(int wi,int focused){
             if(ext_is(w->file,"png")||ext_is(w->file,"bmp")||ext_is(w->file,"ppm")||
                ext_is(w->file,"jpg")||ext_is(w->file,"jpeg")||ext_is(w->file,"gif")){
                 text(cx+16,cy+20,"Imagen no compatible o danada.",0xffb86b);
-                text(cx+16,cy+48,"Admitidos: PNG 8 bits, BMP 24/32 y PPM P6.",C_DIM);
+                text(cx+16,cy+48,"Admitidos: JPG, PNG, BMP y PPM.",C_DIM);
             }else if(ext_is(w->file,"mp3")||ext_is(w->file,"wav")||ext_is(w->file,"ogg")||
                      ext_is(w->file,"flac")||ext_is(w->file,"mp4")||ext_is(w->file,"avi")||
                      ext_is(w->file,"mkv")||ext_is(w->file,"webm")){
