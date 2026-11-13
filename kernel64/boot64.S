@@ -1,4 +1,4 @@
-/* kng-kernel64: arranque Multiboot 1 (entra en modo protegido de 32 bits) -> modo largo (64 bits) + stubs de interrupciones.
+/* vortex-kernel64: arranque Multiboot 1 (entra en modo protegido de 32 bits) -> modo largo (64 bits) + stubs de interrupciones.
  * Se enlaza como ELF64 y luego se convierte a ELF32 (objcopy) porque Multiboot 1 solo carga ELF32. */
 .set MAGIC,    0x1BADB002
 #ifndef NOVIDEO
@@ -37,7 +37,7 @@ gdt64:
 gdt64_ptr:
     .word gdt64_ptr - gdt64 - 1
     .long gdt64
-msg_nolong: .asciz "kng64: este procesador no soporta 64 bits (modo largo). Use el kernel de 32 bits."
+msg_nolong: .asciz "vortex64: este procesador no soporta 64 bits (modo largo). Use el kernel de 32 bits."
 
 .section .text
 .code32
