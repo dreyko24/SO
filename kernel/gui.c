@@ -1340,9 +1340,16 @@ static void draw_window(int wi,int focused){
             char status[90]="Controladores PCI USB detectados: ";cat_int(status,90,n);
             text(cx+20,cy+100,status,C_TXT);
             if(n)text(cx+20,cy+128,usb_controller_name(usb_first_controller_type()),C_DIM);
-            text(cx+20,cy+178,"El controlador USB Mass Storage aun no esta",0xffb86b);
-            text(cx+20,cy+200,"implementado; no se pueden montar memorias USB.",0xffb86b);
-            text(cx+20,cy+246,"No se modifica ni formatea ningun USB.",C_DIM);
+            text(cx+20,cy+176,usb_storage_message(),usb_storage_ready()?0x7ee787:0xffb86b);
+            if(usb_storage_ready()){
+                text(cx+20,cy+206,"FAT32 de unidad fisica montada en modo lectura.",C_DIM);
+                button(cx+20,cy+242,200,34,"Abrir dispositivo",1);
+            }else{
+                text(cx+20,cy+205,"UHCI USB 1.1 + almacenamiento SCSI/FAT32.",C_DIM);
+                text(cx+20,cy+226,"EHCI/XHCI y exFAT aun no admitidos.",C_DIM);
+            }
+            button(cx+20,cy+298,222,34,"Buscar USB conectado",0);
+            text(cx+20,cy+354,"No se escribe ni formatea una unidad externa.",C_DIM);
         }else{
             const char *dirs[]={"/Imagenes","/Musica","/Videos"};
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
@@ -1759,6 +1766,9 @@ void gui_frame(void){
     { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
+    {static uint32_t usbnext;
+      if((int)(t-usbnext)>=0){usbnext=t+300;usb_storage_poll();}
+    }
     audio_tick();
     {static uint32_t next_audio;
      if((int)(t-next_audio)>=0){next_audio=t+15;
@@ -1874,7 +1884,17 @@ static void app_click(Win *w,int lx,int ly){
         break;
     case A_MEDIA:{
         for(int i=0;i<4;i++)if(in_rect(lx,ly,12+i*136,12,130,28)){
-            w->media_tab=i;w->scroll=0;dirty=1;return;}
+            w->media_tab=i;w->scroll=0;
+            if(i==3)(void)usb_storage_probe();
+            dirty=1;return;}
+        if(w->media_tab==3){
+            if(in_rect(lx,ly,20,298,222,34)){(void)usb_storage_probe();dirty=1;return;}
+            if(usb_storage_ready()&&in_rect(lx,ly,20,242,200,34)){
+                FsNode *root=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
+                if(root){Win *f=open_app(A_FILES);if(f){f->dir=root;f->scroll=0;f->sel=0;}}
+                dirty=1;return;
+            }
+        }
         if(w->media_tab<3&&ly>=108){
             static const char *paths[]={"/Imagenes","/Musica","/Videos"};
             FsNode *dir=fs_resolve(fs_root(),paths[w->media_tab]);
@@ -1918,7 +1938,8 @@ static void on_press(void){
     if(appmenu_open){
         int i=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
         if(i>=0&&i<APPMENU_N){kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[i].label);kserial_puts("\n");Win *w=open_app(APPMENU[i].app);
-            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[i].tab;w->scroll=0;}
+            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[i].tab;w->scroll=0;
+                if(w->media_tab==3)(void)usb_storage_probe();}
         }
         return;
     }
