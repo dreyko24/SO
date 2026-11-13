@@ -1336,6 +1336,16 @@ static void draw_window(int wi,int focused){
             text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
         }
         break; }
+    case A_OFFICE:{
+        static const char *labels[]={"Writer - Documentos","Calc - Hojas de calculo","Impress - Presentaciones","Draw - Dibujos"};
+        text_bold(cx+18,cy+18,"Suite LibreOffice",C_TXT);
+        int installed=papp_installed(5);
+        text(cx+18,cy+46,installed?"Instalado":"No instalado: requiere Vortex 64 + Debian",installed?0x7ee787:0xf59e0b);
+        text(cx+18,cy+68,"Programas Linux compatibles con el kernel propio.",C_DIM);
+        for(int i=0;i<4;i++)button(cx+18,cy+102+i*54,cw-36,43,labels[i],installed);
+        button(cx+18,cy+335,214,32,installed?"Actualizar LibreOffice":"Instalar LibreOffice",0);
+        button(cx+244,cy+335,240,32,"Abrir pantalla X",0);
+        break; }
     case A_MONITOR:{
         char b[100]; int f,dr,by; fs_usage(&f,&dr,&by); int tot=(int)(kram_kb()/1024);
         text_bold(cx+20,cy+14,"Memoria",C_TXT);
@@ -1807,6 +1817,17 @@ static void app_click(Win *w,int lx,int ly){
     case A_SNAKE:
         if(w->sover||!w->sstart) snake_key(w,' ');
         break;
+    case A_OFFICE:{
+        static const char *cmd[]={"abrir libreoffice --writer","abrir libreoffice --calc",
+                                  "abrir libreoffice --impress","abrir libreoffice --draw"};
+        for(int i=0;i<4;i++)if(in_rect(lx,ly,18,102+i*54,cw-36,43)){
+            if(papp_installed(5))run_quiet(cmd[i]);else run_in_terminal("instalar libreoffice");
+            dirty=1;return;
+        }
+        if(in_rect(lx,ly,18,335,214,32))run_in_terminal(papp_installed(5)?"actualizar":"instalar libreoffice");
+        else if(in_rect(lx,ly,244,335,240,32))run_quiet("pantalla");
+        dirty=1;break;
+    }
     case A_PROGS:
         if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
         else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
