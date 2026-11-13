@@ -31,7 +31,7 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
     o32(0xCFC,val);
 }
 static u16 io,port;static int low,found,ready,ever;
-static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout;
+static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
 static char info[120]="Sin memoria USB FAT32 reconocida";
 typedef struct {volatile u32 link,sts,token,buf,software[4];} TD;
 typedef struct {volatile u32 head,element,soft[2];} QH;
@@ -109,12 +109,26 @@ static int bot(const u8 *cdb,int cdblen,u8 *data,int length){
     if(rd32(csw)!=0x53425355u||rd32(csw+4)!=tag||csw[12]||rd32(csw+8))return -4;
     return 0;
 }
+static void bot_recover(void){
+    /* BOT Reset de clase, CLEAR_FEATURE(HALT) y restablecer DATA0 */
+    (void)ctrl(address,0x21,0xff,0,ifnum,0,0,0);
+    (void)ctrl(address,0x02,1,0,(u16)(epin|0x80),0,0,0);
+    (void)ctrl(address,0x02,1,0,epout,0,0,0);
+    tgin=tgout=0;
+    waitms(15);
+}
 static int readsector(u32 lba,u8 *out){
     if(lba>=block_count)return -1;
     u8 cdb[10]={0x28,0,0,0,0,0,0,0,1,0};
     cdb[2]=(u8)(lba>>24);cdb[3]=(u8)(lba>>16);cdb[4]=(u8)(lba>>8);cdb[5]=(u8)lba;
-    u8 tmp[512];if(bot(cdb,10,tmp,512))return -1;
-    memcpy(out,tmp,512);return 0;
+    u8 tmp[512];
+    for(int attempt=0;attempt<3;attempt++){
+        int r=bot(cdb,10,tmp,512);
+        if(!r){memcpy(out,tmp,512);return 0;}
+        kprintf("[vortex-usb] reintento READ10 lba=%u error=%d intento=%d\n",lba,r,attempt+1);
+        bot_recover();
+    }
+    return -1;
 }
 static int controller(void){
     if(io)return 0;
@@ -173,8 +187,10 @@ static int enumerate(void){
     int conf=desc[5],classok=0;epin=epout=0;
     for(int p=0;p+2<=n;){
         int len=desc[p],type=desc[p+1];if(len<2||p+len>n)break;
-        if(type==4&&len>=9)
+        if(type==4&&len>=9){
             classok=desc[p+5]==8&&desc[p+6]==6&&desc[p+7]==0x50;
+            if(classok)ifnum=desc[p+2];
+        }
         if(type==5&&len>=7&&classok&&(desc[p+3]&3)==2){
             int m=rd16(desc+p+4);if(m<=0||m>64){p+=len;continue;}
             if(desc[p+2]&0x80){epin=desc[p+2]&15;mpin=(u8)m;}
@@ -259,6 +275,7 @@ static int readfile(u32 cl,u32 len,FsNode *dir,const char *name){
             memcpy(buf+got,sec,take);got+=take;
         }
     }
+    if(got!=len)kprintf("[vortex-usb] lectura incompleta %s: %u/%u bytes\n",name,got,len);
     if(got==len){FsNode *f=fs_create(dir,name,(char*)buf,(int)len);
         if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado\n",name,len);}
         else kprintf("[vortex-usb] sin memoria para el archivo %s\n",name);}
