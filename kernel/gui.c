@@ -367,7 +367,7 @@ static void open_file(FsNode *n){
             kserial_puts(a->movie_play?"[vortex-video] AVI cargado\n":"[vortex-video] AVI no compatible\n");
         }
     } else { Win *v=open_app(A_VIEWER); if(v){
-        v->file=n;v->scroll=0;set_title(v->file->name);
+        v->file=n;v->scroll=0;set_title(v,v->file->name);
         if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")){
             int rc=vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
             kserial_puts(rc==0?"[vortex-image] decoded\n":"[vortex-image] invalid\n");
