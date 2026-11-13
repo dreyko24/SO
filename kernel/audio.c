@@ -163,7 +163,10 @@ void audio_pause(int p){
     paused=!!p;u8 v=i8(busio+0x1b);o8(busio+0x1b,paused?(v&~1u):(v|1u));
 }
 int audio_progress(void){
-    if(!frames)return 0;return (int)((u64)srcidx*100u/frames);
+    if(!frames)return 0;
+    /* Solo divisiones de 32 bits: los kernels freestanding no enlazan libgcc. */
+    u32 pct=frames>=100u?srcidx/(frames/100u):(srcidx*100u)/frames;
+    return pct>100u?100:(int)pct;
 }
 const char *audio_error(void){return err;}
 #endif
