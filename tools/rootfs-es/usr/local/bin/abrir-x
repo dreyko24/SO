@@ -3,4 +3,9 @@
 n=0
 while [ ! -S /tmp/.X11-unix/X0 ] && [ $n -lt 150 ]; do sleep 0.2; n=$((n+1)); done
 export DISPLAY=:0 HOME=${HOME:-/root}
+# Mantiene interfaz espanola si esta instalada; se respeta la configuracion explicita.
+: "${LANG:=es_ES.UTF-8}"
+export LANG SAL_USE_VCLPLUGIN=${SAL_USE_VCLPLUGIN:-gen}
+# Evita aceleracion 3D no compatible con framebuffer virtual de Vortex.
+export LIBGL_ALWAYS_SOFTWARE=1
 exec "$@"
