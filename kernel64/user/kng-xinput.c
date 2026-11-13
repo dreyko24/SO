@@ -1,7 +1,7 @@
-/* kng-xinput.c — puente de entrada para el servidor X (Xvfb) en kng.
- * Lee los eventos del raton y del teclado que la ventana "Pantalla X" de kng pone en /dev/input/event0 (formato evdev de Linux)
+/* vortex-xinput.c — puente de entrada para el servidor X (Xvfb) en vortex.
+ * Lee los eventos del raton y del teclado que la ventana "Pantalla X" de vortex pone en /dev/input/event0 (formato evdev de Linux)
  * y se los entrega al servidor X con la extension XTEST, hablando el protocolo X11 directamente (no necesita libX11).
- * Uso: kng-xinput [display]   (por omision 0, el socket /tmp/.X11-unix/X0). */
+ * Uso: vortex-xinput [display]   (por omision 0, el socket /tmp/.X11-unix/X0). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,10 +46,10 @@ static void drain(void){ uint8_t b[512]; int fl=fcntl(xs,F_GETFL); fcntl(xs,F_SE
 int main(int argc,char **argv){
     int disp=argc>1?atoi(argv[1]):0;
     for(int i=0;i<200;i++){ xs=xconnect(disp); if(xs>=0) break; usleep(100000); }       /* espera a que el servidor X este listo (hasta 20 s) */
-    if(xs<0){ fprintf(stderr,"kng-xinput: no se pudo conectar al servidor X :%d\n",disp); return 1; }
-    xop=xtest_opcode(); if(xop<0){ fprintf(stderr,"kng-xinput: el servidor X no tiene XTEST\n"); return 1; }
-    int fd=open("/dev/input/event0",O_RDONLY); if(fd<0){ perror("kng-xinput: /dev/input/event0"); return 1; }
-    printf("kng-xinput: listo (X :%d, XTEST opcode %d)\n",disp,xop); fflush(stdout);
+    if(xs<0){ fprintf(stderr,"vortex-xinput: no se pudo conectar al servidor X :%d\n",disp); return 1; }
+    xop=xtest_opcode(); if(xop<0){ fprintf(stderr,"vortex-xinput: el servidor X no tiene XTEST\n"); return 1; }
+    int fd=open("/dev/input/event0",O_RDONLY); if(fd<0){ perror("vortex-xinput: /dev/input/event0"); return 1; }
+    printf("vortex-xinput: listo (X :%d, XTEST opcode %d)\n",disp,xop); fflush(stdout);
     int ax=0, ay=0, n=0; struct ev e;
     for(;;){
         if(rd_all(fd,&e,sizeof e)) break;
