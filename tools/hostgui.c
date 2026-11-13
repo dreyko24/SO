@@ -109,7 +109,7 @@ int main(void){
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("fallo.test\\"); gui_frame(); gui_frame(); gui_frame(); gui_frame(); }
     shot("05f_http_fallo");
     closeall();
-    dock(0); shot("07_acerca");
+    dock(0); click(220,648); shot("07_acerca");
     closeall();
     dock(7); { Win *st=&wins[win_top()]; click(st->x+1+20+44+14,st->y+TB+54); click(st->x+1+20+112,st->y+TB+114+30); } shot("08_ajustes_cambio");
     closeall();
@@ -179,6 +179,6 @@ int main(void){
       kbd_set_layout(KBD_US); { char kv[16]; cfg_get("teclado",kv,sizeof kv); kbd_set_layout(layout_from_name(kv)); if(kbd_layout()!=KBD_LATAM){ puts("FALLO leer cfg"); return 1; } }
       gui_panic("Falta de pagina","eip",0x1234abcdULL,0x2,0xdeadbeefULL,1); shot("21_panic"); gui_force_redraw(); puts("TECLADO GUI OK"); }
     /* escritorio lleno */
-    dock(0); dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
+    dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
 }
