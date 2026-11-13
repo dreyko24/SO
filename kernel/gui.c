@@ -190,7 +190,7 @@ static int wallpaper_from_file(FsNode *f){
     if(vimage_decode((const unsigned char*)f->data,f->size,&next))return -1;
     vimage_release(&custom_wall);custom_wall=next;wall_i=-1;
     char p[160];fs_path(f,p,sizeof p);cfg_set("fondo",p);
-    build_wall();dirty=1;return 0;
+    build_wall();dirty=1;kserial_puts("[vortex-wallpaper] updated\n");return 0;
 }
 static void wallpaper_default(int i){
     if(i<0||i>2)return;
@@ -350,8 +350,10 @@ static void open_file(FsNode *n){
         Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
     } else { Win *v=open_app(A_VIEWER); if(v){
         v->file=n;v->scroll=0;set_title(v,n->name);
-        if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm"))
-            (void)vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
+        if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")){
+            int rc=vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
+            kserial_puts(rc==0?"[vortex-image] decoded\n":"[vortex-image] invalid\n");
+        }
     } }
 }
 
@@ -1811,7 +1813,7 @@ static void app_click(Win *w,int lx,int ly){
 static void on_press(void){
     if(appmenu_open){
         int i=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
-        if(i>=0&&i<APPMENU_N){Win *w=open_app(APPMENU[i].app);
+        if(i>=0&&i<APPMENU_N){kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[i].label);kserial_puts("\n");Win *w=open_app(APPMENU[i].app);
             if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[i].tab;w->scroll=0;}
         }
         return;
