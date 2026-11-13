@@ -1396,6 +1396,7 @@ static void draw_window(int wi,int focused){
                 if(i==wall_i) rrect(tx2-3,ty-3,102,66,7,0xffffff,255);
                 rrect(tx2,ty,96,60,5,0x000000,255);
                 { uint32_t *th=get_thumb(i); if(th) for(int yy=2;yy<58;yy++) for(int xx=2;xx<94;xx++) px_blend(tx2+xx,ty+yy,th[yy*THW+xx],255); } }
+            text(cx+20,oy+180,wall_i==-1?"Fondo personalizado activo":"Clic derecho en una imagen > Usar de fondo",C_DIM);
             text_bold(cx+20,oy+192,"Hora",C_TXT);
             button(cx+20,oy+218,28,24,"-",0); button(cx+56,oy+218,28,24,"+",0);
             { char b[40]="Zona horaria: UTC"; if(tz>=0) cat(b,40,"+"); cat_int(b,40,tz); text(cx+98,oy+222,b,C_TXT); }
@@ -1701,7 +1702,7 @@ static void settings_click(int lx,int ly,int cw,int ch){
     int y=ly-50;
     if(set_tab==0){
         for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
-        for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i){ wall_i=i; build_wall(); } dirty=1; return; }
+        for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i) wallpaper_default(i); dirty=1; return; }
         if(in_rect(lx,y,20,218,28,24)){ if(tz>-12) tz--; clk_next=0; dirty=1; }
         else if(in_rect(lx,y,56,218,28,24)){ if(tz<14) tz++; clk_next=0; dirty=1; }
         else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; dirty=1; }
@@ -1739,6 +1740,20 @@ static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     switch(w->type){
     case A_FILES: files_click(w,lx,ly,cw,ch); break;
+    case A_VIEWER:
+        if(w->picture.pixels&&in_rect(lx,ly,cw-167,ch-38,155,28)&&w->file)
+            (void)wallpaper_from_file(w->file);
+        break;
+    case A_MEDIA:{
+        for(int i=0;i<4;i++)if(in_rect(lx,ly,12+i*136,12,130,28)){
+            w->media_tab=i;w->scroll=0;dirty=1;return;}
+        if(w->media_tab<3&&ly>=108){
+            static const char *paths[]={"/Imagenes","/Musica","/Videos"};
+            FsNode *dir=fs_resolve(fs_root(),paths[w->media_tab]);
+            int n=dir?fs_list(dir,fl,FLMAX):0,idx=(ly-108)/32+w->scroll;
+            if(idx>=0&&idx<n&&!fl[idx]->dir)open_file(fl[idx]);
+        }
+        break; }
     case A_SETTINGS: settings_click(lx,ly,cw,ch); break;
     case A_BROWSER: browser_click(w,lx,ly,cw,ch); break;
     case A_NOTES:
@@ -1949,6 +1964,9 @@ void gui_storage_ready(void){
     (void)vortexfs_mount(); fs_track=1;
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
+    { char p[160]; if(cfg_get("fondo",p,sizeof p)&&p[0]){
+        FsNode *f=fs_resolve(fs_root(),p);if(f) (void)wallpaper_from_file(f);
+      } }
     build_wall(); dsk_sync(); dirty=1;
 }
 int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
