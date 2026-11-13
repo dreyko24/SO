@@ -1,4 +1,4 @@
-/* kng-kernel 0.5 — kernel propio de Vortex OS (i386, Multiboot).
+/* vortex-kernel 0.5 — kernel propio de Vortex OS (i386, Multiboot).
  * Consola VGA + serie, GDT/IDT, PIC, PIT, teclado PS/2, memoria física, paginación,
  * heap (kmalloc/kfree), hilos con planificador expropiativo, PMM con liberacion (bitmap),
  * procesos de usuario en ring 3 (espacio propio, TSS), ELF32, fork/exec/wait/brk, syscalls (numeros Linux i386) y shell.
@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
-#include "kng.h"
+#include "vortex.h"
 void gfx_set_bpp(int bpp);
 #include "gui.h"
 #include "disk.h"
@@ -728,7 +728,7 @@ static struct regs *syscall_dispatch(struct regs *r){
     return r;
 }
 static struct regs *user_fault(struct regs *r, uint32_t cr2){
-    kprintf("[kng] proceso %u (%s) terminado: excepcion %u (%s) eip=0x%x",current->id,current->name,r->int_no,
+    kprintf("[vortex] proceso %u (%s) terminado: excepcion %u (%s) eip=0x%x",current->id,current->name,r->int_no,
             r->int_no<15?exc_names[r->int_no]:"reservada",r->eip);
     if(r->int_no==14) kprintf(" cr2=0x%x err=0x%x",cr2,r->err);
     kprintf("\n");
@@ -739,15 +739,15 @@ static void cmd_sh(void){
     struct task *t=proc_spawn("ush");
     if(!t){ kprintf("no se pudo iniciar ush\n"); return; }
     while(t->state!=T_DEAD) __asm__ volatile("hlt");
-    kprintf("[kng] ush termino (codigo %d)\n",t->exit_code);
+    kprintf("[vortex] ush termino (codigo %d)\n",t->exit_code);
 }
 static void cmd_run(const char *name){
     struct task *t=proc_spawn(name);
     if(!t){ kprintf("no se pudo iniciar '%s' (usa 'progs')\n",name); return; }
     uint32_t e=ticks+1000;
     while(t->state!=T_DEAD && (int32_t)(ticks-e)<0) __asm__ volatile("hlt");
-    if(t->state==T_DEAD) kprintf("[kng] '%s' termino: codigo %d%s\n",name,t->exit_code,t->killed?" (matado por excepcion)":"");
-    else kprintf("[kng] '%s' sigue ejecutandose (id %u). Usa 'kill %u'.\n",name,t->id,t->id);
+    if(t->state==T_DEAD) kprintf("[vortex] '%s' termino: codigo %d%s\n",name,t->exit_code,t->killed?" (matado por excepcion)":"");
+    else kprintf("[vortex] '%s' sigue ejecutandose (id %u). Usa 'kill %u'.\n",name,t->id,t->id);
 }
 
 static volatile uint32_t busy_n, st_a, st_b;
@@ -839,7 +839,7 @@ static void selftest(void){
 
 /* ---------- Shell ---------- */
 static void cmd_info(void){
-    kprintf("kng-kernel %s (%s, Multiboot)\n", KNG_VERSION, KNG_ARCH);
+    kprintf("vortex-kernel %s (%s, Multiboot)\n", VORTEX_VERSION, VORTEX_ARCH);
     kprintf("Parte de Vortex OS. PMM, paginacion, heap, hilos, procesos ring 3, ELF, syscalls, red.\n");
 }
 static void run(char *l){
@@ -873,7 +873,7 @@ static void run(char *l){
     else kprintf("comando desconocido: %s (prueba 'help')\n", l);
 }
 
-/* ---------- API para la interfaz grafica (kng.h) ---------- */
+/* ---------- API para la interfaz grafica (vortex.h) ---------- */
 uint32_t kticks(void){ return ticks; }
 int kgetc(void){ return getc_nb(); }
 void kshell_exec(char *l){ if(net_cmd(l)) return; run(l); }
@@ -881,9 +881,9 @@ int kattach_pid; char kshell_cwd[96]; void (*kproc_done)(int pid,int code); void
 void kinput_event(int type,int code,int value){ (void)type; (void)code; (void)value; }
 uint32_t kram_kb(void){ return ram_usable_kb; }
 static inline void outw(uint16_t p,uint16_t v){ __asm__ volatile("outw %0,%1"::"a"(v),"Nd"(p)); }
-void kreboot(void){ if(kngfs_active()) (void)kngfs_save(); outb(0x64,0xFE); for(;;) __asm__ volatile("hlt"); }
+void kreboot(void){ if(vortexfs_active()) (void)vortexfs_save(); outb(0x64,0xFE); for(;;) __asm__ volatile("hlt"); }
 void khalt(void){
-    kprintf("Apagando...\n"); if(kngfs_active()) (void)kngfs_save();
+    kprintf("Apagando...\n"); if(vortexfs_active()) (void)vortexfs_save();
     outw(0x604,0x2000); outw(0xB004,0x2000); outw(0x4004,0x3400);   /* apagado por ACPI en QEMU, Bochs y VirtualBox */
     for(;;) __asm__ volatile("cli;hlt");
 }
@@ -902,7 +902,7 @@ void kmain(uint32_t magic, struct mb_info *mi){
     if(magic==0x2BADB002 && (mi->flags&(1u<<12)) && mi->fb_type==1 && (mi->fb_bpp==32||mi->fb_bpp==24) && mi->fb_hi==0 && mi->fb_w>=640 && mi->fb_h>=480){
         gfx_set_bpp(mi->fb_bpp);
         fb_addr=mi->fb_lo; fb_pitch=mi->fb_pitch; fb_w=mi->fb_w; fb_h=mi->fb_h; fb_ok=1; }
-    kprintf("== kng-kernel %s :: Vortex OS ==\n", KNG_VERSION);
+    kprintf("== vortex-kernel %s :: Vortex OS ==\n", VORTEX_VERSION);
     if(magic!=0x2BADB002){ kprintf("Arranque no Multiboot (magic=0x%x). Detenido.\n",magic); for(;;) __asm__ volatile("hlt"); }
     gdt_init(); idt_init(); pic_init(); pit_init(); irq_handlers[1]=kb_irq;
     mouse_init();
@@ -930,11 +930,11 @@ void kmain(uint32_t magic, struct mb_info *mi){
     } else kprintf("[i] sin framebuffer (arranque en modo texto).\n");
     kprintf("Escribe 'help'.\n");
     char line[128]; int n=0;
-    kprintf("kng> ");
+    kprintf("vortex> ");
     for(;;){
         int c=getc_nb();
         if(c<0){ net_poll(); reap(); __asm__ volatile("hlt"); continue; }
-        if(c=='\n'){ putc('\n'); line[n]=0; run(line); n=0; kprintf("kng> "); }
+        if(c=='\n'){ putc('\n'); line[n]=0; run(line); n=0; kprintf("vortex> "); }
         else if(c=='\b'){ if(n>0){ n--; putc('\b'); } }
         else if(c>=32 && n<127){ line[n++]=(char)c; putc((char)c); }
     }
