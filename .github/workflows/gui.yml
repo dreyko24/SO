@@ -5,7 +5,7 @@ on:
     branches: [cambio-nombre-vortex-os]
   workflow_dispatch:
     inputs:
-      guion: { description: "guion de la prueba", default: "tools/ci/gui-archivos.txt" }
+      guion: { description: "guion de la prueba", default: "tools/ci/gui-multimedia.txt" }
       maquina: { description: "pc | q35-sin-red (PC moderno sin tarjeta compatible) | uefi", default: "pc" }
       kernel: { description: "64 | 32", default: "64" }
 concurrency:
@@ -33,7 +33,7 @@ jobs:
             uefi) EXTRA="-bios /usr/share/ovmf/OVMF.fd -m 2G" ;;
             *) EXTRA="-m 2G" ;;
           esac
-          python3 tools/ci_gui.py "${{ inputs.guion || 'tools/ci/gui-arranque.txt' }}" -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom g.iso -boot d -vga std -display none -serial stdio $EXTRA > gui.log 2>&1 || true
+          python3 tools/ci_gui.py "${{ inputs.guion || 'tools/ci/gui-multimedia.txt' }}" -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom g.iso -boot d -vga std -display none -serial stdio $EXTRA > gui.log 2>&1 || true
           tail -60 gui.log
           grep -Fq "Iniciando escritorio" gui.log || { echo "FALLO: el escritorio no arrancó"; exit 1; }
           find capturas -name "*.png" -size +0c -print -quit | grep -q . || { echo "FALLO: no se generaron capturas"; exit 1; }
