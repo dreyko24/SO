@@ -1,4 +1,4 @@
-/* kng-kernel64 0.1 — kernel propio de Vortex OS para x86_64 (modo largo).
+/* vortex-kernel64 0.1 — kernel propio de Vortex OS para x86_64 (modo largo).
  * Arranca con Multiboot 1 (boot64.S pasa a 64 bits), IDT de 64 bits, PIC, PIT 100 Hz, teclado y raton PS/2, RTC,
  * heap, interfaz grafica (la misma de 32 bits: gfx/gui/fs/html) y red (la misma pila: net.c).
  * Todavia SIN procesos/modo usuario/planificador: las aplicaciones corren dentro del kernel (como en 32 bits).
@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
-#include "kng.h"
+#include "vortex.h"
 void gfx_set_bpp(int bpp);
 #include "kbd.h"
 #include "gui.h"
@@ -353,8 +353,8 @@ static void x_start(void){
     char *a[16]; int n=0; a[n++]="Xvfb"; a[n++]=":0"; a[n++]="-screen"; a[n++]="0"; a[n++]=geo; a[n++]="-fbdir"; a[n++]="/var/lib/xvfb"; a[n++]="-ac"; a[n++]="-nolisten"; a[n++]="tcp";
     kprintf("pantalla: iniciando el servidor X (%s)...\n",geo);
     proc_exec(xvfb,n,a,1);
-    if(find_program("kng-xinput",xin,sizeof xin)){ char *b[2]={"kng-xinput",0}; proc_exec(xin,1,b,1); }
-    else kprintf("pantalla: falta kng-xinput (teclado y raton no llegaran a los programas)\n");
+    if(find_program("vortex-xinput",xin,sizeof xin)){ char *b[2]={"vortex-xinput",0}; proc_exec(xin,1,b,1); }
+    else kprintf("pantalla: falta vortex-xinput (teclado y raton no llegaran a los programas)\n");
     x_up=1;
 }
 /* probar-ram: reserva toda la memoria del heap en trozos de 256 MB, escribe y comprueba una marca cada 2 MB (asi se toca RAM por encima de 4 GB) y la libera */
@@ -384,7 +384,7 @@ static void run(char *l){
     while(*l==' ') l++;
     if(!*l) return;
     if(streq(l,"help")) kprintf("help info mem heap uptime clear echo <txt> reboot halt | ejecutar <ruta> [&] programas procesos matar <pid> rastro [0-2] | red ping <host> dns <host> wget <url> | pantalla abrir <programa> actualizar instalar quitar buscar (ayuda-programas)\n");
-    else if(streq(l,"info")) kprintf("kng-kernel %s (%s, Multiboot)\nParte de Vortex OS. Modo largo, IDT, heap, interfaz grafica, red. Sin procesos todavia.\n",KNG_VERSION,KNG_ARCH);
+    else if(streq(l,"info")) kprintf("vortex-kernel %s (%s, Multiboot)\nParte de Vortex OS. Modo largo, IDT, heap, interfaz grafica, red. Sin procesos todavia.\n",VORTEX_VERSION,VORTEX_ARCH);
     else if(streq(l,"mem")) kprintf("RAM usable: %lu KB | heap: %lu KB\n",ram_kb,heap_total/1024);
     else if(streq(l,"probar-ram")) cmd_probar_ram();
     else if(streq(l,"heap")){ u64 u,f,m; heap_stats(&u,&f,&m); kprintf("heap: total %lu KB | usado %lu B | libre %lu B | bloque libre mayor %lu B\n",heap_total/1024,u,f,m); }
@@ -411,7 +411,7 @@ static void run(char *l){
     else { char cp[200]; k_strcpy(cp,l,sizeof cp); if(!try_program(cp)) kprintf("comando desconocido: %s (prueba 'help')\n",l); }
 }
 
-/* ---------- API para la interfaz grafica (kng.h) ---------- */
+/* ---------- API para la interfaz grafica (vortex.h) ---------- */
 void kserial_puts(const char *s){ while(*s){ if(*s=='\n') serial_put('\r'); serial_put(*s++); } }   /* solo al puerto serie (indicador de la terminal grafica, para las pruebas automaticas) */
 void k_write_console(const char *s,int n){ for(int i=0;i<n;i++) putc(s[i]); }
 uint32_t kticks(void){ return ticks; }
@@ -431,8 +431,8 @@ static void fb_wc(uint32_t addr,uint32_t bytes){      /* framebuffer en write-co
     for(uint32_t i=i0;i<=i1 && i<2048;i++) pd[i]=(pd[i]&~0x10ull)|0x08ull;
     uint64_t cr3; __asm__ volatile("mov %%cr3,%0":"=r"(cr3)); __asm__ volatile("mov %0,%%cr3"::"r"(cr3):"memory");
 }
-void kreboot(void){ if(kngfs_active()) (void)kngfs_save(); outb(0x64,0xFE); for(;;) __asm__ volatile("hlt"); }
-void khalt(void){ kprintf("Apagando...\n"); if(kngfs_active()) (void)kngfs_save(); outw(0x604,0x2000); outw(0xB004,0x2000); outw(0x4004,0x3400); for(;;) __asm__ volatile("cli;hlt"); }
+void kreboot(void){ if(vortexfs_active()) (void)vortexfs_save(); outb(0x64,0xFE); for(;;) __asm__ volatile("hlt"); }
+void khalt(void){ kprintf("Apagando...\n"); if(vortexfs_active()) (void)vortexfs_save(); outw(0x604,0x2000); outw(0xB004,0x2000); outw(0x4004,0x3400); for(;;) __asm__ volatile("cli;hlt"); }
 static uint8_t cmos(uint8_t r){ outb(0x70,r); return inb(0x71); }
 /* fecha y hora completas del reloj de la placa (se supone UTC), en segundos desde 1970 */
 static uint64_t days_from_civil(int y,int m,int d){ y-=m<=2; int era=(y>=0?y:y-399)/400; unsigned yoe=(unsigned)(y-era*400); unsigned doy=(153u*(unsigned)(m+(m>2?-3:9))+2)/5+(unsigned)d-1; unsigned doe=yoe*365+yoe/4-yoe/100+doy; return (uint64_t)((long)era*146097+(long)doe-719468); }
@@ -461,7 +461,7 @@ void kmain64(uint32_t magic, struct mb_info *mi){
     if(magic==0x2BADB002 && (mi->flags&(1u<<12)) && mi->fb_type==1 && (mi->fb_bpp==32||mi->fb_bpp==24) && mi->fb_hi==0 && mi->fb_w>=640 && mi->fb_h>=480){
         gfx_set_bpp(mi->fb_bpp);
         fb_addr=mi->fb_lo; fb_pitch=mi->fb_pitch; fb_w=mi->fb_w; fb_h=mi->fb_h; fb_ok=1; }
-    kprintf("== kng-kernel %s (%s) :: Vortex OS ==\n",KNG_VERSION,KNG_ARCH);
+    kprintf("== vortex-kernel %s (%s) :: Vortex OS ==\n",VORTEX_VERSION,VORTEX_ARCH);
     if(magic!=0x2BADB002){ kprintf("Arranque no Multiboot (magic=0x%x). Detenido.\n",magic); for(;;) __asm__ volatile("hlt"); }
     kprintf("[ok] modo largo (64 bits), paginacion de 16 GB en identidad\n");
     idt_init(); pic_init(); pit_init(); irq_handlers[1]=kb_irq; mouse_init();
@@ -477,8 +477,8 @@ void kmain64(uint32_t magic, struct mb_info *mi){
     if(!fs_root()) fs_init();
     proc_set_idle(idle64);
     if(!fb_ok && (mi->flags&8) && mi->mods_n) rootfs_load(mi->mods_n,mi->mods_addr);
-    kng_mmio_map=mmio_map;
-    if(!fb_ok){ int r=kngfs_mount(); fs_track=1; if(r==0) kprintf("[ok] datos guardados cargados desde el disco (%s)\n",disk_kind()); }
+    vortex_mmio_map=mmio_map;
+    if(!fb_ok){ int r=vortexfs_mount(); fs_track=1; if(r==0) kprintf("[ok] datos guardados cargados desde el disco (%s)\n",disk_kind()); }
     if(net_init()==0){ char nb[90]; net_info(nb,sizeof nb); kprintf("[ok] %s\n",nb); } else kprintf("[i] sin tarjeta de red compatible (e1000 / RTL8139)\n");
     if(fb_ok){
         kprintf("[ok] framebuffer %ux%u 32 bpp en 0x%x. Iniciando escritorio...\n",fb_w,fb_h,fb_addr);
@@ -486,7 +486,7 @@ void kmain64(uint32_t magic, struct mb_info *mi){
         if(gui_init((uint32_t*)(uintptr_t)fb_addr,(int)fb_w,(int)fb_h,(int)fb_pitch)==0){
             gui_mode=1;
             if((mi->flags&8) && mi->mods_n) rootfs_load(mi->mods_n,mi->mods_addr);
-            kng_disk_image=disk_image_mod;
+            vortex_disk_image=disk_image_mod;
             gui_storage_ready();
             if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"instalador")) gui_open_installer();   /* arranque del USB en modo instalador */
             if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"terminal")) gui_open_terminal();   /* linea de GRUB con 'terminal': abre la terminal sola */
@@ -501,11 +501,11 @@ void kmain64(uint32_t magic, struct mb_info *mi){
         kprintf("[!] no se pudo iniciar la interfaz grafica (memoria). Modo texto.\n");
     } else kprintf("[i] sin framebuffer (arranque en modo texto).\n");
     kprintf("Escribe 'help'.\n");
-    char line[128]; int n=0; kprintf("kng> ");
+    char line[128]; int n=0; kprintf("vortex> ");
     for(;;){
         int c=getc_nb();
         if(c<0){ net_poll(); proc_pump(); __asm__ volatile("sti;hlt"); continue; }
-        if(c=='\n'){ putc('\n'); line[n]=0; kshell_exec(line); n=0; kprintf("kng> "); }
+        if(c=='\n'){ putc('\n'); line[n]=0; kshell_exec(line); n=0; kprintf("vortex> "); }
         else if(c=='\b'){ if(n>0){ n--; putc('\b'); } }
         else if(c>=32 && n<127){ line[n++]=(char)c; putc((char)c); }
     }
