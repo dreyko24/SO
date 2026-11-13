@@ -1243,13 +1243,64 @@ static void draw_window(int wi,int focused){
         break; }
     case A_VIEWER:{
         fill(cx,cy,cw,ch,0x10111b,255);
-        if(w->file && w->file->data){
-            const char *d=w->file->data; int line=0, i=0, rows=(ch-8)/16;
-            while(d[i] && line<w->scroll+rows){
-                int s=i; while(d[i]&&d[i]!='\n') i++;
-                if(line>=w->scroll){ char tmp[200]; int l=i-s; if(l>199) l=199; memcpy(tmp,d+s,(size_t)l); tmp[l]=0; text(cx+10,cy+6+(line-w->scroll)*16,tmp,C_TXT); }
-                line++; if(d[i]=='\n') i++;
+        if(w->picture.pixels){
+            int dw=w->picture.w,dh=w->picture.h,aw=cw-24,ah=ch-56;
+            if(dw>aw){dh=dh*aw/dw;dw=aw;}
+            if(dh>ah){dw=dw*ah/dh;dh=ah;}
+            if(dw<1)dw=1;if(dh<1)dh=1;
+            int dx=cx+(cw-dw)/2,dy=cy+10+(ah-dh)/2;
+            for(int y=0;y<dh;y++){int sy=y*w->picture.h/dh;const uint32_t *src=w->picture.pixels+sy*w->picture.w;
+                for(int x=0;x<dw;x++)px_blend(dx+x,dy+y,src[x*w->picture.w/dw],255);}
+            char info[60]="Imagen ";cat_int(info,60,w->picture.w);cat(info,60," x ");cat_int(info,60,w->picture.h);
+            text(cx+12,cy+ch-31,info,C_DIM);button(cx+cw-167,cy+ch-38,155,28,"Usar de fondo",0);
+        }else if(w->file && w->file->data){
+            if(ext_is(w->file,"png")||ext_is(w->file,"bmp")||ext_is(w->file,"ppm")||
+               ext_is(w->file,"jpg")||ext_is(w->file,"jpeg")||ext_is(w->file,"gif")){
+                text(cx+16,cy+20,"Imagen no compatible o danada.",0xffb86b);
+                text(cx+16,cy+48,"Admitidos: PNG 8 bits, BMP 24/32 y PPM P6.",C_DIM);
+            }else if(ext_is(w->file,"mp3")||ext_is(w->file,"wav")||ext_is(w->file,"ogg")||
+                     ext_is(w->file,"flac")||ext_is(w->file,"mp4")||ext_is(w->file,"avi")||
+                     ext_is(w->file,"mkv")||ext_is(w->file,"webm")){
+                text(cx+16,cy+20,"Archivo multimedia detectado.",C_TXT);
+                text(cx+16,cy+48,"Reproduccion pendiente: falta audio/video nativo.",0xffb86b);
+            }else{
+                const char *d=w->file->data; int line=0, i=0, rows=(ch-8)/16;
+                while(i<w->file->size && line<w->scroll+rows){
+                    int st=i;while(i<w->file->size&&d[i]&&d[i]!='\n')i++;
+                    if(line>=w->scroll){char tmp[200];int n=i-st;if(n>199)n=199;
+                        memcpy(tmp,d+st,(size_t)n);tmp[n]=0;text(cx+10,cy+6+(line-w->scroll)*16,tmp,C_TXT);}
+                    line++;if(i<w->file->size)i++;
+                }
             }
+        }
+        break; }
+    case A_MEDIA:{
+        static const char *tabs[]={"Imagenes","Musica","Videos","USB"};
+        for(int i=0;i<4;i++)button(cx+12+i*136,cy+12,130,28,tabs[i],w->media_tab==i);
+        if(w->media_tab==3){
+            int n=usb_controllers();
+            text_bold(cx+20,cy+65,"Diagnostico USB",C_TXT);
+            char status[90]="Controladores PCI USB detectados: ";cat_int(status,90,n);
+            text(cx+20,cy+100,status,C_TXT);
+            if(n)text(cx+20,cy+128,usb_controller_name(usb_first_controller_type()),C_DIM);
+            text(cx+20,cy+178,"El controlador USB Mass Storage aun no esta",0xffb86b);
+            text(cx+20,cy+200,"implementado; no se pueden montar memorias USB.",0xffb86b);
+            text(cx+20,cy+246,"No se modifica ni formatea ningun USB.",C_DIM);
+        }else{
+            const char *dirs[]={"/Imagenes","/Musica","/Videos"};
+            FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
+            int n=dir?fs_list(dir,fl,FLMAX):0;
+            text(cx+20,cy+54,dirs[w->media_tab],C_DIM);
+            if(w->media_tab!=0)text(cx+20,cy+78,"Reproduccion de audio y video pendiente.",0xffb86b);
+            else text(cx+20,cy+78,"Haz clic en una imagen para abrirla.",C_DIM);
+            int max=(ch-115)/32;if(max<1)max=1;
+            if(w->scroll>k_max(0,n-max))w->scroll=k_max(0,n-max);
+            for(int i=0;i<max && i+w->scroll<n;i++){
+                FsNode *file=fl[i+w->scroll];int row=cy+108+i*32;
+                if(i&1)rrect(cx+14,row,cw-28,30,4,0xffffff,12);
+                draw_ficon(cx+22,row+3,file);text(cx+58,row+7,file->name,C_TXT);
+            }
+            if(!n)text(cx+20,cy+152,"Carpeta vacia. Copia archivos desde Archivos.",C_DIM);
         }
         break; }
     case A_BROWSER:{
