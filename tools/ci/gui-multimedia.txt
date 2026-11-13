@@ -1,14 +1,13 @@
-# Prueba interactiva del menu Aplicaciones, la galeria y el visor nativo.
+# Vortex OS: escritorio con titulo en barra y lanzador desde el primer icono del dock.
 captura 01-escritorio
-# El primer clic sincroniza el raton PS/2 de QEMU (al arrancar aun esta centrado).
 raton 5 80
 clic
 esperar 1
-raton 75 14
+raton 215 724
 clic
 esperar 1
 captura 02-menu-aplicaciones
-raton 94 96
+raton 215 348
 clic
 esperar 1
 captura 03-galeria
