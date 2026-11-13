@@ -1,4 +1,4 @@
-/* memtest.c — prueba de memoria y archivos con glibc normal (se ejecuta dentro de kng).
+/* memtest.c — prueba de memoria y archivos con glibc normal (se ejecuta dentro de vortex).
  * mmap/munmap/mprotect/mremap/madvise, memoria compartida (memfd, shm_open, shmget), pila grande, SIGSEGV en paginas protegidas,
  * y archivos: crear, escribir 3 MB, pread/pwrite, truncar, enlaces simbolicos, renombrar, borrar con el archivo abierto, carpetas grandes, stat/statx. */
 #define _GNU_SOURCE
@@ -61,7 +61,7 @@ static void test_mem(void){
 
     CHECK(deep(1500)>0,"pila: recursion de 6 MB");
 
-    int fd=memfd_create("kng",0); CHECK(fd>=0,"memfd_create");
+    int fd=memfd_create("vortex",0); CHECK(fd>=0,"memfd_create");
     CHECK(ftruncate(fd,5*4096)==0,"ftruncate del memfd");
     unsigned char *s=mmap(0,5*4096,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0); CHECK(s!=MAP_FAILED,"mmap compartido del memfd");
     s[0]=1; pid_t c=fork();
@@ -137,9 +137,9 @@ static void test_files(void){
     fd=open("/tmp/mt/mapa.bin",O_RDWR|O_CREAT|O_TRUNC,0644); for(int i=0;i<3;i++){ memset(blk,'A'+i,4096); write(fd,blk,4096); }
     char *fm=mmap(0,3*4096,PROT_READ|PROT_WRITE,MAP_PRIVATE,fd,0); CHECK(fm!=MAP_FAILED&&fm[0]=='A'&&fm[4096]=='B'&&fm[8191]=='B'&&fm[8192]=='C',"mmap privado de archivo lee su contenido");
     fm[0]='Z'; char c0; pread(fd,&c0,1,0); CHECK(c0=='A',"escribir en mapa privado no cambia el archivo"); munmap(fm,3*4096);
-    int sfd=shm_open("/kngtest",O_RDWR|O_CREAT,0600); CHECK(sfd>=0,"shm_open"); ftruncate(sfd,4096);
+    int sfd=shm_open("/vortextest",O_RDWR|O_CREAT,0600); CHECK(sfd>=0,"shm_open"); ftruncate(sfd,4096);
     char *sm=mmap(0,4096,PROT_READ|PROT_WRITE,MAP_SHARED,sfd,0); CHECK(sm!=MAP_FAILED,"mmap compartido de /dev/shm"); sm[0]=11; pid_t c=fork();
-    if(c==0){ sm[0]=22; _exit(0); } int st=0; waitpid(c,&st,0); CHECK(sm[0]==22,"shm_open: lo ve el padre"); shm_unlink("/kngtest"); munmap(sm,4096); close(sfd); close(fd);
+    if(c==0){ sm[0]=22; _exit(0); } int st=0; waitpid(c,&st,0); CHECK(sm[0]==22,"shm_open: lo ve el padre"); shm_unlink("/vortextest"); munmap(sm,4096); close(sfd); close(fd);
 
     /* enlaces duros reales (shadow/groupadd toma su candado con link() y exige st_nlink==2) */
     { int a=open("/tmp/mt/hl-a",O_RDWR|O_CREAT|O_TRUNC,0644); write(a,"uno",3);
@@ -158,7 +158,7 @@ static void test_files(void){
       int b=open(pth,O_RDONLY); char pb[16]={0}; if(b>=0){ if(read(b,pb,4)<0) pb[0]=0; close(b); } CHECK(a>=0&&b>=0&&!strncmp(pb,"uno\n",4),"open(/proc/self/fd/N) reabre el mismo archivo");
       int found=0; DIR *dd=opendir("/proc/self/fd"); struct dirent *de2; char want[16]; snprintf(want,sizeof want,"%d",a);
       while(dd&&(de2=readdir(dd))) if(!strcmp(de2->d_name,want)) found=1; if(dd) closedir(dd); CHECK(found,"/proc/self/fd lista los descriptores abiertos");
-      int m=(int)syscall(319,"kng-test",0); if(m>=0){ if(ftruncate(m,4096)<0) m=-1; }
+      int m=(int)syscall(319,"vortex-test",0); if(m>=0){ if(ftruncate(m,4096)<0) m=-1; }
       char *w=m>=0?mmap(0,4096,PROT_READ|PROT_WRITE,MAP_SHARED,m,0):MAP_FAILED; if(w!=MAP_FAILED) strcpy(w,"memoria compartida");
       snprintf(pth,sizeof pth,"/proc/self/fd/%d",m); int ro=m>=0?open(pth,O_RDONLY):-1;
       char *r=ro>=0?mmap(0,4096,PROT_READ,MAP_SHARED,ro,0):MAP_FAILED;
@@ -166,7 +166,7 @@ static void test_files(void){
       if(a>=0) close(a); if(m>=0) close(m); if(ro>=0) close(ro); }
 
     /* argumentos int con basura en los 32 bits altos (Chromium llama mmap asi): Linux los ignora */
-    { int m=(int)syscall(319,"kng-hi",0); if(m>=0&&ftruncate(m,4096)<0) m=-1;
+    { int m=(int)syscall(319,"vortex-hi",0); if(m>=0&&ftruncate(m,4096)<0) m=-1;
       long fdbad=m>=0?(((long)7<<32)|(unsigned)m):-1;
       char *w=m>=0?(char*)syscall(SYS_mmap,0,4096,PROT_READ|PROT_WRITE,MAP_SHARED,fdbad,0):(char*)MAP_FAILED;
       CHECK(w!=MAP_FAILED&&(long)w!=-9,"mmap con basura en los bits altos del descriptor");
