@@ -1,4 +1,4 @@
-/* net.c — pila de red de kng (compartida por los kernels de 32 y 64 bits).
+/* net.c — pila de red de vortex (compartida por los kernels de 32 y 64 bits).
  * PCI + controladores e1000 y RTL8139, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP (cliente, una conexion) y HTTP/1.0.
  * Codigo propio escrito a partir de las especificaciones (RFC 791/792/793/826/1035/2131, manuales de Intel y Realtek).
  * Memoria DMA: arreglos estaticos en la imagen del kernel (identidad: direccion virtual = fisica, por debajo de 4 GB). */
@@ -619,14 +619,14 @@ static void http_begin_request(void){
     char r[1200]; r[0]=0;
     scat(r,sizeof r,"GET "); scat(r,sizeof r,hj.path); scat(r,sizeof r," HTTP/1.0\r\nHost: "); scat(r,sizeof r,hj.host);
     if(hj.port!=80){ char pb[10]; portstr(pb,hj.port); scat(r,sizeof r,pb); }
-    scat(r,sizeof r,"\r\nUser-Agent: KonigreichOS/0.6 (kng)\r\nAccept: text/html, text/plain;q=0.9, */*;q=0.1\r\nConnection: close\r\n\r\n");
+    scat(r,sizeof r,"\r\nUser-Agent: VortexOS/0.6 (vortex)\r\nAccept: text/html, text/plain;q=0.9, */*;q=0.1\r\nConnection: close\r\n\r\n");
     reqlen=k_strlen(r); memcpy(req,r,(size_t)reqlen);
 }
 static int http_start(const char *url){
     hj_free();
     char host[64], path[256]; u16 port;
     int r=url_split(url,host,sizeof host,&port,path,sizeof path);
-    if(r==-1){ k_strcpy(hj.err,"HTTPS no esta soportado todavia (kng no tiene TLS). Usa una direccion http://",sizeof hj.err); if(net_st==0 && pci_seen[0]) scat(hj.err,sizeof hj.err,pci_seen); hj.st=4; return -1; }
+    if(r==-1){ k_strcpy(hj.err,"HTTPS no esta soportado todavia (vortex no tiene TLS). Usa una direccion http://",sizeof hj.err); if(net_st==0 && pci_seen[0]) scat(hj.err,sizeof hj.err,pci_seen); hj.st=4; return -1; }
     if(r<0){ k_strcpy(hj.err,"Direccion invalida",sizeof hj.err); hj.st=4; return -1; }
     if(net_st!=2){ k_strcpy(hj.err,net_st==0?(pci_seen[0]?"Sin driver para tu tarjeta de red. Vista en PCI (ven:dev):":"La VM no tiene tarjeta de red PCI. Agrega una (Intel e1000, PCnet o virtio)"):"La red aun se esta configurando (DHCP). Intenta de nuevo",sizeof hj.err); hj.st=4; return -1; }
     k_strcpy(hj.host,host,sizeof hj.host); k_strcpy(hj.path,path,sizeof hj.path); hj.port=port;
