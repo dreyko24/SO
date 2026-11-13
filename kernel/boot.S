@@ -1,4 +1,4 @@
-/* kng-kernel: arranque Multiboot + stubs de interrupciones (i386) */
+/* vortex-kernel: arranque Multiboot + stubs de interrupciones (i386) */
 .set MAGIC,    0x1BADB002
 #ifndef NOVIDEO
 .set FLAGS,    0x00000007            /* alinear + info de memoria + pedir modo de video */
