@@ -29,7 +29,8 @@ static int png_decode(const uint8_t *d,int n,VImage *out){
         if(kind==0x49484452u){ /* IHDR */
             if(seen||len!=13)return -1;seen=1;w=rdbe(src);h=rdbe(src+4);
             depth=src[8];ct=src[9];interlace=src[12];
-            if(!dims(w,h)||depth!=8||src[10]!=0||src[11]!=0||interlace!=0)return -1;
+            if(!dims(w,h)||src[10]!=0||src[11]!=0||interlace!=0)return -1;
+            if(depth!=8 && !((ct==0||ct==3)&&(depth==1||depth==2||depth==4)))return -1;
             if(ct!=0&&ct!=2&&ct!=3&&ct!=4&&ct!=6)return -1;
         }else if(kind==0x504c5445u){
             if(len>768||len%3)return -1;
@@ -43,7 +44,8 @@ static int png_decode(const uint8_t *d,int n,VImage *out){
     }
     if(!seen||!haveEnd||!idat||(ct==3&&!palN))return -1;
     int channels=ct==6?4:ct==2?3:ct==4?2:1;
-    uint32_t stride=w*(uint32_t)channels;
+    int filter_bpp=channels*(int)depth/8;if(filter_bpp<1)filter_bpp=1;
+    uint32_t stride=(w*(uint32_t)channels*depth+7u)/8u;
     if(stride>=0x7fffffffu||h>(0x7fffffffu/(stride+1u)))return -1;
     uint32_t rawlen=(stride+1u)*h;
     uint8_t *comp=kmalloc(idat),*raw=kmalloc(rawlen);
@@ -66,9 +68,9 @@ static int png_decode(const uint8_t *d,int n,VImage *out){
         uint8_t *prev=y?raw+(y-1u)*(stride+1u)+1:0;
         int f=r[-1];if(f>4){kfree(raw);kfree(px);return -1;}
         for(uint32_t j=0;j<stride;j++){
-            int left=j>=(uint32_t)channels?r[j-channels]:0;
+            int left=j>=(uint32_t)filter_bpp?r[j-filter_bpp]:0;
             int up=prev?prev[j]:0;
-            int ul=prev&&j>=(uint32_t)channels?prev[j-channels]:0;
+            int ul=prev&&j>=(uint32_t)filter_bpp?prev[j-filter_bpp]:0;
             int add=0;
             if(f==1)add=left;else if(f==2)add=up;else if(f==3)add=(left+up)/2;
             else if(f==4){int p=left+up-ul,pa=p-left,pb=p-up,pc=p-ul;
@@ -78,11 +80,13 @@ static int png_decode(const uint8_t *d,int n,VImage *out){
         }
         for(uint32_t x=0;x<w;x++){
             uint32_t c=0;int a=255;uint8_t *q=r+x*(uint32_t)channels;
+            int packed=0;
+            if(depth<8){uint32_t bit=x*depth;packed=(r[bit>>3]>>(8u-depth-(bit&7u)))&((1<<depth)-1);}
             if(ct==6||ct==2){c=((uint32_t)q[0]<<16)|((uint32_t)q[1]<<8)|q[2];if(ct==6)a=q[3];}
             else if(ct==4){c=(uint32_t)q[0]*0x010101u;a=q[1];}
-            else if(ct==3){int idx=q[0];if(idx>=palN){kfree(raw);kfree(px);return -1;}
+            else if(ct==3){int idx=depth==8?q[0]:packed;if(idx>=palN){kfree(raw);kfree(px);return -1;}
                 c=((uint32_t)palette[idx*3]<<16)|((uint32_t)palette[idx*3+1]<<8)|palette[idx*3+2];a=trans[idx];}
-            else c=(uint32_t)q[0]*0x010101u;
+            else {int v=depth==8?q[0]:(packed*255/((1<<depth)-1));c=(uint32_t)v*0x010101u;}
             px[y*w+x]=color(c,a);
         }
     }
