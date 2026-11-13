@@ -8,8 +8,10 @@
 #include "net.h"
 #include "disk.h"
 #include "zip.h"
+#include "image.h"
+#include "usb.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -28,6 +30,7 @@ typedef struct {
     int xw, xh; uint32_t xnext; int xlx, xly;                                     /* pantalla X (servidor Xvfb) */
     FsNode *dir, *sel, *last; int scroll; uint32_t lastclick;                    /* archivos / visor */
     FsNode *file;                                                                /* visor */
+    VImage picture; int media_tab; /* multimedia */
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
@@ -61,6 +64,10 @@ static void dmark(int x,int y,int w,int h){
 static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
 static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
+static VImage custom_wall;
+static int appmenu_open;
+static void cfg_set(const char *key,const char *val);
+static int cfg_get(const char *key,char *val,int max);
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
 static int clk_h=12, clk_m=0; static uint32_t clk_next;
 static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
@@ -166,12 +173,29 @@ static uint32_t *get_thumb(int i){
     return thumb[i];
 }
 static void build_wall(void){
-    for(int y=0;y<gh;y++) for(int x=0;x<gw;x++) wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
+    if(wall_i==-1&&custom_wall.pixels){
+        for(int y=0;y<gh;y++){int iy=y*custom_wall.h/gh;
+            for(int x=0;x<gw;x++){int ix=x*custom_wall.w/gw;wall[y*gw+x]=custom_wall.pixels[iy*custom_wall.w+ix];}}
+    }else for(int y=0;y<gh;y++)for(int x=0;x<gw;x++)wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
     uint32_t *save=bb; bb=wall; clip_reset();                                   /* marca de agua: la corona */
     int cw=gw*18/100; vortex_logo(gw*74/100,gh*38/100,cw,38);
     bb=save;
 }
 
+/* Fondo personalizado a partir de un archivo del sistema. */
+static int wallpaper_from_file(FsNode *f){
+    if(!f||f->dir||!f->data||f->size<=0)return -1;
+    VImage next={0};
+    if(vimage_decode((const unsigned char*)f->data,f->size,&next))return -1;
+    vimage_release(&custom_wall);custom_wall=next;wall_i=-1;
+    char p[160];fs_path(f,p,sizeof p);cfg_set("fondo",p);
+    build_wall();dirty=1;return 0;
+}
+static void wallpaper_default(int i){
+    if(i<0||i>2)return;
+    vimage_release(&custom_wall);wall_i=i;cfg_set("fondo","");
+    build_wall();dirty=1;
+}
 /* ---------------- ventanas ---------------- */
 static int win_top(void){ return nord? order[nord-1] : -1; }
 static void focus(int wi){
@@ -186,6 +210,7 @@ static void win_close(int wi){
     int k=0; while(k<nord && order[k]!=wi) k++;
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
+    vimage_release(&wins[wi].picture);
     nord--; wins[wi].used=0; dirty=1;
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
@@ -297,7 +322,8 @@ static Win *open_app(int type){
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
                      memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
     case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
-    case A_VIEWER:   w->w=600; w->h=420; set_title(w,"Visor de texto"); break;
+    case A_VIEWER:   w->w=640; w->h=480; set_title(w,"Visor multimedia"); break;
+    case A_MEDIA:    w->w=590; w->h=480; set_title(w,"Multimedia"); break;
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
@@ -321,7 +347,11 @@ static void open_file(FsNode *n){
         Win *b=open_app(A_BROWSER); char u[192]="file://"; char p[80]; fs_path(n,p,sizeof p); cat(u,sizeof u,p); if(b) nav(b,u,1);
     } else if(n->size<NOTEMAX && (ext_is(n,"txt")||ext_is(n,"md")||ext_is(n,"sh")||ext_is(n,"py")||ext_is(n,"c")||ext_is(n,"h")||ext_is(n,"json")||ext_is(n,"css")||ext_is(n,"js")||ext_is(n,"csv")||ext_is(n,"conf")||ext_is(n,"cfg")||ext_is(n,"log")||(!*ext_of(n->name)&&(!n->size||n->data[0]!=0x7f)))){
         Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
-    } else { Win *v=open_app(A_VIEWER); if(v){ v->file=n; v->scroll=0; set_title(v,n->name); } }
+    } else { Win *v=open_app(A_VIEWER); if(v){
+        v->file=n;v->scroll=0;set_title(v,n->name);
+        if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm"))
+            (void)vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
+    } }
 }
 
 /* ---------------- terminal: comandos ---------------- */
