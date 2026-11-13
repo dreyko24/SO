@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Servidor de prueba para el CI: HTTP (TCP) y eco UDP en el PC anfitrion. kng lo ve como 10.0.2.2.
+"""Servidor de prueba para el CI: HTTP (TCP) y eco UDP en el PC anfitrion. vortex lo ve como 10.0.2.2.
 Uso: python3 tools/ci_server.py [puerto_tcp] [puerto_udp]"""
 import socket, sys, threading
 tp = int(sys.argv[1]) if len(sys.argv) > 1 else 18080
@@ -15,7 +15,7 @@ def http(c):
         if data.startswith(b'GET /big'):
             body = BIG
         else:
-            body = b'KNG-HTTP-OK saludos desde el anfitrion\n'
+            body = b'VORTEX-HTTP-OK saludos desde el anfitrion\n'
         c.sendall(b'HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\nConnection: close\r\n\r\n' % len(body) + body)
     finally:
         c.close()
