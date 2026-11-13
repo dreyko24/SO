@@ -9,11 +9,11 @@
 typedef struct { int cx, cy, lh, left, right; } Lay;           /* cursor de maquetacion */
 
 static const char P_INICIO[]=
- "<title>Inicio</title><h1>Königreich OS</h1>"
+ "<title>Inicio</title><h1>Vortex OS</h1>"
  "<p>Bienvenido al navegador de kng. Abre paginas <b>http://</b> (con red), paginas internas <b>kng://</b> y archivos del sistema.</p><hr>"
  "<h2>Enlaces</h2><ul>"
  "<li><a href=\"kng://ayuda\">Ayuda</a></li>"
- "<li><a href=\"kng://acerca\">Acerca de Königreich OS</a></li>"
+ "<li><a href=\"kng://acerca\">Acerca de Vortex OS</a></li>"
  "<li><a href=\"file:///Documentos/pagina.html\">Mi pagina de prueba (archivo del sistema)</a></li>"
  "<li><a href=\"file:///Documentos/bienvenida.txt\">Texto de bienvenida</a></li>"
  "<li><a href=\"http://example.com/\">example.com (necesita red)</a></li>"
@@ -29,7 +29,7 @@ static const char P_AYUDA[]=
  "<p>Red: <b>red</b> (estado), <b>ping host</b>, <b>dns host</b>, <b>wget http://...</b></p>"
  "<hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>";
 static const char P_ACERCA[]=
- "<title>Acerca de</title><h1>Königreich OS</h1>"
+ "<title>Acerca de</title><h1>Vortex OS</h1>"
  "<p>Sistema operativo propio con kernel propio (kng-kernel). No es Linux ni usa su codigo.</p>"
  "<ul><li>Dos kernels propios: 32 y 64 bits</li><li>Interfaz grafica por software sobre framebuffer lineal</li><li>Gestor de archivos, terminal, navegador y ajustes</li>"
  "<li>Red: Intel e1000 y RTL8139, DHCP, DNS, TCP, HTTP</li><li>Teclado y raton PS/2</li></ul>"
