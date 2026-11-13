@@ -10,40 +10,40 @@ typedef struct { int cx, cy, lh, left, right; } Lay;           /* cursor de maqu
 
 static const char P_INICIO[]=
  "<title>Inicio</title><h1>Vortex OS</h1>"
- "<p>Bienvenido al navegador de kng. Abre paginas <b>http://</b> (con red), paginas internas <b>kng://</b> y archivos del sistema.</p><hr>"
+ "<p>Bienvenido al navegador de vortex. Abre paginas <b>http://</b> (con red), paginas internas <b>vortex://</b> y archivos del sistema.</p><hr>"
  "<h2>Enlaces</h2><ul>"
- "<li><a href=\"kng://ayuda\">Ayuda</a></li>"
- "<li><a href=\"kng://acerca\">Acerca de Vortex OS</a></li>"
+ "<li><a href=\"vortex://ayuda\">Ayuda</a></li>"
+ "<li><a href=\"vortex://acerca\">Acerca de Vortex OS</a></li>"
  "<li><a href=\"file:///Documentos/pagina.html\">Mi pagina de prueba (archivo del sistema)</a></li>"
  "<li><a href=\"file:///Documentos/bienvenida.txt\">Texto de bienvenida</a></li>"
  "<li><a href=\"http://example.com/\">example.com (necesita red)</a></li>"
  "<li><a href=\"http://neverssl.com/\">neverssl.com (necesita red)</a></li></ul>"
- "<p><b>Buscar:</b> escribe palabras sueltas arriba. Con <b>tools/kng-proxy.py</b> corriendo en tu PC busca en la web (DuckDuckGo); si no, busca en los archivos de kng. Tambien: <b>kng://ayuda</b>, <b>file:///Sistema/version.txt</b> o <b>example.com</b>.</p>";
+ "<p><b>Buscar:</b> escribe palabras sueltas arriba. Con <b>tools/vortex-proxy.py</b> corriendo en tu PC busca en la web (DuckDuckGo); si no, busca en los archivos de vortex. Tambien: <b>vortex://ayuda</b>, <b>file:///Sistema/version.txt</b> o <b>example.com</b>.</p>";
 static const char P_AYUDA[]=
  "<title>Ayuda</title><h1>Ayuda</h1>"
- "<h2>Navegador</h2><p>Direcciones validas: http://sitio/ruta, kng://pagina y file:///ruta/al/archivo. Un nombre suelto como example.com se abre por http. <b>https:// todavia no</b>: kng no tiene TLS, asi que muchos sitios modernos no cargaran; sirven los que aun ofrecen http.</p>"
- "<h2>Buscador</h2><p>Si escribes palabras sin punto (o con espacios) se usa el buscador de /Sistema/kng.cfg (linea buscador=http://10.0.2.2:8080/search?q=%s, que es kng-proxy en tu PC: hace el https por kng y permite leer casi cualquier sitio con /go?u=URL). Si quitas esa linea, la busqueda es local en paginas y archivos.</p>"
+ "<h2>Navegador</h2><p>Direcciones validas: http://sitio/ruta, vortex://pagina y file:///ruta/al/archivo. Un nombre suelto como example.com se abre por http. <b>https:// todavia no</b>: vortex no tiene TLS, asi que muchos sitios modernos no cargaran; sirven los que aun ofrecen http.</p>"
+ "<h2>Buscador</h2><p>Si escribes palabras sin punto (o con espacios) se usa el buscador de /Sistema/vortex.cfg (linea buscador=http://10.0.2.2:8080/search?q=%s, que es vortex-proxy en tu PC: hace el https por vortex y permite leer casi cualquier sitio con /go?u=URL). Si quitas esa linea, la busqueda es local en paginas y archivos.</p>"
  "<p>Los archivos .html se muestran como pagina; el resto como texto. El motor entiende un subconjunto de HTML (sin CSS ni JavaScript ni imagenes).</p>"
  "<p>Teclas: flechas arriba/abajo y Re Pag/Av Pag para desplazar. El boton con la flecha vuelve a la pagina anterior.</p>"
  "<h2>Terminal</h2><p>Comandos: help, ls, cd, pwd, cat, mkdir, touch, rm, write, clear, info, mem, uptime.</p>"
  "<p>Red: <b>red</b> (estado), <b>ping host</b>, <b>dns host</b>, <b>wget http://...</b></p>"
- "<hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>";
+ "<hr><p><a href=\"vortex://inicio\">Volver al inicio</a></p>";
 static const char P_ACERCA[]=
  "<title>Acerca de</title><h1>Vortex OS</h1>"
- "<p>Sistema operativo propio con kernel propio (kng-kernel). No es Linux ni usa su codigo.</p>"
+ "<p>Sistema operativo propio con kernel propio (vortex-kernel). No es Linux ni usa su codigo.</p>"
  "<ul><li>Dos kernels propios: 32 y 64 bits</li><li>Interfaz grafica por software sobre framebuffer lineal</li><li>Gestor de archivos, terminal, navegador y ajustes</li>"
  "<li>Red: Intel e1000 y RTL8139, DHCP, DNS, TCP, HTTP</li><li>Teclado y raton PS/2</li></ul>"
- "<p>Autor: Nick Jose Tolentino Rojas</p><hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>";
+ "<p>Autor: Nick Jose Tolentino Rojas</p><hr><p><a href=\"vortex://inicio\">Volver al inicio</a></p>";
 static const char P_ERROR[]=
  "<title>Error</title><h1>No se pudo abrir</h1><p>La direccion no existe o no esta soportada.</p>"
- "<p><a href=\"kng://inicio\">Volver al inicio</a></p>";
+ "<p><a href=\"vortex://inicio\">Volver al inicio</a></p>";
 
 const char *html_builtin(const char *url,int *len){
     const char *p=0; int n=0;
-    if(!k_strcmp(url,"kng://inicio"))      { p=P_INICIO; n=sizeof P_INICIO-1; }
-    else if(!k_strcmp(url,"kng://ayuda"))  { p=P_AYUDA;  n=sizeof P_AYUDA-1; }
-    else if(!k_strcmp(url,"kng://acerca")) { p=P_ACERCA; n=sizeof P_ACERCA-1; }
-    else if(!k_strcmp(url,"kng://error"))  { p=P_ERROR;  n=sizeof P_ERROR-1; }
+    if(!k_strcmp(url,"vortex://inicio"))      { p=P_INICIO; n=sizeof P_INICIO-1; }
+    else if(!k_strcmp(url,"vortex://ayuda"))  { p=P_AYUDA;  n=sizeof P_AYUDA-1; }
+    else if(!k_strcmp(url,"vortex://acerca")) { p=P_ACERCA; n=sizeof P_ACERCA-1; }
+    else if(!k_strcmp(url,"vortex://error"))  { p=P_ERROR;  n=sizeof P_ERROR-1; }
     if(p) *len=n;
     return p;
 }
