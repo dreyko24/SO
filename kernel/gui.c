@@ -193,8 +193,18 @@ static int wallpaper_from_file(FsNode *f){
     if(!f||f->dir||!f->data||f->size<=0)return -1;
     VImage next={0};
     if(vimage_decode((const unsigned char*)f->data,f->size,&next))return -1;
+    /* Imagen de USB fisico: se copia a /Imagenes para poder conservarla al retirar el dispositivo.
+     * Nunca se escribe en la unidad externa. La persistencia en disco requiere VortexFS activo. */
+    char p[160];fs_path(f,p,sizeof p);
+    if(k_startswith(p,"/Dispositivos/")){
+        FsNode *imgs=fs_resolve(fs_root(),"/Imagenes");
+        FsNode *copy=imgs?fs_create(imgs,f->name,f->data,f->size):0;
+        if(!copy){vimage_release(&next);return -1;}
+        f=copy;fs_path(f,p,sizeof p);
+        kserial_puts("[vortex-usb] imagen importada desde dispositivo real\n");
+    }
     vimage_release(&custom_wall);custom_wall=next;wall_i=-1;
-    char p[160];fs_path(f,p,sizeof p);cfg_set("fondo",p);
+    cfg_set("fondo",p);
     build_wall();dirty=1;kserial_puts("[vortex-wallpaper] updated\n");return 0;
 }
 static void wallpaper_default(int i){
