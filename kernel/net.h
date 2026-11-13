@@ -1,7 +1,7 @@
-/* net.h — red de kng: controladores (e1000, RTL8139) + ARP/IPv4/ICMP/UDP/DHCP/DNS/TCP + cliente HTTP/1.0 */
+/* net.h — red de vortex: controladores (e1000, RTL8139) + ARP/IPv4/ICMP/UDP/DHCP/DNS/TCP + cliente HTTP/1.0 */
 #ifndef NET_H
 #define NET_H
-#include "kng.h"
+#include "vortex.h"
 int   net_init(void);                 /* busca tarjeta (PCI) e inicia DHCP; 0 ok, <0 no hay tarjeta compatible */
 void  net_poll(void);                 /* hay que llamarla seguido (bucle principal) */
 uint32_t net_mmio_addr(void);         /* direccion MMIO de la e1000 (0 si no hay) */
