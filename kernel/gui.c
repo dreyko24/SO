@@ -1,0 +1,1857 @@
+/* gui.c — escritorio de Königreich OS: fondo, barra, dock, ventanas y aplicaciones integradas.
+ * Todo se dibuja por software en un backbuffer; el cursor se pinta directo sobre el frontbuffer. */
+#include "gui.h"
+#include "kbd.h"
+#include "gfx.h"
+#include "fs.h"
+#include "html.h"
+#include "net.h"
+#include "disk.h"
+#include "zip.h"
+
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS };
+#define SGW 20
+#define SGH 16
+#define SCELL 20
+#define NOTEMAX 3000
+#define KNGFS_CAP (2*1024*1024)
+#define MAXW 10
+#define TB 30
+#define BARH 28
+#define TW 80
+#define TH 24
+
+typedef struct {
+    int used, type, x, y, w, h; char title[40];
+    char grid[TH][TW]; int tr, tc; char in[256]; int inlen; FsNode *cwd;          /* terminal */
+    int busy, bpid, esc, escp, escv[6], escq, savr, savc;                         /* terminal: programa pegado, secuencias ANSI */
+    int xw, xh; uint32_t xnext; int xlx, xly;                                     /* pantalla X (servidor Xvfb) */
+    FsNode *dir, *sel, *last; int scroll; uint32_t lastclick;                    /* archivos / visor */
+    FsNode *file;                                                                /* visor */
+    char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
+    char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
+    char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
+    long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
+    int rx, ry, rw, rh, maxed; uint32_t tclick;                                   /* maximizar / ajustar */
+    unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
+} Win;
+
+void kserial_puts(const char *s);
+static Win wins[MAXW];
+static char ed_suf[96]; static const char *ed_owner;                   /* extension que se conserva al reescribir un nombre (se muestra y se agrega al final) */
+static void fm_edit_done(char *buf,int *len,int max);
+static int open_new;                                               /* open_app: crear otra ventana aunque ya haya una del mismo tipo */
+static int order[MAXW], nord;
+static int mx, my, mb, drag=-1, dragdx, dragdy, hover=-1;
+static int dirty=1, cursor_dirty=1, cur_x=-100, cur_y=-100;
+static int dr0x, dr0y, dr1x, dr1y;                           /* rectangulo sucio pendiente (vacio si dr1x<=dr0x) */
+static void dmark(int x,int y,int w,int h){
+    if(w<=0||h<=0) return;
+    if(x<0){ w+=x; x=0; }
+    if(y<0){ h+=y; y=0; }
+    if(x+w>gw) w=gw-x;
+    if(y+h>gh) h=gh-y;
+    if(w<=0||h<=0) return;
+    if(dr1x<=dr0x){ dr0x=x; dr0y=y; dr1x=x+w; dr1y=y+h; return; }
+    if(x<dr0x) dr0x=x;
+    if(y<dr0y) dr0y=y;
+    if(x+w>dr1x) dr1x=x+w;
+    if(y+h>dr1y) dr1y=y+h;
+}
+static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
+static uint32_t *wall;
+static int acc_i=0, wall_i=0, tz=-5, show24=1;
+static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
+static int clk_h=12, clk_m=0; static uint32_t clk_next;
+static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
+#define ACCENT ACC[acc_i]
+#define C_BG 0x161826
+#define C_BORDER 0x2b2e45
+#define C_TXT 0xdfe3f0
+#define C_DIM 0x9aa0b8
+#define C_BTN 0x2a2e4a
+
+void gui_force_redraw(void){ dirty=1; }
+
+/* ---------------- utilidades de texto ---------------- */
+static void cat(char *d,int max,const char *s){ int n=k_strlen(d); while(*s&&n<max-1) d[n++]=*s++; d[n]=0; }
+static void cat_int(char *d,int max,int v){
+    char b[12]; int i=0; unsigned u=v<0?-(unsigned)v:(unsigned)v;
+    if(!u) b[i++]='0';
+    while(u){ b[i++]=(char)('0'+u%10); u/=10; }
+    if(v<0) cat(d,max,"-");
+    char o[12]; int k=0; while(i) o[k++]=b[--i]; o[k]=0; cat(d,max,o);
+}
+static void l1_to_utf8(const unsigned char *s,int n,char *d){
+    int k=0; for(int i=0;i<n;i++){ unsigned char c=s[i];
+        if(c<0x80) d[k++]=(char)c; else { d[k++]=(char)(0xC0|(c>>6)); d[k++]=(char)(0x80|(c&0x3F)); } }
+    d[k]=0;
+}
+
+/* ---------------- fondo de pantalla ---------------- */
+/* Fondo: se calcula con 8 bits fraccionarios por canal y se cuantiza con una matriz de Bayer 4x4 (sin bandas). */
+static const unsigned char BAYER[16]={0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5};
+typedef struct { int c[3]; } Fx;
+static Fx fx_of(uint32_t k){ Fx f; f.c[0]=(int)((k>>16)&255)<<8; f.c[1]=(int)((k>>8)&255)<<8; f.c[2]=(int)(k&255)<<8; return f; }
+static void fx_mix(Fx *f,uint32_t k,int t){                /* t: 0..4096 */
+    int tg[3]={(int)((k>>16)&255)<<8,(int)((k>>8)&255)<<8,(int)(k&255)<<8};
+    for(int i=0;i<3;i++) f->c[i]+=((tg[i]-f->c[i])*t)>>12;
+}
+static void fx_glow(Fx *f,int nx,int ny,int gx,int gy,int R,uint32_t col,int strength){
+    int dx=nx-gx, dy=ny-gy, d2=dx*dx+dy*dy, R2=R*R;
+    if(d2>=R2) return;
+    int k=((R2-d2)>>2)*4096/(R2>>2); k=(k*k)>>12; fx_mix(f,col,k*strength/255);
+}
+static uint32_t wall_px(int v,int x,int y,int W,int H){
+    int nx=x*1024/W, ny=y*1024/H; Fx f;
+    if(v==0){ f=fx_of(0x0a0f1f); fx_mix(&f,0x1c1748,k_min(4096,(nx+ny)*2)); fx_glow(&f,nx,ny,950,60,800,0x5b46c8,230); fx_glow(&f,nx,ny,0,1024,780,0x0f8a85,230); }
+    else if(v==1){ f=fx_of(0x060f24); fx_mix(&f,0x0b1f4a,k_min(4096,ny*4)); fx_glow(&f,nx,ny,150,950,800,0x1aa7c9,220); fx_glow(&f,nx,ny,900,100,700,0x3c3cc0,200); }
+    else { f=fx_of(0x1c0b18); fx_mix(&f,0x2a1020,k_min(4096,(nx+ny)*2)); fx_glow(&f,nx,ny,900,980,800,0xc8582a,220); fx_glow(&f,nx,ny,120,120,700,0x962878,200); }
+    int d=BAYER[(y&3)*4+(x&3)]*16+8, o[3];
+    for(int i=0;i<3;i++){ o[i]=(f.c[i]+d)>>8; if(o[i]>255) o[i]=255; if(o[i]<0) o[i]=0; }
+    return ((uint32_t)o[0]<<16)|((uint32_t)o[1]<<8)|(uint32_t)o[2];
+}
+#define THW 96
+#define THH 60
+static uint32_t *thumb[3];                       /* miniaturas de los fondos, se calculan una sola vez */
+static uint32_t *get_thumb(int i){
+    if(!thumb[i]){ thumb[i]=kmalloc(THW*THH*4); if(!thumb[i]) return 0;
+        for(int y=0;y<THH;y++) for(int x=0;x<THW;x++) thumb[i][y*THW+x]=wall_px(i,x*gw/THW,y*gh/THH,gw,gh); }
+    return thumb[i];
+}
+static void build_wall(void){
+    for(int y=0;y<gh;y++) for(int x=0;x<gw;x++) wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
+    uint32_t *save=bb; bb=wall; clip_reset();                                   /* marca de agua: la corona */
+    int cw=gw*18/100; crown(gw*74/100,gh*38/100,cw,0xffffff,0xffffff,38);
+    bb=save;
+}
+
+/* ---------------- ventanas ---------------- */
+static int win_top(void){ return nord? order[nord-1] : -1; }
+static void focus(int wi){
+    int k=0; while(k<nord && order[k]!=wi) k++;
+    if(k==nord) return;
+    for(;k<nord-1;k++) order[k]=order[k+1];
+    order[nord-1]=wi; dirty=1;
+}
+static void doc_free(Win *w);
+static void win_close(int wi){
+    if(wins[wi].type==A_TERM&&wins[wi].busy){ char kc[32]="matar "; cat_int(kc,sizeof kc,wins[wi].bpid); kshell_exec(kc); wins[wi].busy=0; }
+    int k=0; while(k<nord && order[k]!=wi) k++;
+    for(;k<nord-1;k++) order[k]=order[k+1];
+    doc_free(&wins[wi]);
+    nord--; wins[wi].used=0; dirty=1;
+}
+static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
+static void crect(Win *w,int *x,int *y,int *cw,int *ch){ *x=w->x+1; *y=w->y+TB; *cw=w->w-2; *ch=w->h-TB-1; }
+
+static int layout_from_name(const char *n);
+static void set_layout(int l);
+static void term_nl(Win *w){
+    w->tc=0; w->tr++;
+    if(w->tr>=TH){ for(int r=1;r<TH;r++) for(int c=0;c<TW;c++) w->grid[r-1][c]=w->grid[r][c]; memset(w->grid[TH-1],' ',TW); w->tr=TH-1; }
+}
+static void mmove(void *d,const void *s,size_t n){ char *dd=d; const char *ss=s; if(dd<ss) while(n--) *dd++=*ss++; else { dd+=n; ss+=n; while(n--) *--dd=*--ss; } }
+static void term_clear_rows(Win *w,int r0,int r1){ for(int r=r0;r<=r1&&r<TH;r++) memset(w->grid[r],' ',TW); }
+static void term_csi(Win *w,unsigned char f){          /* secuencias de escape ANSI (cursor, borrar). Los colores se ignoran */
+    int n=w->escv[0], m=w->escv[1]; int n1=n?n:1;
+    switch(f){
+    case 'A': w->tr-=n1; if(w->tr<0) w->tr=0; break;
+    case 'B': w->tr+=n1; if(w->tr>=TH) w->tr=TH-1; break;
+    case 'C': w->tc+=n1; if(w->tc>=TW) w->tc=TW-1; break;
+    case 'D': w->tc-=n1; if(w->tc<0) w->tc=0; break;
+    case 'E': w->tr+=n1; if(w->tr>=TH) w->tr=TH-1; w->tc=0; break;
+    case 'F': w->tr-=n1; if(w->tr<0) w->tr=0; w->tc=0; break;
+    case 'G': w->tc=n1-1; if(w->tc>=TW) w->tc=TW-1; break;
+    case 'd': w->tr=n1-1; if(w->tr>=TH) w->tr=TH-1; break;
+    case 'H': case 'f': w->tr=(n?n:1)-1; w->tc=(m?m:1)-1; if(w->tr>=TH) w->tr=TH-1; if(w->tc>=TW) w->tc=TW-1; break;
+    case 'J': if(n==0){ memset(&w->grid[w->tr][w->tc],' ',(size_t)(TW-w->tc)); term_clear_rows(w,w->tr+1,TH-1); }
+              else if(n==1){ term_clear_rows(w,0,w->tr-1); memset(w->grid[w->tr],' ',(size_t)w->tc+1); }
+              else { term_clear_rows(w,0,TH-1); } break;
+    case 'K': if(n==0) memset(&w->grid[w->tr][w->tc],' ',(size_t)(TW-w->tc)); else if(n==1) memset(w->grid[w->tr],' ',(size_t)w->tc+1); else memset(w->grid[w->tr],' ',TW); break;
+    case 'X': { int c=n1; if(w->tc+c>TW) c=TW-w->tc; memset(&w->grid[w->tr][w->tc],' ',(size_t)c); break; }
+    case 'P': { int c=n1; if(w->tc+c>TW) c=TW-w->tc; mmove(&w->grid[w->tr][w->tc],&w->grid[w->tr][w->tc+c],(size_t)(TW-w->tc-c)); memset(&w->grid[w->tr][TW-c],' ',(size_t)c); break; }
+    case '@': { int c=n1; if(w->tc+c>TW) c=TW-w->tc; mmove(&w->grid[w->tr][w->tc+c],&w->grid[w->tr][w->tc],(size_t)(TW-w->tc-c)); memset(&w->grid[w->tr][w->tc],' ',(size_t)c); break; }
+    case 'L': for(int k=0;k<n1;k++){ for(int r=TH-1;r>w->tr;r--) memcpy(w->grid[r],w->grid[r-1],TW); memset(w->grid[w->tr],' ',TW); } break;
+    case 'M': for(int k=0;k<n1;k++){ for(int r=w->tr;r<TH-1;r++) memcpy(w->grid[r],w->grid[r+1],TW); memset(w->grid[TH-1],' ',TW); } break;
+    case 's': w->savr=w->tr; w->savc=w->tc; break;
+    case 'u': w->tr=w->savr; w->tc=w->savc; break;
+    default: break;                                    /* m (colores), h, l, r, n...: se ignoran */
+    }
+}
+static void term_put(Win *w,char c){
+    static unsigned char pend; unsigned char u=(unsigned char)c;
+    if(w->esc==1){ if(u=='['){ w->esc=2; w->escp=0; memset(w->escv,0,sizeof w->escv); w->escq=0; } else if(u=='('||u==')'||u=='#'){ w->esc=3; } else { w->esc=0; if(u=='c'){ term_clear_rows(w,0,TH-1); w->tr=w->tc=0; } else if(u=='M'){ if(w->tr>0) w->tr--; } } dwin(w); return; }
+    if(w->esc==3){ w->esc=0; return; }                  /* ESC ( B  y similares: un caracter mas que se descarta */
+    if(w->esc==2){
+        if(u>='0'&&u<='9'){ if(w->escp<6) w->escv[w->escp]=w->escv[w->escp]*10+(u-'0'); return; }
+        if(u==';'){ if(w->escp<5) w->escp++; return; }
+        if(u=='?'||u=='>'||u=='!'||u=='='||u==' ') { return; }
+        w->esc=0; term_csi(w,u); dwin(w); return; }
+    if(u==27){ w->esc=1; return; }
+    if(pend){ unsigned char l=(unsigned char)(((pend&3)<<6)|(u&0x3F)); pend=0; u=l; }
+    else if(u==0xC2||u==0xC3){ pend=u; return; }
+    if(u=='\n'){ term_nl(w); }
+    else if(u=='\r'){ w->tc=0; }
+    else if(u=='\b'){ if(w->tc>0){ w->tc--; w->grid[w->tr][w->tc]=' '; } }
+    else if(u=='\t'){ int nt=(w->tc/8+1)*8; while(w->tc<nt&&w->tc<TW) w->grid[w->tr][w->tc++]=' '; }
+    else if(u==7||u==0){ }
+    else { if(w->tc>=TW) term_nl(w); w->grid[w->tr][w->tc++]=(char)u; }
+    dwin(w);
+}
+static void tp(Win *w,const char *s){ kserial_puts(s); while(*s) term_put(w,*s++); }
+static void term_prompt(Win *w){ char p[110]; fs_path(w->cwd,p,sizeof p); cat(p,sizeof p,"> "); tp(w,p); kserial_puts("\n"); kserial_puts(p); }
+static void term_done(int pid,int code){                 /* un programa pegado a una terminal termino: mensaje y prompt otra vez */
+    for(int i=0;i<MAXW;i++){ Win *w=&wins[i]; if(!w->used||w->type!=A_TERM||!w->busy||w->bpid!=pid) continue;
+        w->busy=0; char b[64]="";
+        if(w->tc>0) tp(w,"\n");
+        if(code>=0){ cat(b,sizeof b,"[termino con codigo "); cat_int(b,sizeof b,code); cat(b,sizeof b,"]\n"); }
+        else { cat(b,sizeof b,"[terminado por la senal "); cat_int(b,sizeof b,-code); cat(b,sizeof b,"]\n"); }
+        tp(w,b); term_prompt(w); dirty=1; return; }
+}
+
+static void nav(Win *w,const char *url,int push);
+static void snake_reset(Win *w);
+static Win *open_app(int type);
+static void open_file(FsNode *n);
+static int xs_w=1024, xs_h=640;
+void gui_open_xscreen(int w,int h){ xs_w=w; xs_h=h; open_app(A_XSCR); dirty=1; }
+void gui_open_terminal(void){ open_app(A_TERM); dirty=1; }                    /* opcion de arranque 'terminal' (pruebas automaticas del modo grafico) */
+int  gui_screen_size(int *w,int *h){ if(!gw) return -1; *w=gw; *h=gh; return 0; }
+
+static Win *term_target;
+/* ---------------- Programas de Linux: lanzador de los programas reales instalados con 'instalar' ---------------- */
+typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; } PApp;
+static const PApp PAPPS[]={
+    {"Brave","Navegador web","brave","instalar brave","/usr/bin/brave-browser",0xf97316},
+    {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
+    {"Opera","Navegador web","opera","instalar opera","/usr/bin/opera",0xef4444},
+    {"Firefox","Navegador web","firefox-esr","instalar firefox","/usr/bin/firefox-esr",0xf59e0b},
+    {"Chromium","Navegador web","chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
+    {"LibreOffice","Textos, hojas y presentaciones","libreoffice","instalar libreoffice","/usr/bin/libreoffice",0x22c55e},
+    {"OpenOffice","Textos, hojas y presentaciones","openoffice","instalar openoffice","/opt/openoffice4/program/soffice",0x38bdf8},
+    {"Terminal X","Terminal con ventana de X","xterm","instalar xterm","/usr/bin/xterm",0x8a8fa8},
+};
+#define NPAPPS ((int)(sizeof PAPPS/sizeof *PAPPS))
+static int papp_installed(int i){ FsNode *f=fs_resolve(fs_root(),PAPPS[i].path); return f&&!f->dir; }
+static void render(void);
+static void run_in_terminal(const char *cmd){ Win *t=open_app(A_TERM); if(!t||t->busy) return; for(const char *q=cmd;*q;q++) gui_key((unsigned char)*q); gui_key('\n'); }
+void gui_open_installer(void){ run_in_terminal("instalar-sistema"); }
+static void run_quiet(const char *cmd){ char l[160]; k_strcpy(l,cmd,sizeof l); term_target=0; kcon_hook=0; kshell_exec(l); }
+static Win *open_app(int type){
+    if(!open_new) for(int i=0;i<nord;i++){ Win *e=&wins[order[i]]; if(e->type==type && type!=A_VIEWER){ focus(order[i]); return e; } }
+    int wi=-1; for(int i=0;i<MAXW;i++) if(!wins[i].used){ wi=i; break; }
+    if(wi<0) return 0;
+    Win *w=&wins[wi]; memset(w,0,sizeof *w); w->used=1; w->type=type;
+    int off=(nord%5)*28;
+    switch(type){
+    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Königreich OS"); break;
+    case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Navegador"); break;
+    case A_FILES:    w->w=660; w->h=440; set_title(w,"Archivos"); w->dir=fs_root(); break;
+    case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
+                     memset(w->grid,' ',sizeof w->grid); tp(w,"Königreich OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
+    case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
+    case A_VIEWER:   w->w=600; w->h=420; set_title(w,"Visor de texto"); break;
+    case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
+    case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
+    case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
+    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
+    case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
+    case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
+    }
+    w->x=60+off+(gw>800?60:0); w->y=BARH+24+off;
+    if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
+    if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
+    order[nord++]=wi; dirty=1;
+    if(type==A_BROWSER) nav(w,"kng://inicio",0);
+    return w;
+}
+static int ext_is(const FsNode *f,const char *e);
+static const char *ext_of(const char *n);
+static void open_file(FsNode *n){
+    if(n->dir) return;
+    int l=k_strlen(n->name);
+    if(l>5 && !k_strcmp(n->name+l-5,".html")){
+        Win *b=open_app(A_BROWSER); char u[192]="file://"; char p[80]; fs_path(n,p,sizeof p); cat(u,sizeof u,p); if(b) nav(b,u,1);
+    } else if(n->size<NOTEMAX && (ext_is(n,"txt")||ext_is(n,"md")||ext_is(n,"sh")||ext_is(n,"py")||ext_is(n,"c")||ext_is(n,"h")||ext_is(n,"json")||ext_is(n,"css")||ext_is(n,"js")||ext_is(n,"csv")||ext_is(n,"conf")||ext_is(n,"cfg")||ext_is(n,"log")||(!*ext_of(n->name)&&(!n->size||n->data[0]!=0x7f)))){
+        Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
+    } else { Win *v=open_app(A_VIEWER); if(v){ v->file=n; v->scroll=0; set_title(v,n->name); } }
+}
+
+/* ---------------- terminal: comandos ---------------- */
+static void term_hook(char c){ if(term_target && term_target->used && term_target->type==A_TERM) term_put(term_target,c); }
+static void term_cmd(Win *w,char *line){
+    while(*line==' ') line++;
+    if(!*line) return;
+    char *arg=line; while(*arg&&*arg!=' ') arg++;
+    char cmd[40]; int n=(int)(arg-line); if(n>39) n=39; memcpy(cmd,line,(size_t)n); cmd[n]=0;
+    while(*arg==' ') arg++;
+    if(!k_strcmp(cmd,"help")){
+        tp(w,"Archivos: ls cd pwd cat mkdir touch rm write cp mv ren df\nDisco:    disco  disco formatear si  guardar\nSistema:  info mem heap ps uptime echo clear teclado reboot halt\n"); }
+    else if(!k_strcmp(cmd,"teclado")){ int l=layout_from_name(arg);
+        if(l<0){ tp(w,"Uso: teclado us | latam | es   (ahora: "); tp(w,kbd_layout_name(kbd_layout())); tp(w,")\n"); }
+        else { set_layout(l); tp(w,"Teclado: "); tp(w,kbd_layout_name(l)); tp(w,"\n"); } }
+    else if(!k_strcmp(cmd,"clear")){ memset(w->grid,' ',sizeof w->grid); w->tr=0; w->tc=0; }
+    else if(!k_strcmp(cmd,"pwd")){ char p[110]; fs_path(w->cwd,p,sizeof p); tp(w,p); tp(w,"\n"); }
+    else if(!k_strcmp(cmd,"ls")){
+        FsNode *d=*arg?fs_resolve(w->cwd,arg):w->cwd;
+        if(!d||!d->dir){ tp(w,"ls: ruta no valida\n"); }
+        else { FsNode *l[64]; int c=fs_list(d,l,64);
+            for(int i=0;i<c;i++){ tp(w,l[i]->name); if(l[i]->dir) tp(w,"/"); else { char b[24]=" ("; cat_int(b,24,l[i]->size); cat(b,24," B)"); tp(w,b); } tp(w,"\n"); }
+            if(!c) tp(w,"(vacio)\n"); } }
+    else if(!k_strcmp(cmd,"cd")){ FsNode *d=fs_resolve(w->cwd,*arg?arg:"/"); if(d&&d->dir) w->cwd=d; else tp(w,"cd: carpeta no encontrada\n"); }
+    else if(!k_strcmp(cmd,"cat")){ FsNode *f=fs_resolve(w->cwd,arg); if(f&&!f->dir){ tp(w,f->data?f->data:""); if(f->size&&f->data[f->size-1]!='\n') tp(w,"\n"); } else tp(w,"cat: archivo no encontrado\n"); }
+    else if(!k_strcmp(cmd,"mkdir")){ if(!fs_mkdir(w->cwd,arg)) tp(w,"mkdir: nombre invalido o ya existe\n"); }
+    else if(!k_strcmp(cmd,"touch")){ if(!fs_find(w->cwd,arg) && !fs_create(w->cwd,arg,"",0)) tp(w,"touch: nombre invalido\n"); }
+    else if(!k_strcmp(cmd,"rm")){ FsNode *f=fs_resolve(w->cwd,arg); if(!f||fs_remove(f)) tp(w,"rm: no se pudo borrar\n"); else { if(w->cwd==f) w->cwd=fs_root(); } }
+    else if(!k_strcmp(cmd,"cp")||!k_strcmp(cmd,"mv")||!k_strcmp(cmd,"ren")){
+        char *b2=arg; while(*b2&&*b2!=' ') b2++; char a1[100]; int l1=(int)(b2-arg); if(l1>99) l1=99; memcpy(a1,arg,(size_t)l1); a1[l1]=0; while(*b2==' ') b2++;
+        FsNode *src=fs_resolve(w->cwd,a1);
+        if(!src||!*b2){ tp(w,"uso: cp|mv <origen> <destino>   ren <nombre> <nuevo>\n"); }
+        else if(!k_strcmp(cmd,"ren")){ if(fs_rename(src,b2)) tp(w,"ren: nombre invalido o ya existe\n"); }
+        else { FsNode *dd=fs_resolve(w->cwd,b2); const char *nm=src->name; FsNode *dir=dd;
+            if(!dd||!dd->dir){ char pth[100]; k_strcpy(pth,b2,sizeof pth); int q=k_strlen(pth); while(q>0&&pth[q-1]!='/') q--; nm=b2+q; pth[q]=0; dir=q?fs_resolve(w->cwd,pth):w->cwd; if(q==1) dir=fs_root(); }
+            if(!dir||!dir->dir||(cmd[0]=='c'?!fs_copy(src,dir,nm):fs_move(src,dir,nm))) tp(w,"no se pudo (destino invalido, ya existe o es una subcarpeta)\n"); } }
+    else if(!k_strcmp(cmd,"df")){ int f,d2,by; fs_usage(&f,&d2,&by); char b[100]=""; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,d2); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes\n"); tp(w,b); }
+    else if(!k_strcmp(cmd,"instalar-sistema")){
+        uint32_t n=0;
+        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Konigreich OS en el disco duro\".\n"); }
+        else if(disk_init()){ tp(w,"No se encontro un disco duro (IDE, SATA o NVMe).\n"); }
+        else {
+            char b[140]="Disco: "; cat(b,140,disk_kind()); cat(b,140," "); cat(b,140,disk_model()); cat(b,140,", "); cat_int(b,140,(int)(disk_sectors()/2048)); cat(b,140," MB\n"); tp(w,b);
+            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Konigreich OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
+            else {
+                tp(w,"Instalando... no apagues la PC (de 1 a 3 minutos).\n"); dirty=1; render();
+                int r=kng_install();
+                if(r==0) tp(w,"LISTO: Konigreich OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
+                else { char e2[80]="No se pudo instalar (error "; cat_int(e2,80,r); cat(e2,80,r==-3?": disco demasiado chico)\n":r==-4?": error al escribir el disco)\n":")\n"); tp(w,e2); }
+            }
+        } }
+    else if(!k_strcmp(cmd,"guardar")){ int r=kngfs_save(); tp(w,r==0?"guardado en disco\n":kngfs_active()?"no se pudo guardar (disco lleno o error)\n":"no hay disco KNGFS montado (usa: disco formatear si)\n"); }
+    else if(!k_strcmp(cmd,"disco")){
+        if(!k_strcmp(arg,"formatear si")){ int r=kngfs_format(); tp(w,r==0?"disco listo: los archivos se guardan solos\n":"no se pudo (no hay disco IDE/SATA o error de escritura)\n"); }
+        else { char b[120]=""; if(disk_init()==0){ cat(b,120,disk_kind()); cat(b,120,": "); cat(b,120,disk_model()); cat(b,120,", "); cat_int(b,120,(int)(disk_sectors()/2048)); cat(b,120," MB, "); cat(b,120,kngfs_active()?"montado (guardado automatico)":"SIN formato kng"); }
+            else cat(b,120,"no se encontro disco duro IDE ni SATA");
+            tp(w,b); tp(w,"\n"); if(disk_init()==0 && !kngfs_active()) tp(w,"Para usarlo: disco formatear si   (ATENCION: borra el inicio de ese disco)\n"); } }
+    else if(!k_strcmp(cmd,"write")){
+        char *t=arg; while(*t&&*t!=' ') t++; char nm[32]; int l=(int)(t-arg); if(l>31) l=31; memcpy(nm,arg,(size_t)l); nm[l]=0; while(*t==' ') t++;
+        if(!l||!fs_create(w->cwd,nm,t,k_strlen(t))) tp(w,"write: uso: write <archivo> <texto>\n"); }
+    else { term_target=w; kcon_hook=term_hook; kshell_exec(line); }     /* el gancho queda puesto: los comandos de red responden mas tarde */
+    dirty=1;
+}
+
+/* ---------------- navegador ---------------- */
+static char rawbuf[4600];
+static void esc_into(char *o,int max,const char *s2);
+static char srcbuf[16000], srckey[192];                       /* paginas dinamicas (buscador) */
+static int ci_eq(char a,char b){ if(a>='A'&&a<='Z') a+=32; if(b>='A'&&b<='Z') b+=32; return a==b; }
+static int ci_find(const char *h,int hl,const char *n){       /* n en h, sin distinguir mayusculas; devuelve posicion o -1 */
+    int nl=k_strlen(n); if(!nl) return -1;
+    for(int i=0;i+nl<=hl;i++){ int j=0; while(j<nl && ci_eq(h[i+j],n[j])) j++; if(j==nl) return i; }
+    return -1;
+}
+static void urlenc(char *o,int max,const char *q){
+    static const char HX[]="0123456789ABCDEF"; int k=k_strlen(o);
+    for(;*q && k<max-4;q++){ unsigned char c=(unsigned char)*q;
+        if((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_'||c=='.'||c=='~') o[k++]=(char)c;
+        else if(c==' ') o[k++]='+';
+        else { o[k++]='%'; o[k++]=HX[c>>4]; o[k++]=HX[c&15]; } }
+    o[k]=0;
+}
+static int hexv(char c){ return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:-1; }
+static void urldec(char *o,int max,const char *q){
+    int k=0; for(;*q && *q!='&' && k<max-1;q++){
+        if(*q=='+') o[k++]=' ';
+        else if(*q=='%' && hexv(q[1])>=0 && hexv(q[2])>=0){ o[k++]=(char)(hexv(q[1])*16+hexv(q[2])); q+=2; }
+        else o[k++]=*q; }
+    o[k]=0;
+}
+static void a_html(const char *s2){ esc_into(srcbuf,sizeof srcbuf,s2); }
+static void a_raw(const char *s2){ cat(srcbuf,sizeof srcbuf,s2); }
+static int s_found;
+static void s_walk(FsNode *d,const char *q){
+    for(FsNode *c=d->child;c && s_found<30;c=c->next){
+        if(c->dir){ s_walk(c,q); continue; }
+        if((int)sizeof srcbuf-k_strlen(srcbuf)<700) return;
+        int byname=ci_find(c->name,k_strlen(c->name),q)>=0, at=-1;
+        if(c->data && c->size>0) at=ci_find(c->data,c->size,q);
+        if(!byname && at<0) continue;
+        char p[100]; fs_path(c,p,sizeof p);
+        a_raw("<li><a href=\"file://"); a_html(p); a_raw("\">"); a_html(p); a_raw("</a>");
+        if(at>=0){ int b=at, e=at; while(b>0 && c->data[b-1]!='\n' && at-b<30) b--; while(e<c->size && c->data[e]!='\n' && e-at<50) e++;
+            char sn[90]; int l=e-b; if(l>88) l=88; memcpy(sn,c->data+b,(size_t)l); sn[l]=0; a_raw("<br>"); a_html(sn); }
+        a_raw("</li>"); s_found++;
+    }
+}
+/* /Sistema/kng.cfg: lineas clave=valor. cfg_set cambia o agrega una sola linea y conserva las demas. */
+static void cfg_set(const char *key,const char *val){
+    FsNode *d=fs_resolve(fs_root(),"/Sistema"); if(!d||!d->dir) return;
+    FsNode *f=fs_find(d,"kng.cfg"); char out[1024]; int o=0, kl=k_strlen(key), done=0;
+    if(f&&f->data){ const char *p=f->data; int i=0;
+        while(i<f->size){ int e=i; while(e<f->size&&p[e]!='\n') e++;
+            int len=e-i, same=len>kl && ci_find(p+i,kl,key)==0 && p[i+kl]=='=';
+            if(same){ if(!done){ done=1; for(int k=0;key[k]&&o<1000;k++) out[o++]=key[k]; if(o<1000) out[o++]='='; for(int k=0;val[k]&&o<1000;k++) out[o++]=val[k]; if(o<1000) out[o++]='\n'; } }
+            else if(len>0 && o+len+1<1000){ memcpy(out+o,p+i,(size_t)len); o+=len; out[o++]='\n'; }
+            i=e+1; } }
+    if(!done){ for(int k=0;key[k]&&o<1000;k++) out[o++]=key[k]; if(o<1000) out[o++]='='; for(int k=0;val[k]&&o<1000;k++) out[o++]=val[k]; if(o<1000) out[o++]='\n'; }
+    fs_create(d,"kng.cfg",out,o);
+}
+static int cfg_get(const char *key,char *val,int max){
+    val[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return 0;
+    int kl=k_strlen(key), i=0;
+    while(i<f->size){ int e=i; while(e<f->size&&f->data[e]!='\n') e++;
+        if(e-i>kl && ci_find(f->data+i,kl,key)==0 && f->data[i+kl]=='='){ int l=e-i-kl-1; if(l>max-1) l=max-1; memcpy(val,f->data+i+kl+1,(size_t)l); val[l]=0; for(int k=0;val[k];k++) if(val[k]=='\r') val[k]=0; return 1; }
+        i=e+1; }
+    return 0;
+}
+static int layout_from_name(const char *n){ return !k_strcmp(n,"latam")?KBD_LATAM:!k_strcmp(n,"es")?KBD_ES:!k_strcmp(n,"us")?KBD_US:-1; }
+static const char *layout_code(int l){ return l==KBD_LATAM?"latam":l==KBD_ES?"es":"us"; }
+static void set_layout(int l){ kbd_set_layout(l); cfg_set("teclado",layout_code(l)); dirty=1; }
+static void cfg_search_url(const char *q,char *out,int max){      /* buscador=http://.../?q=%s en /Sistema/kng.cfg */
+    out[0]=0; FsNode *f=fs_resolve(fs_root(),"/Sistema/kng.cfg"); if(!f||!f->data) return;
+    const char *d=f->data; int i=0;
+    while(i<f->size){ int e=i; while(e<f->size && d[e]!='\n') e++;
+        if(e-i>9 && ci_find(d+i,9,"buscador=")==0){
+            char t[160]; int l=e-i-9; if(l>158) l=158; memcpy(t,d+i+9,(size_t)l); t[l]=0;
+            for(int k=0;t[k];k++){ if(t[k]=='\r') t[k]=0; }
+            for(int k=0;t[k];k++){
+                if(t[k]=='%'&&t[k+1]=='s'){ urlenc(out,max,q); k++; }
+                else { int n=k_strlen(out); if(n<max-1){ out[n]=t[k]; out[n+1]=0; } } }
+            return; }
+        i=e+1; }
+}
+static const char *build_search(const char *url,int *len){
+    if(!k_strcmp(srckey,url)){ *len=k_strlen(srcbuf); return srcbuf; }
+    k_strcpy(srckey,url,sizeof srckey); srcbuf[0]=0;
+    char q[100]; q[0]=0; { const char *p=url; while(*p && !(p[0]=='q'&&p[1]=='=') ) p++; if(*p) urldec(q,sizeof q,p+2); }
+    a_raw("<title>Buscar</title><h1>Buscar</h1>");
+    if(!q[0]){ a_raw("<p>Escribe una o varias palabras en la barra de direcciones y pulsa Enter.</p><hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>"); *len=k_strlen(srcbuf); return srcbuf; }
+    a_raw("<p>Resultados para: <b>"); a_html(q); a_raw("</b></p>");
+    static const struct { const char *u, *t, *kw; } PG[]={
+        {"kng://inicio","Inicio","inicio bienvenida enlaces home principal"},
+        {"kng://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
+        {"kng://acerca","Acerca de Königreich OS","acerca kernel autor sistema version nick kng"}};
+    int any=0;
+    for(int i=0;i<3;i++) if(ci_find(PG[i].t,k_strlen(PG[i].t),q)>=0 || ci_find(PG[i].kw,k_strlen(PG[i].kw),q)>=0){
+        if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
+        a_raw("<li><a href=\""); a_raw(PG[i].u); a_raw("\">"); a_html(PG[i].t); a_raw("</a></li>"); }
+    if(any) a_raw("</ul>");
+    a_raw("<h2>Archivos</h2>"); s_found=0;
+    { int mark=k_strlen(srcbuf); a_raw("<ul>"); s_walk(fs_root(),q);
+      if(!s_found){ srcbuf[mark]=0; a_raw("<p>Ningun archivo contiene eso.</p>"); } else a_raw("</ul>"); }
+    a_raw("<h2>Web</h2>");
+    { char eu[192]; cfg_search_url(q,eu,sizeof eu);
+      if(eu[0]){ a_raw("<p><a href=\""); a_html(eu); a_raw("\">Buscar en el servidor configurado</a></p>");
+                 if(k_startswith(eu,"https://")) a_raw("<p>Aviso: esa direccion usa https y kng aun no tiene TLS.</p>"); }
+      else a_raw("<p>No hay buscador web configurado. Los buscadores grandes usan https (kng aun no tiene TLS). Para usar uno por http, agrega en /Sistema/kng.cfg una linea como: buscador=http://10.0.2.2:8080/search?q=%s</p>"); }
+    a_raw("<hr><p><a href=\"kng://inicio\">Volver al inicio</a></p>");
+    *len=k_strlen(srcbuf); return srcbuf;
+}
+static int is_http(const char *u);
+static void esc_into(char *o,int max,const char *s2);
+static const char *page_src(Win *w,int *len){
+    const char *b=html_builtin(w->url,len); if(b) return b;
+    if(k_startswith(w->url,"kng://buscar")) return build_search(w->url,len);
+    if(is_http(w->url)){
+        if(w->doc){ *len=w->doclen; return w->doc; }
+        rawbuf[0]=0;
+        if(w->loading){ cat(rawbuf,sizeof rawbuf,"<title>Cargando...</title><h1>Cargando...</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><p>Esperando respuesta del servidor.</p>"); }
+        else { cat(rawbuf,sizeof rawbuf,"<title>Error</title><h1>No se pudo abrir la pagina</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->err[0]?w->err:"Error desconocido");
+               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>Si buscabas en la web: ejecuta <b>tools/kng-proxy.py</b> en tu PC (puerto 8080).</p><p><a href=\"kng://inicio\">Ir al inicio</a></p>"); }
+        *len=k_strlen(rawbuf); return rawbuf;
+    }
+    if(k_startswith(w->url,"file://")){
+        FsNode *f=fs_resolve(fs_root(),w->url+7);
+        if(f && !f->dir){
+            int l=k_strlen(f->name);
+            if(l>5 && !k_strcmp(f->name+l-5,".html")){ *len=f->size; return f->data?f->data:""; }
+            int k=0; const char *pre="<title>Texto</title><pre>"; for(const char *p=pre;*p;p++) rawbuf[k++]=*p;
+            for(int i=0;i<f->size && k<4500;i++){ char c=f->data[i];
+                if(c=='<'){ rawbuf[k++]='&'; rawbuf[k++]='l'; rawbuf[k++]='t'; rawbuf[k++]=';'; }
+                else if(c=='>'){ rawbuf[k++]='&'; rawbuf[k++]='g'; rawbuf[k++]='t'; rawbuf[k++]=';'; }
+                else if(c=='&'){ rawbuf[k++]='&'; rawbuf[k++]='a'; rawbuf[k++]='m'; rawbuf[k++]='p'; rawbuf[k++]=';'; }
+                else rawbuf[k++]=c; }
+            for(const char *p="</pre>";*p;p++) rawbuf[k++]=*p;
+            *len=k; return rawbuf;
+        }
+    }
+    return html_builtin("kng://error",len);
+}
+static Win *http_owner;
+static void doc_free(Win *w){
+    if(w->type!=A_BROWSER) return;
+    if(w->doc){ kfree(w->doc); w->doc=0; }
+    w->doclen=0; w->loading=0; w->err[0]=0;
+    if(http_owner==w){ http_cancel(); http_owner=0; }
+}
+static int is_http(const char *u){ return k_startswith(u,"http://")||k_startswith(u,"https://"); }
+static void load(Win *w){                       /* inicia la descarga si la direccion es http */
+    doc_free(w); srckey[0]=0;
+    if(!is_http(w->url)) return;
+    if(http_owner && http_owner!=w){ Win *o=http_owner; o->loading=0; k_strcpy(o->err,"Cancelado: otra ventana pidio una pagina",sizeof o->err); }
+    http_owner=0;
+    if(http_get(w->url)<0){ k_strcpy(w->err,http_error(),sizeof w->err); return; }
+    http_owner=w; w->loading=1;
+}
+static void browser_poll(void){
+    Win *w=http_owner; if(!w) return;
+    if(!w->used || w->type!=A_BROWSER || !w->loading){ http_cancel(); http_owner=0; return; }
+    int r=http_poll(); if(!r) return;
+    http_owner=0; w->loading=0; dirty=1;
+    if(r<0){ k_strcpy(w->err,http_error(),sizeof w->err); return; }
+    int n=0; char *b=http_take(&n); if(!b){ k_strcpy(w->err,"Sin datos",sizeof w->err); return; }
+    k_strcpy(w->url,http_final_url(),sizeof w->url);
+    if(!http_is_html()){                         /* texto plano: se envuelve en <pre> con las entidades escapadas */
+        char *o=kmalloc((size_t)n*5+64);
+        if(!o){ kfree(b); k_strcpy(w->err,"Sin memoria",sizeof w->err); return; }
+        int k=0; const char *pre="<title>Texto</title><pre>"; for(const char *p=pre;*p;p++) o[k++]=*p;
+        for(int i=0;i<n;i++){ char c=b[i];
+            if(c=='<'){ o[k++]='&'; o[k++]='l'; o[k++]='t'; o[k++]=';'; }
+            else if(c=='>'){ o[k++]='&'; o[k++]='g'; o[k++]='t'; o[k++]=';'; }
+            else if(c=='&'){ o[k++]='&'; o[k++]='a'; o[k++]='m'; o[k++]='p'; o[k++]=';'; }
+            else o[k++]=c; }
+        for(const char *p="</pre>";*p;p++) o[k++]=*p;
+        o[k]=0; kfree(b); b=o; n=k;
+    }
+    w->doc=b; w->doclen=n; w->bscroll=0;
+}
+static void esc_into(char *o,int max,const char *s2){
+    int k=k_strlen(o);
+    for(;*s2 && k<max-6;s2++){
+        if(*s2=='<'){ o[k++]='&'; o[k++]='l'; o[k++]='t'; o[k++]=';'; }
+        else if(*s2=='>'){ o[k++]='&'; o[k++]='g'; o[k++]='t'; o[k++]=';'; }
+        else if(*s2=='&'){ o[k++]='&'; o[k++]='a'; o[k++]='m'; o[k++]='p'; o[k++]=';'; }
+        else o[k++]=*s2;
+    }
+    o[k]=0;
+}
+static const char *page_src(Win *w,int *len);
+static void norm_path(char *p){                  /* quita . y .. de una ruta que empieza en '/' */
+    char out[192]; int k=0; int i=0;
+    while(p[i]){
+        int j=i+1; while(p[j] && p[j]!='/') j++;       /* segmento p[i+1..j) */
+        int sl=j-i-1;
+        if(sl==2 && p[i+1]=='.' && p[i+2]=='.'){ while(k>0 && out[k-1]!='/') k--; if(k>0) k--; }
+        else if(sl==1 && p[i+1]=='.'){ }
+        else { if(k+sl+1<190){ out[k++]='/'; for(int q=0;q<sl;q++) out[k++]=p[i+1+q]; } }
+        i=j;
+    }
+    if(k==0) out[k++]='/';
+    else if(p[k_strlen(p)-1]=='/' && out[k-1]!='/' && k<190) out[k++]='/';
+    out[k]=0; k_strcpy(p,out,192);
+}
+static void resolve(const char *base,const char *href,char *out,int max){
+    int has=0; for(int i=0;href[i] && href[i]!='/' && href[i]!='?' && href[i]!='#';i++) if(href[i]==':'){ has=1; break; }
+    if(has){ k_strcpy(out,href,max); return; }
+    if(href[0]=='/' && href[1]=='/'){ out[0]=0; cat(out,max,"http:"); cat(out,max,href); return; }
+    if(is_http(base)){
+        int pre=k_startswith(base,"https://")?8:7;
+        int e=pre; while(base[e] && base[e]!='/' && base[e]!='?' && base[e]!='#') e++;         /* fin del host[:puerto] */
+        char path[192]; path[0]=0;
+        if(href[0]=='/'){ k_strcpy(path,href,sizeof path); }
+        else {
+            int pe=e; while(base[pe] && base[pe]!='?' && base[pe]!='#') pe++;
+            if(href[0]=='?'||href[0]=='#'||!href[0]){ int l=pe-e; if(l>190) l=190; memcpy(path,base+e,(size_t)l); path[l]=0; if(!path[0]) k_strcpy(path,"/",sizeof path); cat(path,sizeof path,href); }
+            else { int l=pe-e; if(l>190) l=190; memcpy(path,base+e,(size_t)l); path[l]=0; if(!path[0]) k_strcpy(path,"/",sizeof path);
+                   int q=k_strlen(path); while(q>0 && path[q-1]!='/') q--; path[q]=0; cat(path,sizeof path,href); }
+        }
+        { char tail[192]; int t=0; while(path[t] && path[t]!='?' && path[t]!='#') t++; k_strcpy(tail,path+t,sizeof tail); path[t]=0; norm_path(path); cat(path,sizeof path,tail); }
+        int l=e; if(l>max-2) l=max-2; memcpy(out,base,(size_t)l); out[l]=0; cat(out,max,path); return;
+    }
+    if(k_startswith(base,"file://")){
+        char path[192]; path[0]=0;
+        if(href[0]=='/') k_strcpy(path,href,sizeof path);
+        else { k_strcpy(path,base+7,sizeof path); int q=k_strlen(path); while(q>0 && path[q-1]!='/') q--; path[q]=0; cat(path,sizeof path,href); }
+        norm_path(path); out[0]=0; cat(out,max,"file://"); cat(out,max,path); return;
+    }
+    k_strcpy(out,href,max);
+}
+static void nav(Win *w,const char *url,int push){
+    if(push && w->url[0]){
+        if(w->nhist==8){ for(int i=1;i<8;i++) memcpy(w->hist[i-1],w->hist[i],192); w->nhist=7; }
+        k_strcpy(w->hist[w->nhist++],w->url,192);
+    }
+    k_strcpy(w->url,url,sizeof w->url); w->bscroll=0; w->editing=0; dirty=1;
+    load(w);
+}
+static void go_back(Win *w){
+    if(w->nhist<=0) return;
+    k_strcpy(w->url,w->hist[--w->nhist],192); w->bscroll=0; w->editing=0; dirty=1; load(w);
+}
+static void browser_go_typed(Win *w){
+    char u[192]; w->ebuf[w->elen]=0;
+    if(k_strlen(w->ebuf)==0){ w->editing=0; return; }
+    int has=0; for(int i=0;w->ebuf[i]&&w->ebuf[i+2];i++) if(w->ebuf[i]==':'&&w->ebuf[i+1]=='/'&&w->ebuf[i+2]=='/') has=1;
+    int dot=0, sp=0; for(int i=0;w->ebuf[i];i++){ if(w->ebuf[i]=='.') dot=1; if(w->ebuf[i]==' ') sp=1; }
+    u[0]=0;
+    if(has && k_startswith(w->ebuf,"https://")){                                   /* https: a traves de kng-proxy si esta configurado */
+        char b[192]; cfg_search_url("",b,sizeof b);
+        if(k_startswith(b,"http://")){ int e=7; while(b[e]&&b[e]!='/') e++; b[e]=0; k_strcpy(u,b,sizeof u); cat(u,sizeof u,"/go?u="); urlenc(u,sizeof u,w->ebuf); }
+        else k_strcpy(u,w->ebuf,sizeof u);
+    }
+    else if(has) k_strcpy(u,w->ebuf,sizeof u);
+    else if(w->ebuf[0]=='/'){ cat(u,sizeof u,"file://"); cat(u,sizeof u,w->ebuf); }
+    else if((dot||k_startswith(w->ebuf,"localhost")) && !sp){ cat(u,sizeof u,"http://"); cat(u,sizeof u,w->ebuf); }
+    else if(!k_strcmp(w->ebuf,"inicio")||!k_strcmp(w->ebuf,"ayuda")||!k_strcmp(w->ebuf,"acerca")||!k_strcmp(w->ebuf,"error")){ cat(u,sizeof u,"kng://"); cat(u,sizeof u,w->ebuf); }
+    else { cfg_search_url(w->ebuf,u,sizeof u);                                          /* palabras sueltas: buscador web (kng-proxy) o busqueda local */
+           if(!u[0]){ cat(u,sizeof u,"kng://buscar?q="); urlenc(u,sizeof u,w->ebuf); } }
+    nav(w,u,1);
+}
+
+/* ---------------- apps simples: Notas, Calculadora, Snake ---------------- */
+static void notes_save(Win *w){
+    w->note[w->nlen]=0;
+    if(w->file){ fs_write(w->file,w->note,w->nlen); k_strcpy(w->nstat,"Guardado",sizeof w->nstat); return; }
+    FsNode *d=fs_resolve(fs_root(),"/Documentos"); if(!d) d=fs_root();
+    char nm[32]; for(int k=1;k<100;k++){ nm[0]=0; cat(nm,32,"nota"); if(k>1) cat_int(nm,32,k); cat(nm,32,".txt"); if(!fs_find(d,nm)) break; }
+    FsNode *f=fs_create(d,nm,w->note,w->nlen);
+    if(f){ w->file=f; set_title(w,nm); k_strcpy(w->nstat,"Guardado en /Documentos",sizeof w->nstat); } else k_strcpy(w->nstat,"No se pudo guardar",sizeof w->nstat);
+}
+/* texto internamente en UTF-8: el teclado entrega Latin-1 (0xA0..0xFF) y aqui se guarda como 2 bytes */
+static int u8_enc(int c,char *o){ if(c>=0xA0&&c<=0xFF){ o[0]=(char)(0xC0|(c>>6)); o[1]=(char)(0x80|(c&0x3F)); return 2; } if(c>=32&&c<127){ o[0]=(char)c; return 1; } return 0; }
+static int u8_last(const char *b,int len){ int n=1; while(n<len && ((unsigned char)b[len-n]&0xC0)==0x80) n++; return n; }   /* bytes del ultimo caracter */
+static void notes_new(Win *w){ w->file=0; w->nlen=0; w->note[0]=0; w->nstat[0]=0; set_title(w,"Notas"); }
+static void notes_key(Win *w,int c){
+    char e[2]; int en=(c=='\n')?0:u8_enc(c,e);
+    if(c=='\b'){ if(w->nlen>0){ w->nlen-=u8_last(w->note,w->nlen); w->note[w->nlen]=0; } }
+    else if(c=='\n' && w->nlen<NOTEMAX){ w->note[w->nlen++]='\n'; w->note[w->nlen]=0; }
+    else if(en && w->nlen+en<NOTEMAX){ for(int i=0;i<en;i++) w->note[w->nlen++]=e[i]; w->note[w->nlen]=0; }
+    w->nstat[0]=0; dwin(w);
+}
+/* calculadora */
+/* calculadora: numeros con 4 decimales guardados x10000 en 64 bits. La division de 64 bits se hace a mano (el kernel de 32 bits no tiene libgcc). */
+#define CSC 10000LL
+#define CLIM (999999999999LL*CSC)
+static unsigned long long udiv64(unsigned long long n,unsigned long long d,unsigned long long *rem){
+    unsigned long long q=0, r=0;
+    for(int i=63;i>=0;i--){ r=(r<<1)|((n>>i)&1); if(r>=d){ r-=d; q|=1ULL<<i; } }
+    if(rem) *rem=r;
+    return q;
+}
+static unsigned long long uabs64(long long v){ return v<0?-(unsigned long long)v:(unsigned long long)v; }
+static long long sdiv64(long long a,long long b){ unsigned long long q=udiv64(uabs64(a),uabs64(b),0); return ((a<0)^(b<0))?-(long long)q:(long long)q; }
+static void calc_apply(Win *w){
+    long long a=w->cacc, b=w->ccur, r=b;
+    switch(w->cop){
+    case '+': r=a+b; break;
+    case '-': r=a-b; break;
+    case '*': { unsigned long long ua=uabs64(a), ub=uabs64(b); if(ua&&ub>udiv64(9000000000000000000ULL,ua,0)){ w->cerr=1; return; } r=sdiv64(a*b,CSC); break; }
+    case '/': if(!b){ w->cerr=1; return; } if(uabs64(a)>900000000000000ULL){ w->cerr=1; return; } r=sdiv64(a*CSC,b); break;
+    default: break; }
+    if(r>CLIM||r<-CLIM){ w->cerr=1; return; }
+    w->ccur=r;
+}
+static void calc_fmt(long long v,int dec,char *out,int max){       /* dec<0: hasta 4 decimales sin ceros sobrantes; dec>=0: exactamente 'dec' (al teclear) */
+    char t[40]; int k=0; unsigned long long rem, ip=udiv64(uabs64(v),(unsigned long long)CSC,&rem);
+    if(v<0) t[k++]='-';
+    char d[24]; int n=0; do{ unsigned long long r2; ip=udiv64(ip,10,&r2); d[n++]=(char)('0'+r2); }while(ip);
+    while(n) t[k++]=d[--n];
+    unsigned r4=(unsigned)rem; int fr[4]={(int)(r4/1000),(int)(r4/100%10),(int)(r4/10%10),(int)(r4%10)};   /* 32 bits: sin division de 64 bits */
+    int nd=dec>=0?dec:4; if(dec<0) while(nd>0&&!fr[nd-1]) nd--;
+    if(nd>0||dec==0){ t[k++]='.'; for(int i=0;i<nd;i++) t[k++]=(char)('0'+fr[i]); }
+    t[k]=0; k_strcpy(out,t,max);
+}
+static void calc_press(Win *w,int k){
+    static const long long DP[4]={1000,100,10,1};
+    if(w->cerr && k!='C') return;
+    if(k>='0'&&k<='9'){
+        if(w->cfresh){ w->ccur=0; w->cdec=-1; w->cfresh=0; }
+        long long d=k-'0', sg=w->ccur<0?-1:1;
+        if(w->cdec<0){ if(uabs64(w->ccur)>=99999999999LL*CSC) return; w->ccur=w->ccur*10+sg*d*CSC; }
+        else { if(w->cdec>=4) return; w->ccur+=sg*d*DP[w->cdec]; w->cdec++; }
+    }
+    else if(k=='.'){ if(w->cfresh){ w->ccur=0; w->cfresh=0; w->cdec=-1; } if(w->cdec<0) w->cdec=0; }
+    else if(k=='C'){ w->cacc=w->ccur=0; w->cop=0; w->cfresh=0; w->cerr=0; w->cdec=-1; }
+    else if(k=='<'){ if(w->cfresh) return;
+        if(w->cdec>0){ w->cdec--; w->ccur=sdiv64(w->ccur,DP[w->cdec]*10)*(DP[w->cdec]*10); }
+        else if(w->cdec==0) w->cdec=-1;
+        else w->ccur=sdiv64(w->ccur,10*CSC)*CSC; }
+    else if(k=='n'){ w->ccur=-w->ccur; }
+    else if(k=='%'){ w->ccur=sdiv64(w->ccur,100); w->cdec=-1; w->cfresh=1; }
+    else if(k=='='){ if(w->cop){ calc_apply(w); w->cop=0; } w->cfresh=1; w->cdec=-1; }
+    else if(k=='+'||k=='-'||k=='*'||k=='/'){ if(w->cop && !w->cfresh) calc_apply(w); w->cacc=w->ccur; w->cop=k; w->cfresh=1; w->cdec=-1; }
+    dwin(w);
+}
+typedef struct { const char *l; int k, col, row, span; } CKey;
+static const CKey CKEYS[]={
+    {"C",'C',0,0,1},{"<",'<',1,0,1},{"+/-",'n',2,0,1},{"/",'/',3,0,1},
+    {"7",'7',0,1,1},{"8",'8',1,1,1},{"9",'9',2,1,1},{"x",'*',3,1,1},
+    {"4",'4',0,2,1},{"5",'5',1,2,1},{"6",'6',2,2,1},{"-",'-',3,2,1},
+    {"1",'1',0,3,1},{"2",'2',1,3,1},{"3",'3',2,3,1},{"+",'+',3,3,1},
+    {"%",'%',0,4,1},{"0",'0',1,4,1},{".",'.',2,4,1},{"=",'=',3,4,1}};
+#define NCKEYS 20
+static void ckey_rect(const CKey *k,int *x,int *y,int *w,int *h){ *x=14+k->col*62; *y=78+k->row*46; *w=k->span*56+(k->span-1)*6; *h=40; }   /* relativo al contenido de la ventana */
+/* snake */
+static uint32_t srnd(Win *w){ w->seed=w->seed*1103515245u+12345u; return (w->seed>>16)&0x7fff; }
+static void snake_food(Win *w){
+    for(int tries=0;tries<400;tries++){
+        int x=(int)(srnd(w)%SGW), y=(int)(srnd(w)%SGH), ok=1;
+        for(int i=0;i<w->slen;i++) if(w->sx[i]==x&&w->sy[i]==y){ ok=0; break; }
+        if(ok){ w->fx=x; w->fy=y; return; } }
+    w->fx=-1;
+}
+static void snake_reset(Win *w){
+    w->slen=3; for(int i=0;i<3;i++){ w->sx[i]=(unsigned char)(8-i); w->sy[i]=8; }
+    w->sdir=w->sndir=1; w->score=0; w->sover=0; w->sstart=0; w->seed^=kticks()*2654435761u+7; snake_food(w); dirty=1;
+}
+static void snake_step(Win *w){
+    w->sdir=w->sndir;
+    int nx=w->sx[0]+(w->sdir==1)-(w->sdir==3), ny=w->sy[0]+(w->sdir==2)-(w->sdir==0);
+    int eat=(nx==w->fx&&ny==w->fy);
+    if(nx<0||ny<0||nx>=SGW||ny>=SGH){ w->sover=1; return; }
+    for(int i=0;i<w->slen-(eat?0:1);i++) if(w->sx[i]==nx&&w->sy[i]==ny){ w->sover=1; return; }
+    if(eat && w->slen<SGW*SGH) w->slen++;
+    for(int i=w->slen-1;i>0;i--){ w->sx[i]=w->sx[i-1]; w->sy[i]=w->sy[i-1]; }
+    w->sx[0]=(unsigned char)nx; w->sy[0]=(unsigned char)ny;
+    if(eat){ w->score++; snake_food(w); if(w->fx<0) w->sover=1; }
+}
+static void snake_key(Win *w,int c){
+    int d=-1;
+    if(c==KEY_UP||c=='w'||c=='W') d=0; else if(c==KEY_RIGHT||c=='d'||c=='D') d=1; else if(c==KEY_DOWN||c=='s'||c=='S') d=2; else if(c==KEY_LEFT||c=='a'||c=='A') d=3;
+    if(c==' '||c=='\n'){ if(w->sover||!w->sstart){ snake_reset(w); w->sstart=1; w->snext=kticks()+12; } return; }
+    if(d>=0 && ((d^2)!=w->sdir)){ w->sndir=d; if(!w->sstart && !w->sover){ w->sstart=1; w->snext=kticks()+12; } }
+}
+static void snake_tick(uint32_t t){
+    for(int i=0;i<nord;i++){ Win *w=&wins[order[i]]; if(w->type!=A_SNAKE||i!=nord-1) continue;
+        if(w->sstart && !w->sover && t>=w->snext){ snake_step(w); int sp=14-w->score/2; if(sp<5) sp=5; w->snext=t+(uint32_t)sp; dwin(w); } }
+}
+
+/* ---------------- dibujo comun ---------------- */
+static void button(int x,int y,int w,int h,const char *label,int primary){
+    rrect(x,y,w,h,6,0xffffff,primary?40:20); rrect(x+1,y+1,w-2,h-2,5,primary?ACCENT:C_BTN,255);
+    clip_set(x+1,y+1,w-2,h/2); rrect(x+1,y+1,w-2,h-2,5,0xffffff,14); clip_reset();
+    text(x+(w-text_w(label))/2,y+(h-16)/2,label,0xffffff);
+}
+static void draw_folder(int x,int y){ rrect(x,y+2,10,6,2,0xe0a62d,255); rrect(x,y+5,22,14,3,0xf5b83d,255); }
+static void draw_doc(int x,int y){ rrect(x+2,y+1,16,20,2,0xe8eaf4,255); fill(x+5,y+8,10,1,0x8a8fa8,255); fill(x+5,y+12,10,1,0x8a8fa8,255); fill(x+5,y+16,7,1,0x8a8fa8,255); }
+
+/* ---------------- gestor de archivos: portapapeles, menu contextual, papelera, arrastrar y soltar ---------------- */
+static int in_rect(int px,int py,int x,int y,int w,int h);
+static int dock_hit(int px,int py);
+static void dsk_sync(void);
+static int  dsk_find(const char *name);
+static void dren_start(int i);
+static int  dsk_find_at(int x,int y);
+static const char *dsk_name(int i);
+static void dsk_moveto(int i,int x,int y);
+#define FLMAX 4096
+static FsNode *fl[FLMAX];                                          /* lista de la carpeta que se dibuja o se toca (la interfaz es de un solo hilo) */
+static char clip_path[200]; static int clip_cut;                   /* portapapeles: ruta del elemento y si fue "cortar" */
+enum { M_OPEN=1, M_OPENNEW, M_COPY, M_CUT, M_PASTE, M_RENAME, M_DELETE, M_ZIP, M_UNZIP, M_DESK, M_PROPS,
+       M_NEWDIR, M_NEWTXT, M_NEWHTML, M_NEWMD, M_NEWSH, M_NEWPY, M_NEWC, M_NEWJSON, M_NEWEMPTY, M_TERM, M_EMPTYTRASH, M_REFRESH };
+typedef struct { const char *l; int act; } MItem;
+static MItem mu_it[26]; static int mu_n, mu_open, mu_x, mu_y, mu_w, mu_h, mu_hover=-1, mu_win=-1;
+static char mu_target[200], mu_dir[200];
+static int fd_cand, fd_on, fd_sx, fd_sy, fd_win=-1, fd_gx=-1000, fd_gy; static char fd_path[200], fd_name[FS_NAME];   /* arrastrar archivos */
+static int dsk_nx=-1, dsk_ny, dsel=-1;                             /* escritorio: donde poner el proximo icono; icono seleccionado */
+static int dren=-1, dren_len, dren_all; static char dren_buf[FS_NAME]; /* escritorio: cambiar nombre en el sitio */
+
+static FsNode *special_dir(const char *name){ FsNode *r=fs_root(), *d=fs_find(r,name); if(!d) d=fs_mkdir(r,name); return d&&d->dir?d:0; }
+static FsNode *desk_dir(void){ return special_dir("Escritorio"); }
+static FsNode *trash_dir(void){ return special_dir("Papelera"); }
+static const char *ext_of(const char *n){ const char *e=0; if(!*n) return ""; for(const char *s=n+1;*s;s++) if(*s=='.') e=s; return e?e+1:""; }
+static int ext_is(const FsNode *f,const char *e){ const char *x=ext_of(f->name); while(*x&&*e){ char a=*x, b=*e; if(a>='A'&&a<='Z') a+=32; if(a!=b) return 0; x++; e++; } return !*x&&!*e; }
+static int fm_inside(FsNode *a,FsNode *b){ for(;a;a=a->parent) if(a==b) return 1; return 0; }   /* a esta dentro de b (o es b) */
+static void unique_name(FsNode *dir,const char *want,char *out,int max){   /* "nombre (2).ext" si ya existe, como Windows */
+    if(!fs_find(dir,want)){ k_strcpy(out,want,max); return; }
+    const char *e=ext_of(want); int bl=*e?(int)(e-1-want):k_strlen(want); if(bl>FS_NAME-16) bl=FS_NAME-16;
+    for(int k=2;k<1000;k++){ char b[FS_NAME+16]; memcpy(b,want,(size_t)bl); b[bl]=0; cat(b,sizeof b," ("); cat_int(b,sizeof b,k); cat(b,sizeof b,")");
+        if(*e){ cat(b,sizeof b,"."); cat(b,sizeof b,e); } if(!fs_find(dir,b)){ k_strcpy(out,b,max); return; } }
+    k_strcpy(out,want,max);
+}
+static void base_name(const char *n,char *out,int max){ const char *e=ext_of(n); int l=*e?(int)(e-1-n):k_strlen(n); if(l>=max) l=max-1; memcpy(out,n,(size_t)l); out[l]=0; }
+static const char *type_name(const FsNode *f){
+    if(f->dir) return "Carpeta";
+    if(f->link) return "Enlace";
+    static const char *E[][2]={{"txt","Texto"},{"md","Markdown"},{"html","Pagina web"},{"htm","Pagina web"},{"sh","Script"},{"py","Python"},{"c","Codigo C"},{"h","Cabecera C"},
+        {"json","JSON"},{"zip","Archivo ZIP"},{"png","Imagen PNG"},{"jpg","Imagen JPG"},{"jpeg","Imagen JPG"},{"gif","Imagen GIF"},{"bmp","Imagen BMP"},{"pdf","Documento PDF"},
+        {"deb","Paquete Debian"},{"exe","Programa Windows"},{"bat","Script Windows"},{"rar","Archivo RAR"},{"7z","Archivo 7z"},{"mp3","Audio"},{"mp4","Video"},{"docx","Documento Word"},{"xlsx","Hoja Excel"},{"css","Hoja de estilo"},{"js","JavaScript"},{"csv","Tabla CSV"},{"log","Registro"},{"conf","Configuracion"},{"cfg","Configuracion"},{"elf","Programa"}};
+    for(unsigned i=0;i<sizeof E/sizeof *E;i++) if(ext_is(f,E[i][0])) return E[i][1];
+    if(f->size>=4&&f->data&&f->data[0]==0x7f&&f->data[1]=='E'&&f->data[2]=='L'&&f->data[3]=='F') return "Programa";
+    return "Archivo";
+}
+static void size_str(int b,char *o,int max){ o[0]=0;
+    if(b<1024){ cat_int(o,max,b); cat(o,max," B"); }
+    else if(b<1024*1024){ cat_int(o,max,(b+512)/1024); cat(o,max," KB"); }
+    else { cat_int(o,max,b/(1024*1024)); cat(o,max,"."); cat_int(o,max,(b%(1024*1024))*10/(1024*1024)); cat(o,max," MB"); } }
+static void tree_size(FsNode *d,int *files,int *bytes){ for(FsNode *c=d->child;c;c=c->next){ if(c->dir) tree_size(c,files,bytes); else { (*files)++; *bytes+=c->size; } } }
+static uint32_t ftype_col(const FsNode *f){
+    if(ext_is(f,"zip")) return 0xa78bfa;
+    if(ext_is(f,"html")||ext_is(f,"htm")) return 0xf97316;
+    if(ext_is(f,"sh")||ext_is(f,"py")||ext_is(f,"c")||ext_is(f,"js")) return 0x22c55e;
+    if(ext_is(f,"md")) return 0x3b82f6;
+    if(ext_is(f,"json")) return 0xeab308;
+    if(ext_is(f,"png")||ext_is(f,"jpg")||ext_is(f,"gif")) return 0xec4899;
+    return 0;
+}
+static void draw_ficon(int x,int y,const FsNode *f){                /* icono pequeno de la lista (24 px) */
+    if(f->dir){ draw_folder(x,y); return; }
+    draw_doc(x+2,y); uint32_t c=ftype_col(f); if(c) rrect(x+3,y+14,18,7,2,c,255);
+}
+static void draw_bigicon(int x,int y,const FsNode *f){             /* icono grande del escritorio (52 px) */
+    if(f&&f->dir){ rrect(x+6,y+8,18,10,3,0xe0a62d,255); rrect(x+6,y+14,40,30,5,0xf5b83d,255); fill(x+10,y+20,32,2,0xffffff,70); return; }
+    rrect(x+10,y+4,32,42,4,0xe8eaf4,255); fill(x+34,y+4,8,8,0xb8bdd0,255);
+    for(int i=0;i<4;i++) fill(x+15,y+16+i*6,22-(i==3?8:0),2,0x8a8fa8,255);
+    if(f){ uint32_t c=ftype_col(f); const char *e=ext_of(f->name); if(c||*e){ char u[6]; int k=0; while(e[k]&&k<4){ char ch=e[k]; u[k]=ch>='a'&&ch<='z'?ch-32:ch; k++; } u[k]=0;
+        int tw=text_w(u); rrect(x+26-tw/2-4,y+32,tw+8,15,4,c?c:0x6b7280,255); text(x+26-tw/2,y+31,u,0xffffff); } }
+}
+static void fm_status(Win *w,const char *s){ if(w){ k_strcpy(w->nstat,s,sizeof w->nstat); dwin(w); } }
+static int fm_rows(const Win *w){ return k_max(1,(w->h-TB-1-88-22)/26); }
+static Win *open_app(int type);
+static Win *fm_open_dir(FsNode *d,int neww){
+    open_new=neww; Win *w=open_app(A_FILES); open_new=0;
+    if(w){ w->dir=d; w->sel=0; w->scroll=0; w->editing=0; w->nstat[0]=0; } dirty=1; return w;
+}
+static void fm_start_rename(Win *w,FsNode *f){
+    w->sel=f; w->editing=1; ed_owner=0; k_strcpy(w->ebuf,f->name,sizeof w->ebuf); w->elen=k_strlen(w->ebuf); w->selall=1; fs_path(f,w->url,sizeof w->url);
+    FsNode **l=fl; int n=fs_list(w->dir,l,FLMAX), rows=fm_rows(w);
+    for(int i=0;i<n;i++) if(l[i]==f){ if(i<w->scroll) w->scroll=i; if(i>=w->scroll+rows) w->scroll=i-rows+1; }
+    dwin(w);
+}
+static void fm_commit_rename(Win *w){
+    if(!w->editing) return;
+    w->editing=0; dwin(w);
+    fm_edit_done(w->ebuf,&w->elen,FS_NAME); FsNode *f=fs_resolve_nf(fs_root(),w->url); w->ebuf[w->elen]=0;
+    if(!f||!w->elen||!k_strcmp(f->name,w->ebuf)) return;
+    if(fs_find(f->parent,w->ebuf)){ fm_status(w,"Ya existe un elemento con ese nombre"); return; }
+    char ox[FS_NAME]; k_strcpy(ox,ext_of(f->name),sizeof ox);
+    if(fs_rename(f,w->ebuf)) fm_status(w,"Nombre no valido (no puede tener /)");
+    else if(k_strcmp(ox,ext_of(f->name))){ char m[48]="Extension cambiada: ahora es "; cat(m,48,type_name(f)); fm_status(w,m); }
+    else fm_status(w,"Nombre cambiado");
+}
+static void fm_edit_key(int c,char *buf,int *len,int *all,int max){   /* teclear en un campo de nombre (UTF-8) */
+    if(c=='\b'){ if(*all){ *len=0; *all=0; ed_owner=0; } else if(*len>0) *len-=u8_last(buf,*len); buf[*len]=0; return; }
+    char e[2]; int en=u8_enc(c,e); if(!en||c=='/') return;
+    if(c=='.'&&ed_owner==buf) ed_owner=0;                          /* escribir un punto: la extension la pones tu (.zip, .exe, .bat...) */
+    if(*all){                                                       /* lo primero que se escribe reemplaza el nombre pero conserva la extension */
+        const char *x=ext_of(buf); ed_suf[0]=0; ed_owner=0;
+        if(*x){ ed_suf[0]='.'; k_strcpy(ed_suf+1,x,sizeof ed_suf-1); ed_owner=buf; }
+        *len=0; *all=0; }
+    if(*len+en+k_strlen(ed_owner==buf?ed_suf:"")<max-1){ for(int i=0;i<en;i++) buf[(*len)++]=e[i]; buf[*len]=0; }
+}
+static void fm_edit_done(char *buf,int *len,int max){                /* al confirmar: pegar la extension conservada */
+    if(ed_owner==buf&&ed_suf[0]&&*len+k_strlen(ed_suf)<max){ k_strcpy(buf+*len,ed_suf,max-*len); *len=k_strlen(buf); }
+    ed_owner=0;
+}
+static const char *fm_edit_suffix(const char *buf){ return ed_owner==buf?ed_suf:""; }
+static const char *NEWN[]={"Nueva carpeta","Nuevo documento.txt","Nueva pagina.html","Nuevo documento.md","nuevo-script.sh","nuevo-programa.py","programa.c","datos.json","Nuevo archivo"};
+static const char *NEWT[]={"","",
+    "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>Nueva pagina</title></head>\n<body>\n<h1>Hola</h1>\n<p>Escribe aqui.</p>\n</body>\n</html>\n",
+    "# Titulo\n\nEscribe aqui.\n",
+    "#!/bin/sh\necho \"Hola desde Konigreich OS\"\n",
+    "print(\"Hola desde Konigreich OS\")\n",
+    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Konigreich OS\\n\");\n    return 0;\n}\n",
+    "{\n  \"nombre\": \"valor\"\n}\n",""};
+static FsNode *fm_unz;                                              /* ultima carpeta extraida de un .zip */
+static void fm_do(int act,Win *w,FsNode *dir,FsNode *t){
+    if(!dir) return;
+    char nm[FS_NAME+16];
+    switch(act){
+    case M_OPEN:
+        if(!t) break;
+        if(t->dir){ if(w){ w->dir=t; w->sel=0; w->scroll=0; w->nstat[0]=0; } else fm_open_dir(t,1); }
+        else if(ext_is(t,"zip")){ fm_unz=0; fm_do(M_UNZIP,w,t->parent,t); if(fm_unz){ if(w){ w->dir=fm_unz; w->sel=0; w->scroll=0; } else fm_open_dir(fm_unz,1); } }   /* abrir un .zip: se extrae y se muestra */
+        else open_file(t);
+        break;
+    case M_OPENNEW: if(t&&t->dir) fm_open_dir(t,1); break;
+    case M_COPY: case M_CUT:
+        if(!t) break;
+        fs_path(t,clip_path,sizeof clip_path); clip_cut=(act==M_CUT);
+        fm_status(w,act==M_CUT?"Cortado: ve a otra carpeta y pulsa Pegar":"Copiado: ve a otra carpeta y pulsa Pegar"); break;
+    case M_PASTE: {
+        FsNode *dst=(t&&t->dir)?t:dir, *s=clip_path[0]?fs_resolve_nf(fs_root(),clip_path):0;
+        if(!s){ clip_path[0]=0; fm_status(w,"No hay nada para pegar"); break; }
+        if(s->dir&&fm_inside(dst,s)){ fm_status(w,"No se puede pegar una carpeta dentro de si misma"); break; }
+        if(clip_cut){
+            if(s->parent==dst){ clip_path[0]=0; break; }
+            unique_name(dst,s->name,nm,sizeof nm);
+            if(fs_move(s,dst,nm)) fm_status(w,"No se pudo mover"); else { clip_path[0]=0; if(w) w->sel=s; fm_status(w,"Movido aqui"); }
+        } else {
+            unique_name(dst,s->name,nm,sizeof nm); FsNode *c=fs_copy(s,dst,nm);
+            if(c){ if(w) w->sel=c; fm_status(w,"Pegado"); } else fm_status(w,"No se pudo copiar (memoria llena)");
+        }
+        break; }
+    case M_RENAME:
+        if(!t) break;
+        if(w) fm_start_rename(w,t);
+        else if(t->parent==desk_dir()){ dsk_sync(); int i=dsk_find(t->name); if(i>=0) dren_start(i); }
+        else { Win *nw=fm_open_dir(t->parent,0); if(nw) fm_start_rename(nw,t); }
+        break;
+    case M_DELETE: {
+        if(!t) break;
+        FsNode *tr=trash_dir();
+        if(w&&w->sel==t) w->sel=0;
+        if(tr&&!fm_inside(t,tr)&&!fm_inside(tr,t)){ unique_name(tr,t->name,nm,sizeof nm); if(!fs_move(t,tr,nm)){ fm_status(w,"Enviado a la Papelera"); break; } }
+        if(fm_inside(tr,t)) break;                                  /* nunca borrar la propia Papelera ni lo que la contiene */
+        fs_remove(t); fm_status(w,"Eliminado para siempre"); break; }
+    case M_ZIP: {
+        if(!t) break;
+        char b[FS_NAME]; if(t->dir) k_strcpy(b,t->name,sizeof b); else base_name(t->name,b,sizeof b);
+        if(k_strlen(b)>FS_NAME-8) b[FS_NAME-8]=0;
+        cat(b,sizeof b,".zip"); unique_name(dir,b,nm,sizeof nm);
+        FsNode *z=zip_create(t,dir,nm);
+        if(z){ if(w) w->sel=z; char m[48]="Comprimido: "; char sz[16]; size_str(z->size,sz,16); cat(m,48,sz); fm_status(w,m); } else fm_status(w,"No se pudo comprimir (memoria llena)");
+        break; }
+    case M_UNZIP: {
+        if(!t) break;
+        char b[FS_NAME]; base_name(t->name,b,sizeof b); if(!b[0]) k_strcpy(b,"extraido",sizeof b);
+        unique_name(dir,b,nm,sizeof nm); FsNode *d=fs_mkdir(dir,nm); int c=d?zip_extract(t,d):-1;
+        if(c<0){ if(d) fs_remove(d); fm_status(w,"No es un archivo .zip valido"); break; }
+        fm_unz=d; if(w){ w->sel=d; } char m[48]="Extraidos "; cat_int(m,48,c); cat(m,48," archivos"); fm_status(w,m); break; }
+    case M_DESK: { FsNode *dk=desk_dir(); if(!t||!dk||t->parent==dk) break; unique_name(dk,t->name,nm,sizeof nm); fm_status(w,fs_copy(t,dk,nm)?"Copiado al Escritorio":"No se pudo copiar"); break; }
+    case M_PROPS: {
+        if(!t) break;
+        char m[48]; m[0]=0; cat(m,48,type_name(t)); cat(m,48,", ");
+        if(t->dir){ int f=0,b=0; tree_size(t,&f,&b); cat_int(m,48,f); cat(m,48," archivos, "); char sz[16]; size_str(b,sz,16); cat(m,48,sz); }
+        else { char sz[16]; size_str(t->size,sz,16); cat(m,48,sz); }
+        fm_status(w,m); break; }
+    case M_NEWDIR: case M_NEWTXT: case M_NEWHTML: case M_NEWMD: case M_NEWSH: case M_NEWPY: case M_NEWC: case M_NEWJSON: case M_NEWEMPTY: {
+        int k=act-M_NEWDIR; unique_name(dir,NEWN[k],nm,sizeof nm);
+        FsNode *f=k==0?fs_mkdir(dir,nm):fs_create(dir,nm,NEWT[k],k_strlen(NEWT[k]));
+        if(!f){ fm_status(w,"No se pudo crear"); break; }
+        if(w) fm_start_rename(w,f);
+        else if(dir==desk_dir()){ dsk_sync(); int i=dsk_find(f->name); if(i>=0) dren_start(i); }
+        break; }
+    case M_TERM: { char c[220]="cd "; char p[200]; fs_path(dir,p,sizeof p); cat(c,sizeof c,p); run_in_terminal(c); break; }
+    case M_EMPTYTRASH: { FsNode *tr=trash_dir(); if(tr) while(tr->child) fs_remove(tr->child); fm_status(w,"Papelera vaciada"); break; }
+    default: break;
+    }
+    dsk_sync(); dirty=1;
+}
+/* menu contextual */
+static void mu_add(const char *l,int a){ if(mu_n<26){ mu_it[mu_n].l=l; mu_it[mu_n].act=a; mu_n++; } }
+static int mu_ih(int i){ return mu_it[i].act?24:9; }
+static void mu_show(int x,int y,int wi,FsNode *dir,FsNode *t){
+    mu_n=0; mu_win=wi; fs_path(dir,mu_dir,sizeof mu_dir); mu_target[0]=0; if(t) fs_path(t,mu_target,sizeof mu_target);
+    FsNode *tr=trash_dir();
+    if(t){
+        mu_add("Abrir",M_OPEN); if(t->dir) mu_add("Abrir en otra ventana",M_OPENNEW);
+        mu_add("-",0); mu_add("Cortar         Ctrl+X",M_CUT); mu_add("Copiar         Ctrl+C",M_COPY); if(t->dir&&clip_path[0]) mu_add("Pegar dentro",M_PASTE);
+        mu_add("-",0); mu_add("Cambiar nombre Ctrl+R",M_RENAME); mu_add("Comprimir en .zip",M_ZIP); if(!t->dir&&ext_is(t,"zip")) mu_add("Extraer aqui",M_UNZIP);
+        if(t->parent!=desk_dir()) mu_add("Copiar al Escritorio",M_DESK);
+        mu_add("-",0); mu_add(tr&&fm_inside(t,tr)?"Eliminar para siempre":"Eliminar       Supr",M_DELETE); mu_add("Propiedades",M_PROPS);
+    } else {
+        mu_add("Nueva carpeta",M_NEWDIR); mu_add("Archivo en blanco (escribe nombre y extension)",M_NEWEMPTY); mu_add("Documento de texto (.txt)",M_NEWTXT);
+        mu_add("-",0); if(clip_path[0]) mu_add("Pegar          Ctrl+V",M_PASTE);
+        mu_add("Abrir terminal aqui",M_TERM); if(dir==tr) mu_add("Vaciar Papelera",M_EMPTYTRASH); mu_add("Actualizar",M_REFRESH);
+    }
+    mu_w=60; mu_h=8; for(int i=0;i<mu_n;i++){ int tw=text_w(mu_it[i].l)+36; if(tw>mu_w) mu_w=tw; mu_h+=mu_ih(i); }
+    mu_x=x; mu_y=y; if(mu_x+mu_w>gw-4) mu_x=gw-4-mu_w; if(mu_y+mu_h>gh-4) mu_y=gh-4-mu_h; if(mu_x<4) mu_x=4; if(mu_y<BARH) mu_y=BARH;
+    mu_open=1; mu_hover=-1; dirty=1;
+}
+static int mu_item_at(int px,int py){
+    if(!in_rect(px,py,mu_x,mu_y,mu_w,mu_h)) return -1;
+    int y=mu_y+4; for(int i=0;i<mu_n;i++){ int h=mu_ih(i); if(py>=y&&py<y+h) return mu_it[i].act?i:-1; y+=h; } return -1;
+}
+static void mu_draw(void){
+    if(!mu_open) return;
+    for(int i=3;i>=1;i--) rrect(mu_x-i,mu_y-i+3,mu_w+2*i,mu_h+2*i,10+i,0x000000,22);
+    rrect(mu_x,mu_y,mu_w,mu_h,9,C_BORDER,255); rrect(mu_x+1,mu_y+1,mu_w-2,mu_h-2,8,0x1b1d30,255);
+    int y=mu_y+4;
+    for(int i=0;i<mu_n;i++){ int h=mu_ih(i);
+        if(!mu_it[i].act) fill(mu_x+10,y+4,mu_w-20,1,0xffffff,30);
+        else { if(i==mu_hover) rrect(mu_x+4,y,mu_w-8,h,6,ACCENT,200); text(mu_x+16,y+4,mu_it[i].l,i==mu_hover?0xffffff:C_TXT); }
+        y+=h; }
+}
+static void mu_exec(int i){
+    int act=mu_it[i].act; mu_open=0; dirty=1;
+    FsNode *dir=fs_resolve(fs_root(),mu_dir), *t=mu_target[0]?fs_resolve_nf(fs_root(),mu_target):0;
+    Win *w=(mu_win>=0&&wins[mu_win].used&&wins[mu_win].type==A_FILES)?&wins[mu_win]:0;
+    if(mu_target[0]&&!t) return;
+    if(mu_win<0&&(act==M_PASTE||(act>=M_NEWDIR&&act<=M_NEWEMPTY))&&!t){ dsk_nx=mu_x-20; dsk_ny=mu_y-10; }   /* en el escritorio: el icono nuevo va donde se hizo clic */
+    fm_do(act,w,dir,t);
+}
+/* barra de herramientas del gestor */
+static const char *FTB[8]={"<","Nuevo","Cortar","Copiar","Pegar","Renombrar","Comprimir","Eliminar"};
+static int ftb_x(int i,int *bw){ int x=8; for(int k=0;k<8;k++){ int w=k==0?30:text_w(FTB[k])+18; if(k==i){ *bw=w; return x; } x+=w+5; } *bw=0; return 0; }
+static FsNode *fm_row_node(Win *w,int ly,int *n_out){             /* elemento bajo la coordenada local 'ly' (0 si es espacio vacio) */
+    int ch=w->h-TB-1; int n=fs_list(w->dir,fl,FLMAX); if(n_out) *n_out=n;
+    if(ly<88||ly>=ch-22) return 0;
+    int row=(ly-88)/26, idx=row+w->scroll; if(row>=fm_rows(w)||idx>=n) return 0; return fl[idx];
+}
+static void fm_drop(void){                                          /* se solto un archivo arrastrado */
+    FsNode *s=fs_resolve_nf(fs_root(),fd_path); if(!s) return;
+    FsNode *dst=0; Win *tw=0; int onwin=0;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
+        if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
+        break; }
+    FsNode *dk=desk_dir();
+    if(!onwin){
+        if(dock_hit(mx,my)!=-1||my<BARH||!dk) return;
+        dst=dk;
+        { int i=dsk_find_at(mx,my); if(i>=0){ FsNode *f=fs_find(dk,dsk_name(i)); if(f&&f->dir&&f!=s) dst=f; } }
+        if(dst==dk){ dsk_nx=mx-38; dsk_ny=my-30; }
+    }
+    if(!dst) return;
+    if(s->parent==dst){ if(dst==dk&&!onwin){ int i=dsk_find(s->name); if(i>=0) dsk_moveto(i,mx-38,my-30); } dsk_nx=-1; return; }
+    if(s->dir&&fm_inside(dst,s)){ if(tw) fm_status(tw,"No se puede mover una carpeta dentro de si misma"); dsk_nx=-1; return; }
+    char nm[FS_NAME+16]; unique_name(dst,s->name,nm,sizeof nm);
+    if(fs_move(s,dst,nm)==0){ if(fd_win>=0&&wins[fd_win].used&&wins[fd_win].sel==s) wins[fd_win].sel=0; if(tw){ if(dst==tw->dir) tw->sel=s; fm_status(tw,dst==tw->dir?"Movido aqui":"Movido a la carpeta"); } }
+    else if(tw) fm_status(tw,"No se pudo mover");
+    dsk_sync(); dirty=1;
+}
+
+static int win_resizable(const Win *w){ return w->type==A_BROWSER||w->type==A_FILES||w->type==A_NOTES||w->type==A_VIEWER; }
+static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dirty=1; }
+static void win_set_max(Win *w,int x,int y,int ww,int hh){
+    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
+    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dirty=1;
+}
+static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
+static int text_w_big(const char *s){ return text_w(s)*3/2; }
+/* ---------------- ajustes: almacenamiento y pantalla ---------------- */
+typedef struct { int x, y, w, h, kind; char name[FS_NAME]; } DObj;   /* kind 0..7 = icono de la app del dock; 100 reloj; 101 sistema; 200 archivo de /Escritorio */
+#define NDO 64
+static DObj dobj[NDO];
+static void hsize(uint64_t b,char *o,int max){                    /* 1.5 GB, 320 MB, 12 KB (sin divisiones de 64 bits) */
+    o[0]=0;
+    if(b<1024){ cat_int(o,max,(int)b); cat(o,max," B"); return; }
+    if(b<(1u<<20)){ cat_int(o,max,(int)(b>>10)); cat(o,max," KB"); return; }
+    uint32_t v=b<(1ull<<30)?(uint32_t)((b*10)>>20):(uint32_t)((b*10)>>30);
+    cat_int(o,max,(int)(v/10));
+    if(v%10){ cat(o,max,"."); cat_int(o,max,(int)(v%10)); }
+    cat(o,max,b<(1ull<<30)?" MB":" GB");
+}
+#define NSC 8
+static const char *SCAT[NSC]={"Sistema","Programas instalados","Documentos","Imagenes","Escritorio","Descargas","Papelera","Otros"};
+static const uint32_t SCOL[NSC]={0x64748b,0x3b82f6,0xf59e0b,0xec4899,0x22c55e,0x06b6d4,0xef4444,0xa78bfa};
+static uint64_t sstat[NSC]; static uint32_t sstat_gen=0xFFFFFFFFu, sstat_t;
+static void stor_rec(FsNode *d,int cat,int sysdir){
+    for(FsNode *c=d->child;c;c=c->next){
+        if(c->dev||c->link) continue;
+        int k=cat, sd=sysdir;
+        if(d==fs_root()){
+            static const char *U[]={"Documentos","Imagenes","Escritorio","Descargas","Papelera"}; k=-1; sd=0;
+            for(int i=0;i<5;i++) if(!k_strcmp(c->name,U[i])) k=2+i;
+            if(!k_strcmp(c->name,"proc")||!k_strcmp(c->name,"dev")||!k_strcmp(c->name,"sys")) continue;
+            static const char *S[]={"usr","opt","var","etc","lib","lib64","bin","sbin","boot","root"};
+            for(int i=0;i<10;i++) if(!k_strcmp(c->name,S[i])) sd=1;
+        }
+        if(c->dir){ stor_rec(c,k,sd); continue; }
+        int cc=k>=2?k:(c->sys&&!c->chg)?0:sd?1:7;
+        sstat[cc]+=(uint64_t)(uint32_t)c->size;
+    }
+}
+static void stor_update(void){
+    uint32_t g=fs_gen(), t=kticks();
+    if(g==sstat_gen||(sstat_gen!=0xFFFFFFFFu&&t-sstat_t<200)) return;
+    sstat_gen=g; sstat_t=t; for(int i=0;i<NSC;i++) sstat[i]=0;
+    stor_rec(fs_root(),-1,0);
+}
+static void stor_bar(int x,int y,int w,int h,const uint64_t *seg,const uint32_t *col,int n,uint64_t total){   /* barra de bloques de colores, como Android */
+    rrect(x,y,w,h,6,0xffffff,22);
+    uint32_t t=(uint32_t)(total>>10); if(!t) return;
+    int px=x;
+    for(int i=0;i<n;i++){ uint32_t s=(uint32_t)(seg[i]>>10); int sw=(int)udiv64((uint64_t)s*(uint32_t)w,t,0);
+        if(s&&sw<3) sw=3;
+        if(px+sw>x+w) sw=x+w-px;
+        if(sw<=0) continue;
+        rrect(px,y,sw,h,i==0&&px==x?6:2,col[i],255); px+=sw; }
+}
+/* resolucion en caliente: adaptador grafico "Bochs/VirtualBox" (VBE DISPI). En PC reales la resolucion se elige en el menu de arranque. */
+static inline void bga_w(uint16_t i,uint16_t v){ __asm__ volatile("outw %0,%1"::"a"(i),"Nd"((uint16_t)0x1CE)); __asm__ volatile("outw %0,%1"::"a"(v),"Nd"((uint16_t)0x1CF)); }
+static inline uint16_t bga_r(uint16_t i){ uint16_t v; __asm__ volatile("outw %0,%1"::"a"(i),"Nd"((uint16_t)0x1CE)); __asm__ volatile("inw %1,%0":"=a"(v):"Nd"((uint16_t)0x1CF)); return v; }
+static int bga_ok(void){ uint16_t id=bga_r(0); return id>=0xB0C0&&id<=0xB0C5&&fb_bpp0==32; }
+static const int RES[][2]={{800,600},{1024,768},{1280,720},{1280,1024},{1366,768},{1600,900},{1920,1080}};
+#define NRES 7
+static int set_resolution(int w,int h){
+    if(!bga_ok()) return -1;
+    if(w==gw&&h==gh) return 0;
+    uint16_t vm=bga_r(0xA); if(vm&&(uint32_t)vm*65536u<(uint32_t)w*(uint32_t)h*4u) return -2;   /* no cabe en la memoria de video */
+    uint32_t *nwall=kmalloc((size_t)w*h*4); if(!nwall) return -3;
+    int ow=gw, oh=gh;
+    bga_w(4,0); bga_w(1,(uint16_t)w); bga_w(2,(uint16_t)h); bga_w(3,32); bga_w(4,0x41);
+    if(bga_r(1)!=w||bga_r(2)!=h||gfx_resize(fb_front,w,h,w*4)){ kfree(nwall); bga_w(4,0); bga_w(1,(uint16_t)ow); bga_w(2,(uint16_t)oh); bga_w(3,32); bga_w(4,0x41); return -4; }
+    kfree(wall); wall=nwall; build_wall();
+    for(int i=0;i<MAXW;i++) if(wins[i].used){ Win *v=&wins[i];
+        if(v->w>w) v->w=w;
+        if(v->h>h-BARH) v->h=h-BARH;
+        if(v->x+v->w>w) v->x=w-v->w;
+        if(v->y+v->h>h) v->y=h-v->h;
+        if(v->y<BARH) v->y=BARH;
+        if(v->x<0) v->x=0; }
+    for(int i=0;i<NDO;i++){ DObj *o=&dobj[i]; if(o->kind<0) continue;
+        if(o->kind==100||o->kind==101) o->x+=w-ow;                      /* los widgets siguen pegados al borde derecho */
+        if(o->x+o->w>w) o->x=w-o->w;
+        if(o->y+o->h>h-80) o->y=k_max(BARH,h-80-o->h);
+        if(o->x<0) o->x=0; }
+    if(mx>=w) mx=w-1;
+    if(my>=h) my=h-1;
+    char r[16]=""; cat_int(r,16,w); cat(r,16,"x"); cat_int(r,16,h); cfg_set("resolucion",r);
+    dsk_sync(); dirty=1; cursor_dirty=1; return 0;
+}
+static void draw_window(int wi,int focused){
+    Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
+    { int X0=x-8,Y0=y-6,X1=x+w->w+8,Y1=y+w->h+14;                                     /* sombra suave, solo fuera de la ventana */
+      for(int bnd=0;bnd<4;bnd++){
+          if(bnd==0) clip_set(X0,Y0,X1-X0,y-Y0); else if(bnd==1) clip_set(X0,y+w->h,X1-X0,Y1-(y+w->h));
+          else if(bnd==2) clip_set(X0,y,x-X0,w->h); else clip_set(x+w->w,y,X1-(x+w->w),w->h);
+          for(int i=3;i>=1;i--) rrect(x-i*2,y-i*2+6,w->w+4*i,w->h+4*i,11+i*2,0x000000,16);
+      }
+      clip_reset(); }
+    rrect(x,y,w->w,w->h,10,focused?mix(C_BORDER,ACCENT,60):C_BORDER,255);
+    rrect(x+1,y+1,w->w-2,w->h-2,9,C_BG,255);
+    clip_set(x+1,y+1,w->w-2,TB-1);
+    rrect(x+1,y+1,w->w-2,TB+10,9,focused?mix(0x20233a,ACCENT,70):0x1b1d30,255);
+    { static const unsigned char INS[9]={6,4,3,2,1,1,0,0,0};                         /* brillo degradado del titulo */
+      for(int j=0;j<TB-1;j++){ int in=j<9?INS[j]:0; fill(x+1+in,y+1+j,w->w-2-2*in,1,0xffffff,(focused?20:10)-j*(focused?20:10)/(TB-1)); } }
+    clip_reset();
+    fill(x+1,y+TB-1,w->w-2,1,focused?ACCENT:0x000000,focused?110:60);
+    circle(x+w->w-20,y+TB/2,7,focused?0xe5534b:0x4a4d63,255);                     /* boton cerrar */
+    line(x+w->w-23,y+TB/2-3,x+w->w-17,y+TB/2+3,1,0xffffff,focused?255:120);
+    line(x+w->w-17,y+TB/2-3,x+w->w-23,y+TB/2+3,1,0xffffff,focused?255:120);
+
+    int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
+    clip_set(cx,cy,cw,ch);
+    switch(w->type){
+    case A_ABOUT:{
+        crown(cx+cw/2-60,cy+24,120,0xe9c46a,ACCENT,255);
+        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Königreich OS",0xffffff);
+        { char vb[80]="kng-kernel " KNG_VERSION " (" KNG_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
+        text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
+        text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
+        break; }
+    case A_TERM:{
+        fill(cx,cy,cw,ch,0x0d0e16,255);
+        for(int r=0;r<TH;r++){ char u[TW*2+1]; l1_to_utf8((unsigned char*)w->grid[r],TW,u); text(cx,cy+r*16,u,0xd6dbe8); }
+        if(focused && ((kticks()/50)&1)) fill(cx+w->tc*8,cy+w->tr*16+13,8,3,ACCENT,255);
+        break; }
+    case A_XSCR:{
+        FsNode *xf=fs_resolve(fs_root(),"/var/lib/xvfb/Xvfb_screen0");
+        fill(cx,cy,cw,ch,0x000000,255);
+        const unsigned char *d=xf&&!xf->dir?(const unsigned char*)xf->data:0;
+        if(d&&xf->size>=100){
+            #define BE32(o) ((uint32_t)d[o]<<24|(uint32_t)d[(o)+1]<<16|(uint32_t)d[(o)+2]<<8|(uint32_t)d[(o)+3])
+            uint32_t hs=BE32(0), pw=BE32(16), ph=BE32(20), bpp=BE32(44), bpl=BE32(48), ncol=BE32(76);
+            uint32_t off=hs+ncol*12;
+            if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
+                int bw=(int)pw<cw?(int)pw:cw, bh=(int)ph<ch?(int)ph:ch;
+                blit32(cx,cy,(const uint32_t*)(const void*)(d+off),(int)(bpl/4),bw,bh);
+            } else text(cx+20,cy+20,"El servidor X usa un formato que kng aun no muestra (se necesita 32 bits).",0xd6dbe8);
+        } else { text(cx+20,cy+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8); text(cx+20,cy+44,"Inicia: pantalla   (en la terminal)",C_DIM); }
+        break; }
+    case A_FILES:{
+        { char t[40]="Archivos - "; cat(t,40,w->dir==fs_root()?"/":w->dir->name); k_strcpy(w->title,t,40); }
+        for(int i=0;i<8;i++){ int bw, bx=ftb_x(i,&bw); int off=((i==2||i==3||i==5||i==6||i==7)&&!w->sel)||(i==4&&!clip_path[0]);
+            button(cx+bx,cy+6,bw,24,FTB[i],i==1); if(off) rrect(cx+bx,cy+6,bw,24,6,C_BG,150); }
+        rrect(cx+8,cy+36,cw-16,24,6,0x10111b,255);
+        { char p[200]; fs_path(w->dir,p,sizeof p); clip_set(cx+12,cy+36,cw-24,24); text(cx+16,cy+40,p,C_TXT); clip_set(cx,cy,cw,ch); }
+        int tx=cx+cw-230, sx=cx+cw-24;
+        text(cx+46,cy+66,"Nombre",C_DIM); text(tx,cy+66,"Tipo",C_DIM); text(sx-text_w("Tamano"),cy+66,"Tamano",C_DIM);
+        fill(cx+8,cy+84,cw-16,1,0xffffff,24);
+        int n=fs_list(w->dir,fl,FLMAX), ly=cy+88, rows=fm_rows(w);
+        if(w->scroll>k_max(0,n-rows)) w->scroll=k_max(0,n-rows);
+        for(int i=0;i<rows && i+w->scroll<n;i++){
+            FsNode *f=fl[i+w->scroll]; int ry=ly+i*26;
+            if(f==w->sel) rrect(cx+6,ry,cw-22,25,5,ACCENT,90);
+            else if(fd_on&&f->dir&&in_rect(mx,my,cx+6,ry,cw-22,25)) rrect(cx+6,ry,cw-22,25,5,0xffffff,30);    /* carpeta donde se soltaria */
+            draw_ficon(cx+14,ry+2,f);
+            if(w->editing&&f==w->sel){
+                rrect(cx+42,ry+1,tx-cx-50,23,4,ACCENT,255); rrect(cx+43,ry+2,tx-cx-52,21,3,0x05060c,255);
+                clip_set(cx+44,ry,tx-cx-56,26);
+                if(w->selall){ const char *e=ext_of(w->ebuf); int bl=*e?(int)(e-1-w->ebuf):w->elen; char b2[FS_NAME]; memcpy(b2,w->ebuf,(size_t)bl); b2[bl]=0; fill(cx+47,ry+4,text_w(b2)+2,18,ACCENT,150); }
+                text(cx+48,ry+4,w->ebuf,0xffffff); text(cx+48+text_w(w->ebuf),ry+4,fm_edit_suffix(w->ebuf),C_DIM);
+                if((kticks()/50)&1) fill(cx+48+text_w(w->ebuf),ry+4,2,17,0xffffff,255);
+                clip_set(cx,cy,cw,ch);
+            } else { clip_set(cx+44,ry,tx-cx-52,26); text(cx+46,ry+4,f->name,f->link?0x8ab4ff:C_TXT); clip_set(cx,cy,cw,ch); }
+            text(tx,ry+4,type_name(f),C_DIM);
+            if(!f->dir){ char b[24]; size_str(f->size,b,24); text(sx-text_w(b),ry+4,b,C_DIM); }
+        }
+        if(n>rows){ int th=ch-88-22, bh=k_max(20,th*rows/n), by=cy+88+(th-bh)*w->scroll/k_max(1,n-rows); rrect(cx+cw-10,cy+88,6,th,3,0xffffff,14); rrect(cx+cw-10,by,6,bh,3,C_DIM,170); }
+        if(!n) text(cx+46,ly+6,"(carpeta vacia - clic derecho para crear algo)",C_DIM);
+        fill(cx,cy+ch-22,cw,22,0x10111b,255);
+        { char b[80]=""; cat_int(b,80,n); cat(b,80,n==1?" elemento":" elementos");
+          if(w->sel){ cat(b,80,"  |  "); cat(b,80,w->sel->name); } b[60]=0; text(cx+10,cy+ch-19,b,C_DIM);
+          const char *m=w->nstat[0]?w->nstat:(clip_path[0]?(clip_cut?"Portapapeles: cortado":"Portapapeles: copiado"):"");
+          if(*m) text(cx+cw-10-text_w(m),cy+ch-19,m,w->nstat[0]?0x7ee787:C_DIM); }
+        break; }
+    case A_VIEWER:{
+        fill(cx,cy,cw,ch,0x10111b,255);
+        if(w->file && w->file->data){
+            const char *d=w->file->data; int line=0, i=0, rows=(ch-8)/16;
+            while(d[i] && line<w->scroll+rows){
+                int s=i; while(d[i]&&d[i]!='\n') i++;
+                if(line>=w->scroll){ char tmp[200]; int l=i-s; if(l>199) l=199; memcpy(tmp,d+s,(size_t)l); tmp[l]=0; text(cx+10,cy+6+(line-w->scroll)*16,tmp,C_TXT); }
+                line++; if(d[i]=='\n') i++;
+            }
+        }
+        break; }
+    case A_BROWSER:{
+        button(cx+8,cy+6,32,24,"<",0);
+        rrect(cx+48,cy+6,cw-56,24,6,0x10111b,255);
+        char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
+        if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
+        text(cx+58,cy+10,shown,w->editing?0xffffff:C_DIM);
+        if(w->editing && ((kticks()/50)&1)) fill(cx+58+text_w(shown),cy+10,2,16,ACCENT,255);
+        int src_len; const char *src=page_src(w,&src_len);
+        int vx=cx+12, vy=cy+38, vw=cw-24, vh=ch-38;
+        html_render(src,src_len,vx,vy,vw,vh,w->bscroll,mix(0x8ab4ff,ACCENT,60),1,&w->page);
+        { int maxs=k_max(0,w->page.content_h-vh); if(w->bscroll>maxs) w->bscroll=maxs; }
+        if(w->page.title[0]){ char t[40]="Navegador - "; cat(t,40,w->page.title); k_strcpy(w->title,t,40); }
+        if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
+        break; }
+    case A_PROGS:{
+        text_bold(cx+16,cy+12,"Programas de Linux",C_TXT);
+        text(cx+16,cy+34,"Son los programas reales de Debian. Se instalan con: instalar <nombre>",C_DIM);
+        button(cx+cw-196,cy+8,86,24,"Pantalla X",0); button(cx+cw-100,cy+8,84,24,"Actualizar",1);
+        int cwid=(cw-48)/2;
+        for(int i=0;i<NPAPPS;i++){
+            int x=cx+16+(i%2)*(cwid+16), y=cy+64+(i/2)*76, inst=papp_installed(i);
+            rrect(x,y,cwid,66,10,0x10111b,255);
+            circle(x+32,y+33,17,PAPPS[i].col,255); { char ini[2]={PAPPS[i].name[0],0}; text_bold(x+27,y+25,ini,0xffffff); }
+            text_bold(x+60,y+8,PAPPS[i].name,C_TXT); text(x+60,y+26,PAPPS[i].desc,C_DIM);
+            text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
+        }
+        break; }
+    case A_MONITOR:{
+        char b[100]; int f,dr,by; fs_usage(&f,&dr,&by); int tot=(int)(kram_kb()/1024);
+        text_bold(cx+20,cy+14,"Memoria",C_TXT);
+        b[0]=0; cat(b,100,"RAM detectada: "); cat_int(b,100,tot); cat(b,100," MB"); text(cx+20,cy+40,b,C_TXT);
+        text_bold(cx+20,cy+88,"Archivos",C_TXT);
+        b[0]=0; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,dr); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes"); text(cx+20,cy+110,b,C_TXT);
+        rrect(cx+20,cy+134,cw-40,14,7,0x10111b,255); { int pct=by*100/(KNGFS_CAP); if(pct<1&&by>0) pct=1; if(pct>100) pct=100; if(pct) rrect(cx+20,cy+134,(cw-40)*pct/100,14,7,ACCENT,255); }
+        text_bold(cx+20,cy+164,"Disco",C_TXT);
+        b[0]=0; if(disk_sectors()){ cat(b,100,disk_model()); cat(b,100,kngfs_active()?"  (guardado automatico)":"  (sin formato kng)"); } else cat(b,100,"sin disco (los archivos se pierden al apagar)");
+        text(cx+20,cy+186,b,disk_sectors()&&kngfs_active()?0x7ee787:C_DIM);
+        text_bold(cx+20,cy+216,"Red",C_TXT);
+        { char nb[90]; net_info(nb,sizeof nb); nb[44]=0; text(cx+20,cy+238,nb,net_state()>=2?0x7ee787:C_DIM); }
+        b[0]=0; cat(b,100,"Ventanas: "); cat_int(b,100,nord); cat(b,100,"   Activo: "); cat_int(b,100,(int)(kticks()/6000)); cat(b,100," min"); text(cx+20,cy+266,b,C_DIM);
+        break; }
+    case A_NOTES:{
+        button(cx+8,cy+6,70,24,"Nueva",0); button(cx+86,cy+6,80,24,"Guardar",1);
+        if(w->nstat[0]) text(cx+178,cy+10,w->nstat,0x7ee787);
+        else { char b[40]=""; cat_int(b,40,w->nlen); cat(b,40," / "); cat_int(b,40,NOTEMAX); text(cx+cw-16-text_w(b),cy+10,b,C_DIM); }
+        rrect(cx+8,cy+38,cw-16,ch-46,8,0x10111b,255);
+        int cols=(cw-40)/8, rows=(ch-46-16)/16, total=1, col=0;
+        for(int i=0;i<w->nlen;i++){ if(w->note[i]=='\n'||col>=cols){ total++; col=0; if(w->note[i]=='\n') continue; } col++; }
+        int skip=total>rows?total-rows:0, row=0; col=0;
+        clip_set(cx+8,cy+38,cw-16,ch-46);
+        for(int i=0;i<=w->nlen;i++){
+            if(i<w->nlen && w->note[i]=='\n'){ row++; col=0; continue; }
+            if(col>=cols){ row++; col=0; }
+            if(i<w->nlen){ char t2[2]={w->note[i],0}; if(row>=skip) text(cx+20+col*8,cy+46+(row-skip)*16,t2,C_TXT); col++; }
+            else if(focused_cursor && ((kticks()/50)&1) && row>=skip) fill(cx+20+col*8,cy+46+(row-skip)*16+13,8,3,ACCENT,255);
+        }
+        clip_reset();
+        break; }
+    case A_CALC:{
+        rrect(cx+14,cy+10,cw-28,58,10,0x10111b,255);
+        char b[40]; if(w->cerr) k_strcpy(b,"Error",40); else calc_fmt(w->ccur,(!w->cfresh&&w->cdec>=0)?w->cdec:-1,b,40);
+        text_big(cx+cw-28-text_w_big(b),cy+34,b,w->cerr?0xff7b72:0xffffff);
+        if(w->cop){ char e[48]; calc_fmt(w->cacc,-1,e,40); char o[4]={' ',w->cop=='*'?'x':(char)w->cop,0,0}; cat(e,48,o); text(cx+cw-28-text_w(e),cy+14,e,C_DIM); }
+        for(int i=0;i<NCKEYS;i++){ int x,y,kw,kh; ckey_rect(&CKEYS[i],&x,&y,&kw,&kh); x+=cx; y+=cy; int k=CKEYS[i].k;
+            uint32_t bc=((k>='0'&&k<='9')||k=='.')?0x2a2e4a:(k=='=')?ACCENT:(k=='C'||k=='<'||k=='n'||k=='%')?0x3a3550:mix(0x2a2e4a,ACCENT,90);
+            rrect(x,y,kw,kh,8,0xffffff,16); rrect(x+1,y+1,kw-2,kh-2,7,bc,255);
+            text_bold(x+(kw-text_w(CKEYS[i].l))/2,y+12,CKEYS[i].l,0xffffff); }
+        break; }
+    case A_SNAKE:{
+        fill(cx,cy,cw,34,0x141626,255);
+        { char b[40]="Puntos: "; cat_int(b,40,w->score); text_bold(cx+14,cy+9,b,0xffffff); }
+        text(cx+cw-14-text_w(w->sover?"Espacio: reiniciar":w->sstart?"Flechas / WASD":"Pulsa una flecha"),cy+9,w->sover?"Espacio: reiniciar":w->sstart?"Flechas / WASD":"Pulsa una flecha",C_DIM);
+        int ox=cx, oy=cy+34;
+        for(int j=0;j<SGH;j++) for(int i=0;i<SGW;i++) fill(ox+i*SCELL,oy+j*SCELL,SCELL,SCELL,((i+j)&1)?0x12141f:0x161826,255);
+        if(w->fx>=0){ circle(ox+w->fx*SCELL+10,oy+w->fy*SCELL+11,7,0xef4444,255); fill(ox+w->fx*SCELL+10,oy+w->fy*SCELL+1,2,4,0x4ade80,255); }
+        for(int i=w->slen-1;i>=0;i--){ uint32_t c=mix(0x4ade80,0x166534,i*160/k_max(1,w->slen)); if(w->sover) c=mix(c,0x888888,150);
+            rrect(ox+w->sx[i]*SCELL+1,oy+w->sy[i]*SCELL+1,SCELL-2,SCELL-2,6,c,255); }
+        { int hx=ox+w->sx[0]*SCELL+10, hy=oy+w->sy[0]*SCELL+10; circle(hx-4,hy-3,2,0x000000,255); circle(hx+4,hy-3,2,0x000000,255); }
+        if(w->sover){ rrect(cx+cw/2-110,oy+SGH*SCELL/2-34,220,68,12,0x05060c,225); text_big(cx+cw/2-text_w_big("Fin del juego")/2,oy+SGH*SCELL/2-24,"Fin del juego",0xffffff);
+            text(cx+cw/2-text_w("Espacio para reintentar")/2,oy+SGH*SCELL/2+10,"Espacio para reintentar",C_DIM); }
+        break; }
+    case A_SETTINGS:{
+        static const char *TABS[4]={"General","Pantalla","Almacenamiento","Sistema"};
+        for(int i=0;i<4;i++) button(cx+12+i*124,cy+10,118,28,TABS[i],i==set_tab);
+        int oy=cy+50;
+        if(set_tab==0){
+            text_bold(cx+20,oy+14,"Color de acento",C_TXT);
+            for(int i=0;i<6;i++){ int sx=cx+20+i*44+14, sy=oy+54; if(i==acc_i) circle(sx,sy,18,0xffffff,255); circle(sx,sy,14,ACC[i],255); }
+            text_bold(cx+20,oy+88,"Fondo de pantalla",C_TXT);
+            for(int i=0;i<3;i++){ int tx2=cx+20+i*112, ty=oy+114;
+                if(i==wall_i) rrect(tx2-3,ty-3,102,66,7,0xffffff,255);
+                rrect(tx2,ty,96,60,5,0x000000,255);
+                { uint32_t *th=get_thumb(i); if(th) for(int yy=2;yy<58;yy++) for(int xx=2;xx<94;xx++) px_blend(tx2+xx,ty+yy,th[yy*THW+xx],255); } }
+            text_bold(cx+20,oy+192,"Hora",C_TXT);
+            button(cx+20,oy+218,28,24,"-",0); button(cx+56,oy+218,28,24,"+",0);
+            { char b[40]="Zona horaria: UTC"; if(tz>=0) cat(b,40,"+"); cat_int(b,40,tz); text(cx+98,oy+222,b,C_TXT); }
+            button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
+            text_bold(cx+20,oy+296,"Teclado",C_TXT);
+            for(int i=0;i<3;i++) button(cx+20+i*150,oy+322,140,26,kbd_layout_name(i),kbd_layout()==i);
+            text(cx+20,oy+354,"Tambien: escribe  teclado latam | es | us  en la terminal",C_DIM);
+        } else if(set_tab==1){
+            char b[80]=""; cat(b,80,"Resolucion actual: "); cat_int(b,80,gw); cat(b,80," x "); cat_int(b,80,gh); cat(b,80,fb_bpp0==24?" (24 bits)":" (32 bits)");
+            text_bold(cx+20,oy+14,b,C_TXT);
+            if(bga_ok()){
+                text(cx+20,oy+42,"Elige una resolucion (se aplica al instante y se recuerda):",C_DIM);
+                for(int i=0;i<NRES;i++){ char r[16]=""; cat_int(r,16,RES[i][0]); cat(r,16," x "); cat_int(r,16,RES[i][1]);
+                    button(cx+20+(i%3)*160,oy+70+(i/3)*36,150,28,r,RES[i][0]==gw&&RES[i][1]==gh); }
+            } else {
+                text(cx+20,oy+42,"En este equipo la resolucion la pone el menu de arranque:",C_DIM);
+                text(cx+20,oy+64,"al encender, entra en \"Resolucion de pantalla\", elige una",C_DIM);
+                text(cx+20,oy+84,"y luego arranca Konigreich OS. Por defecto usa la mayor",C_DIM);
+                text(cx+20,oy+104,"disponible hasta 1920 x 1080.",C_DIM);
+            }
+        } else if(set_tab==2){
+            stor_update();
+            uint64_t tot=0; for(int i=0;i<NSC;i++) tot+=sstat[i];
+            uint64_t ram=(uint64_t)kram_kb()*1024u;
+            char b[96], s1[24], s2[24];
+            text_bold(cx+20,oy+10,"Archivos (viven en la memoria RAM)",C_TXT);
+            hsize(tot,s1,24); hsize(ram>tot?ram-tot:0,s2,24); b[0]=0; cat(b,96,s1); cat(b,96," usados  -  "); cat(b,96,s2); cat(b,96," libres");
+            text(cx+20,oy+32,b,C_DIM);
+            stor_bar(cx+20,oy+56,cw-40,22,sstat,SCOL,NSC,ram>tot?ram:tot);
+            for(int i=0;i<NSC;i++){ int lx=cx+20+(i%2)*240, ly2=oy+92+(i/2)*26;
+                rrect(lx,ly2+3,14,14,4,SCOL[i],255); text(lx+22,ly2,SCAT[i],C_TXT); hsize(sstat[i],s1,24); text(lx+226-text_w(s1),ly2,s1,C_DIM); }
+            int dy=oy+206; text_bold(cx+20,dy,"Disco (donde se guardan tus datos al apagar)",C_TXT);
+            if(disk_init()==0){
+                uint64_t cap=(uint64_t)disk_sectors()*512u, used=kngfs_active()?(uint64_t)kngfs_last_size():0;
+                hsize(cap,s1,24); b[0]=0; cat(b,96,disk_kind()); cat(b,96,": "); cat(b,96,disk_model()); cat(b,96,", "); cat(b,96,s1); text(cx+20,dy+24,b,C_DIM);
+                uint64_t seg[1]={used}; uint32_t col[1]={ACCENT}; stor_bar(cx+20,dy+48,cw-40,22,seg,col,1,cap);
+                if(kngfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
+                    button(cx+20,dy+104,150,28,"Guardar ahora",1); }
+                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Konigreich OS.",0xffb86b);
+                    button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
+            } else { text(cx+20,dy+24,"No se encontro un disco duro (IDE o SATA).",C_DIM); text(cx+20,dy+44,"Sin disco, lo que hagas se pierde al apagar.",0xffb86b); }
+            button(cx+cw-170,dy+104,150,28,"Vaciar Papelera",0);
+        } else {
+            char b[96];
+            text_bold(cx+20,oy+10,"Sistema",C_TXT);
+            b[0]=0; cat(b,96,"Kernel: kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
+            b[0]=0; cat(b,96,"Memoria RAM: "); { char s1[24]; hsize((uint64_t)kram_kb()*1024u,s1,24); cat(b,96,s1); } text(cx+20,oy+60,b,C_DIM);
+            b[0]=0; cat(b,96,"Pantalla: "); cat_int(b,96,gw); cat(b,96," x "); cat_int(b,96,gh); text(cx+20,oy+82,b,C_DIM);
+            b[0]=0; cat(b,96,"Tiempo encendido: "); cat_int(b,96,(int)(kticks()/6000)); cat(b,96," min"); text(cx+20,oy+104,b,C_DIM);
+            { char nb[90]; net_info(nb,sizeof nb); text(cx+20,oy+126,nb,C_DIM); }
+            b[0]=0; cat(b,96,"Disco: "); if(disk_init()==0){ cat(b,96,disk_kind()); cat(b,96,", "); cat(b,96,kngfs_active()?"guardando datos":"sin usar"); } else cat(b,96,"ninguno"); text(cx+20,oy+148,b,C_DIM);
+            button(cx+20,cy+ch-44,110,28,"Reiniciar",0); button(cx+142,cy+ch-44,110,28,"Apagar",0);
+        }
+        break; }
+    }
+    clip_reset();
+    { int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
+      clip_set(x+1,y+1,w->w-40,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+}
+
+/* ---------------- barra superior y dock ---------------- */
+static void draw_topbar(void){
+    for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
+    fill(0,BARH-1,gw,1,0xffffff,14);
+    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Königreich OS",C_TXT);
+    char t[16]=""; int h=clk_h;
+    if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
+    else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
+    text_bold((gw-text_w(t))/2,6,t,0xffffff);
+    { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
+    { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
+}
+#define NDOCK 10
+#define TILE 52
+static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
+static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
+static const char *DOCK_LBL[NDOCK]={"Inicio","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static void draw_icon(int i,int x,int y){
+    rrect(x,y,TILE,TILE,13,0x1a1d33,255);
+    clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
+    rrect(x,y,TILE,TILE,13,0xffffff,10);
+    int cx=x+TILE/2, cy=y+TILE/2;
+    switch(i){
+    case 0: crown(x+9,y+11,34,0xe9c46a,ACCENT,255); break;
+    case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
+            line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
+    case 2: rrect(x+9,y+14,16,9,3,0xe0a62d,255); rrect(x+9,y+19,34,22,4,0xf5b83d,255); fill(x+13,y+25,26,2,0xffffff,70); break;
+    case 3: rrect(x+7,y+11,38,30,5,0x0d0e16,255); line(x+14,y+19,x+21,y+25,2,0x7ee787,255); line(x+21,y+25,x+14,y+31,2,0x7ee787,255); fill(x+25,y+31,10,3,0x7ee787,255); break;
+    case 4: rrect(x+11,y+8,28,36,5,0xf4f1e6,255); rrect(x+11,y+8,28,9,4,0xf59e0b,255); fill(x+11,y+13,28,4,0xf59e0b,255);
+            for(int k=0;k<3;k++) fill(x+16,y+22+k*7,18,2,0x8a8fa8,255);
+            line(x+34,y+42,x+44,y+30,3,0x60a5fa,255); break;
+    case 5: rrect(x+10,y+7,32,38,6,0x2b2f4d,255); rrect(x+14,y+11,24,10,3,0x7ee787,230);
+            for(int r=0;r<3;r++){
+                for(int c2=0;c2<3;c2++) rrect(x+15+c2*8,y+26+r*6,6,4,2,c2==2?ACCENT:0xc9cde0,255);
+            }
+            break;
+    case 6: line(x+12,y+40,x+12,y+26,6,0x4ade80,255); line(x+12,y+26,x+30,y+26,6,0x22c55e,255); line(x+30,y+26,x+30,y+14,6,0x4ade80,255);
+            circle(x+30,y+13,5,0x86efac,255); circle(x+28,y+12,1,0x000000,255); circle(x+32,y+12,1,0x000000,255); circle(x+40,y+38,5,0xef4444,255); break;
+    case 7:{ static const short C8[8]={1000,707,0,-707,-1000,-707,0,707}, S8[8]={0,707,1000,707,0,-707,-1000,-707};
+            for(int k=0;k<8;k++) circle(cx+17*C8[k]/1000,cy+17*S8[k]/1000,4,0x14b8a6,255);
+            circle(cx,cy,15,0x14b8a6,255); circle(cx,cy,6,0x1a1d33,255); break; }
+    case 9: rrect(x+9,y+9,15,15,4,0xf97316,255); rrect(x+28,y+9,15,15,4,0x60a5fa,255); rrect(x+9,y+28,15,15,4,0x4ade80,255); rrect(x+28,y+28,15,15,4,0xe9c46a,255); break;
+    case 8: rrect(x+9,y+10,34,32,5,0x0d0e16,255); fill(x+14,y+30,5,9,0x4ade80,255); fill(x+23,y+22,5,17,0x60a5fa,255); fill(x+32,y+16,5,23,0xf59e0b,255); break;
+    }
+}
+static void draw_dock(void){
+    int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
+    rrect(bx,by,bw,bh,18,0x05060c,150); rrect(bx,by,bw,bh,18,0xffffff,16);
+    for(int i=0;i<NDOCK;i++){
+        int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
+        if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,70);
+        draw_icon(i,x,y);
+        for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
+        if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
+    }
+}
+
+/* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
+
+static int ddrag=-1, ddx, ddy, dmoved, dlast=-1; static uint32_t dlastt;
+static void dobj_init(void){
+    static const int ik[4]={1,2,4,6};
+    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=22; dobj[i].y=BARH+18+i*96; }
+    dobj[4].kind=100; dobj[4].w=210; dobj[4].h=92; dobj[4].x=gw-232; dobj[4].y=BARH+18;
+    dobj[5].kind=101; dobj[5].w=210; dobj[5].h=108; dobj[5].x=gw-232; dobj[5].y=BARH+124;
+    for(int i=6;i<NDO;i++) dobj[i].kind=-1;
+}
+static void draw_dobj(const DObj *o){
+    if(o->kind==200){
+        int i=(int)(o-dobj); FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,o->name):0;
+        if(i==dsel) rrect(o->x,o->y,o->w,o->h,10,ACCENT,70);
+        draw_bigicon(o->x+12,o->y+2,f);
+        if(i==dren){
+            int lw=k_max(text_w(dren_buf)+text_w(fm_edit_suffix(dren_buf))+12,o->w); int lx=o->x+o->w/2-lw/2;
+            rrect(lx,o->y+TILE+4,lw,22,5,ACCENT,255); rrect(lx+1,o->y+TILE+5,lw-2,20,4,0x05060c,255);
+            text(lx+6,o->y+TILE+7,dren_buf,0xffffff); text(lx+6+text_w(dren_buf),o->y+TILE+7,fm_edit_suffix(dren_buf),C_DIM); if((kticks()/50)&1) fill(lx+6+text_w(dren_buf),o->y+TILE+7,2,16,0xffffff,255);
+        } else {
+            char lb[FS_NAME]; k_strcpy(lb,o->name,sizeof lb); int maxw=o->w+10;
+            if(text_w(lb)>maxw){ int l=k_strlen(lb); while(l>1&&text_w(lb)>maxw-text_w("...")){ lb[--l]=0; } cat(lb,sizeof lb,"..."); }
+            int lw=text_w(lb); rrect(o->x+o->w/2-lw/2-5,o->y+TILE+6,lw+10,20,6,0x05060c,130);
+            text(o->x+o->w/2-lw/2,o->y+TILE+8,lb,0xffffff);
+        }
+        return;
+    }
+    if(o->kind>=0 && o->kind<8){
+        draw_icon(o->kind,o->x+12,o->y);
+        int lw=text_w(DOCK_LBL[o->kind]); rrect(o->x+o->w/2-lw/2-5,o->y+TILE+6,lw+10,20,6,0x05060c,130);
+        text(o->x+o->w/2-lw/2,o->y+TILE+8,DOCK_LBL[o->kind],0xffffff);
+    } else if(o->kind==100){
+        rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
+        char t[16]=""; int h=clk_h; if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m);
+        { int tw=k_strlen(t)*12; text_big(o->x+(o->w-tw)/2,o->y+22,t,0xffffff); text_big(o->x+(o->w-tw)/2+1,o->y+22,t,0xffffff); }
+        { char z[40]="Zona horaria UTC"; if(tz>=0) cat(z,40,"+"); cat_int(z,40,tz); text(o->x+(o->w-text_w(z))/2,o->y+62,z,C_DIM); }
+    } else if(o->kind==101){
+        rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
+        text_bold(o->x+14,o->y+10,"Sistema",0xffffff);
+        char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text(o->x+14,o->y+34,b,C_TXT);
+        b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text(o->x+14,o->y+54,b,C_TXT);
+        b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
+    }
+}
+static int dobj_hit(int px,int py){ for(int i=NDO-1;i>=0;i--) if(dobj[i].kind>=0 && px>=dobj[i].x&&px<dobj[i].x+dobj[i].w&&py>=dobj[i].y&&py<dobj[i].y+dobj[i].h) return i; return -1; }
+static int dsk_find(const char *name){ for(int i=0;i<NDO;i++) if(dobj[i].kind==200&&!k_strcmp(dobj[i].name,name)) return i; return -1; }
+static int dsk_find_at(int x,int y){ int i=dobj_hit(x,y); return (i>=0&&dobj[i].kind==200)?i:-1; }
+static const char *dsk_name(int i){ return dobj[i].name; }
+static void dsk_clamp(DObj *o){ if(o->x<0) o->x=0; if(o->y<BARH) o->y=BARH; if(o->x+o->w>gw) o->x=gw-o->w; if(o->y+o->h>gh-70) o->y=gh-70-o->h; }
+static void dsk_moveto(int i,int x,int y){ DObj *o=&dobj[i]; dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=x; o->y=y; dsk_clamp(o); dmark(o->x-6,o->y-6,o->w+12,o->h+12); }
+static void dsk_free_slot(int *x,int *y){                           /* primer hueco libre de la cuadricula, de arriba abajo y de izquierda a derecha */
+    for(int col=0;col<14;col++) for(int row=0;row<8;row++){
+        int px=22+col*90, py=BARH+18+row*96; if(py+84>gh-90||px+76>gw) continue;
+        int ok=1; for(int j=0;j<NDO&&ok;j++){ DObj *o=&dobj[j]; if(o->kind>=0&&px<o->x+o->w&&px+76>o->x&&py<o->y+o->h&&py+84>o->y) ok=0; }
+        if(ok){ *x=px; *y=py; return; } }
+    *x=110; *y=BARH+18;
+}
+static void dsk_sync(void){                                         /* los iconos de archivos del escritorio siguen a la carpeta /Escritorio */
+    FsNode *d=desk_dir(); if(!d) return;
+    for(int i=0;i<NDO;i++) if(dobj[i].kind==200&&!fs_find(d,dobj[i].name)){ DObj *o=&dobj[i]; dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->kind=-1; if(dren==i) dren=-1; if(dsel==i) dsel=-1; }
+    for(FsNode *c=d->child;c;c=c->next){
+        if(dsk_find(c->name)>=0) continue;
+        int i=0; while(i<NDO&&dobj[i].kind>=0) i++; if(i>=NDO) break;
+        DObj *o=&dobj[i]; o->kind=200; o->w=76; o->h=84; k_strcpy(o->name,c->name,sizeof o->name);
+        if(dsk_nx>=0){ o->x=dsk_nx; o->y=dsk_ny; dsk_nx=-1; } else dsk_free_slot(&o->x,&o->y);
+        dsk_clamp(o); dmark(o->x-6,o->y-6,o->w+12,o->h+12);
+    }
+    dsk_nx=-1;
+}
+static void dren_start(int i){ dren=i; dsel=i; ed_owner=0; k_strcpy(dren_buf,dobj[i].name,sizeof dren_buf); dren_len=k_strlen(dren_buf); dren_all=1; dirty=1; }
+static void dren_commit(void){
+    if(dren<0) return;
+    fm_edit_done(dren_buf,&dren_len,FS_NAME);
+    int i=dren; dren=-1; dirty=1;
+    FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj[i].name):0;
+    if(!f||!dren_len||!k_strcmp(dren_buf,dobj[i].name)) return;
+    if(!fs_find(dk,dren_buf)&&!fs_rename(f,dren_buf)) k_strcpy(dobj[i].name,dren_buf,sizeof dobj[i].name);
+}
+static void dsk_open(int i){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj[i].name):0; if(f) fm_do(M_OPEN,0,dk,f); }
+static int dsk_drop(int i){                                         /* se solto un icono del escritorio: sobre una ventana de archivos o una carpeta, se mueve ahi */
+    FsNode *dk=desk_dir(); FsNode *s=dk?fs_find(dk,dobj[i].name):0; if(!s) return 0;
+    FsNode *dst=0; Win *tw=0;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
+        break; }
+    if(!dst){ for(int j=NDO-1;j>=0;j--) if(j!=i&&dobj[j].kind==200&&in_rect(mx,my,dobj[j].x,dobj[j].y,dobj[j].w,dobj[j].h)){ FsNode *f=fs_find(dk,dobj[j].name); if(f&&f->dir&&f!=s) dst=f; break; } }
+    if(!dst||dst==dk) return 0;
+    if(s->dir&&fm_inside(dst,s)) return 0;
+    char nm[FS_NAME+16]; unique_name(dst,s->name,nm,sizeof nm);
+    if(fs_move(s,dst,nm)==0){ if(tw){ if(dst==tw->dir) tw->sel=s; fm_status(tw,dst==tw->dir?"Movido aqui":"Movido a la carpeta"); } dsk_sync(); dirty=1; return 1; }
+    return 0;
+}
+
+/* ---------------- cursor ---------------- */
+#define CW 12
+#define CH 19
+static const char *CUR[CH]={
+"X           ","XX          ","X.X         ","X..X        ","X...X       ","X....X      ","X.....X     ","X......X    ",
+"X.......X   ","X........X  ","X.....XXXXX ","X..X..X     ","X.X X..X    ","XX  X..X    ","X    X..X   ","     X..X   ","      X..X  ","      X..X  ","       XX   "};
+static void cursor_restore(void){ gfx_present_rect(cur_x,cur_y,CW+1,CH+1); }
+static void cursor_draw(void){
+    for(int j=0;j<CH;j++) for(int i=0;i<CW;i++){ char c=CUR[j][i]; if(c=='X') gfx_front_px(mx+i,my+j,0x000000); else if(c=='.') gfx_front_px(mx+i,my+j,0xffffff); }
+    cur_x=mx; cur_y=my;
+}
+
+/* ---------------- render ---------------- */
+static int rect_in(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax>=bx&&ay>=by&&ax+aw<=bx+bw&&ay+ah<=by+bh; }
+static int rect_hit(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by; }
+static void render(void){
+    int x0=0,y0=0,x1=gw,y1=gh;
+    if(!dirty){ x0=dr0x; y0=dr0y; x1=dr1x; y1=dr1y; }
+    dr0x=dr0y=dr1x=dr1y=0;
+    if(x1<=x0||y1<=y0){ dirty=0; return; }
+    int rw=x1-x0, rh=y1-y0;
+    clip_base(x0,y0,rw,rh);
+    for(int j=y0;j<y1;j++) memcpy(bb+j*gw+x0,wall+j*gw+x0,(size_t)rw*4);
+    for(int i=0;i<NDO;i++) if(dobj[i].kind>=0 && rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh)) draw_dobj(&dobj[i]);
+    for(int k=0;k<nord;k++){
+        Win *w=&wins[order[k]];
+        if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
+        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
+        if(!hidden) draw_window(order[k],k==nord-1);
+    }
+    draw_topbar(); draw_dock();
+    if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
+        rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
+    mu_draw();
+    gfx_present_rect(x0,y0,rw,rh);
+    clip_base(0,0,gw,gh);
+    cur_x=-100; cursor_draw(); dirty=0; cursor_dirty=0;
+}
+static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==A_FILES&&wins[top].editing){ static int p; int q=(kticks()/50)&1; if(q!=p){ p=q; dwin(&wins[top]); } } return dren>=0; }
+void gui_frame(void){
+    uint32_t t=kticks();
+    browser_poll();
+    if(t>=clk_next){ int h,m; clk_next=t+100; if(!krtc(&h,&m)){ h=((h+tz)%24+24)%24; if(h!=clk_h||m!=clk_m){ clk_h=h; clk_m=m; dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230); } } }
+    { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
+        if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
+    { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
+    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
+    { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
+    { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
+    snake_tick(t); kngfs_tick();
+    if(dirty||dr1x>dr0x) render();
+    else if(cursor_dirty){ cursor_restore(); cursor_draw(); cursor_dirty=0; }
+}
+
+/* ---------------- entrada ---------------- */
+static int in_rect(int px,int py,int x,int y,int w,int h){ return px>=x&&px<x+w&&py>=y&&py<y+h; }
+static int dock_hit(int px,int py){
+    int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
+    if(!in_rect(px,py,bx,by-6,bw,bh+6)) return -1;
+    for(int i=0;i<NDOCK;i++) if(in_rect(px,py,bx+14+i*(TILE+14)-7,by,TILE+14,bh)) return i;
+    return -2;                                                       /* sobre el dock, pero entre iconos */
+}
+static void files_click(Win *w,int lx,int ly,int cw,int ch){
+    int wi=(int)(w-wins);
+    if(w->editing) fm_commit_rename(w);
+    w->nstat[0]=0;
+    if(ly>=6&&ly<30){
+        for(int i=0;i<8;i++){ int bw, bx=ftb_x(i,&bw); if(lx<bx||lx>=bx+bw) continue;
+            switch(i){
+            case 0: if(w->dir->parent){ FsNode *o=w->dir; w->dir=w->dir->parent; w->sel=o; w->scroll=0; } break;
+            case 1: mu_show(w->x+1+bx,w->y+TB+31,wi,w->dir,0); break;
+            case 2: fm_do(M_CUT,w,w->dir,w->sel); break;
+            case 3: fm_do(M_COPY,w,w->dir,w->sel); break;
+            case 4: fm_do(M_PASTE,w,w->dir,0); break;
+            case 5: if(w->sel) fm_do(M_RENAME,w,w->dir,w->sel); break;
+            case 6: if(w->sel) fm_do(M_ZIP,w,w->dir,w->sel); break;
+            case 7: if(w->sel) fm_do(M_DELETE,w,w->dir,w->sel); break;
+            }
+            dirty=1; return; }
+        return;
+    }
+    int n; FsNode *f=fm_row_node(w,ly,&n);
+    if(ly>=88&&ly<ch-22&&n>fm_rows(w)&&lx>=cw-14){                   /* barra de desplazamiento: media pagina arriba o abajo */
+        int th=ch-88-22, rows=fm_rows(w); if(ly-88<th/2) w->scroll=k_max(0,w->scroll-rows/2); else w->scroll=k_min(n-rows,w->scroll+rows/2); dirty=1; return; }
+    if(!f){ w->sel=0; dirty=1; return; }
+    uint32_t t=kticks();
+    if(w->sel==f && w->last==f && t-w->lastclick<50){ fm_do(M_OPEN,w,w->dir,f); w->last=0; dirty=1; return; }
+    w->sel=f; w->last=f; w->lastclick=t; dirty=1;
+    fd_cand=1; fd_on=0; fd_sx=mx; fd_sy=my; fd_win=wi; fs_path(f,fd_path,sizeof fd_path); k_strcpy(fd_name,f->name,sizeof fd_name);
+}
+static void settings_click(int lx,int ly,int cw,int ch){
+    for(int i=0;i<4;i++) if(in_rect(lx,ly,12+i*124,10,118,28)){ set_tab=i; fmt_confirm=0; dirty=1; return; }
+    int y=ly-50;
+    if(set_tab==0){
+        for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
+        for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i){ wall_i=i; build_wall(); } dirty=1; return; }
+        if(in_rect(lx,y,20,218,28,24)){ if(tz>-12) tz--; clk_next=0; dirty=1; }
+        else if(in_rect(lx,y,56,218,28,24)){ if(tz<14) tz++; clk_next=0; dirty=1; }
+        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; dirty=1; }
+        else if(in_rect(lx,y,20,322,140,26)) set_layout(KBD_US);
+        else if(in_rect(lx,y,170,322,140,26)) set_layout(KBD_LATAM);
+        else if(in_rect(lx,y,320,322,140,26)) set_layout(KBD_ES);
+    } else if(set_tab==1){
+        if(bga_ok()) for(int i=0;i<NRES;i++) if(in_rect(lx,y,20+(i%3)*160,70+(i/3)*36,150,28)){ set_resolution(RES[i][0],RES[i][1]); return; }
+    } else if(set_tab==2){
+        int dy=206;
+        if(in_rect(lx,y,20,dy+104,260,28)&&disk_init()==0){
+            if(kngfs_active()){ if(in_rect(lx,y,20,dy+104,150,28)) (void)kngfs_save(); }
+            else if(!fmt_confirm) fmt_confirm=1;
+            else { fmt_confirm=0; (void)kngfs_format(); }
+            dirty=1; return; }
+        if(in_rect(lx,y,cw-170,dy+104,150,28)){ FsNode *tr=trash_dir(); if(tr) while(tr->child) fs_remove(tr->child); dirty=1; return; }
+        if(fmt_confirm){ fmt_confirm=0; dirty=1; }
+    } else {
+        if(in_rect(lx,ly,20,ch-44,110,28)) kreboot();
+        else if(in_rect(lx,ly,142,ch-44,110,28)) khalt();
+    }
+}
+static void browser_click(Win *w,int lx,int ly,int cw,int ch){
+    (void)ch;
+    if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
+    if(in_rect(lx,ly,48,6,cw-56,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
+    w->editing=0;
+    for(int i=0;i<w->page.nlinks;i++){
+        HLink *k=&w->page.links[i]; int px=12+k->x, py=38+k->y-w->bscroll;
+        if(ly>=38 && in_rect(lx,ly,px,py,k->w,k->h)){ const char *hr=w->page.hrefs[k->href]; if(hr[0]=='#') return; char u[192]; resolve(w->url,hr,u,sizeof u); nav(w,u,1); return; }
+    }
+    dirty=1;
+}
+static void app_click(Win *w,int lx,int ly){
+    int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
+    switch(w->type){
+    case A_FILES: files_click(w,lx,ly,cw,ch); break;
+    case A_SETTINGS: settings_click(lx,ly,cw,ch); break;
+    case A_BROWSER: browser_click(w,lx,ly,cw,ch); break;
+    case A_NOTES:
+        if(in_rect(lx,ly,8,6,70,24)){ notes_new(w); dirty=1; }
+        else if(in_rect(lx,ly,86,6,80,24)){ notes_save(w); dirty=1; }
+        break;
+    case A_CALC:
+        for(int i=0;i<NCKEYS;i++){ int x,y,kw,kh; ckey_rect(&CKEYS[i],&x,&y,&kw,&kh); if(in_rect(lx,ly,x,y,kw,kh)){ calc_press(w,CKEYS[i].k); break; } }
+        break;
+    case A_SNAKE:
+        if(w->sover||!w->sstart) snake_key(w,' ');
+        break;
+    case A_PROGS:
+        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
+        else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
+        else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){ int x=16+(i%2)*(cwid+16), y=64+(i/2)*76;
+            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dirty=1; break; } } }
+        break;
+    default: break;
+    }
+}
+static void on_press(void){
+    if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
+    if(dren>=0) dren_commit();
+    int d=dock_hit(mx,my);
+    if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
+    if(d==-2) return;
+    if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
+    for(int k=nord-1;k>=0;k--){
+        int wi=order[k]; Win *w=&wins[wi];
+        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        focus(wi);
+        if(my<w->y+TB){
+            int dx=mx-(w->x+w->w-20), dy=my-(w->y+TB/2);
+            if(dx*dx+dy*dy<=100){ win_close(wi); return; }
+            { uint32_t t=kticks(); int rs=win_resizable(w);
+              if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
+              w->tclick=t;
+              if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
+              drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return; }
+        }
+        app_click(w,mx-(w->x+1),my-(w->y+TB));
+        return;
+    }
+    { int di=dobj_hit(mx,my); if(di>=0){ ddrag=di; ddx=mx-dobj[di].x; ddy=my-dobj[di].y; dmoved=0; if(dobj[di].kind==200&&dsel!=di){ dsel=di; dirty=1; } }
+      else if(dsel>=0){ dsel=-1; dirty=1; } }
+}
+static void on_rpress(void){                                         /* boton derecho: menu contextual */
+    if(mu_open){ mu_open=0; dirty=1; }
+    if(dren>=0) dren_commit();
+    for(int k=nord-1;k>=0;k--){
+        int wi=order[k]; Win *w=&wins[wi];
+        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        focus(wi); dirty=1;
+        if(w->type==A_FILES&&my>=w->y+TB){
+            if(w->editing) fm_commit_rename(w);
+            int ly=my-(w->y+TB); if(ly<36) return;
+            FsNode *t=fm_row_node(w,ly,0); if(t) w->sel=t;
+            mu_show(mx,my,wi,w->dir,t); }
+        return;
+    }
+    if(dock_hit(mx,my)!=-1||my<BARH) return;
+    FsNode *dk=desk_dir(); if(!dk) return;
+    int di=dobj_hit(mx,my);
+    if(di>=0&&dobj[di].kind==200){ FsNode *t=fs_find(dk,dobj[di].name); if(t){ dsel=di; mu_show(mx,my,-1,dk,t); } return; }
+    if(di<0){ dsel=-1; mu_show(mx,my,-1,dk,0); }
+}
+static void mouse_set(int x,int y,int b){
+    x=k_max(0,k_min(gw-1,x)); y=k_max(0,k_min(gh-1,y));
+    int pressed=(b&1)&&!(mb&1), released=!(b&1)&&(mb&1), rpressed=(b&2)&&!(mb&2); int omb=mb;
+    if(x!=mx||y!=my) cursor_dirty=1;
+    mx=x; my=y; mb=b;
+    { int top=win_top();                                       /* sobre la pantalla X, el raton se le entrega al programa de Linux */
+      if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top]; int lx=x-(xw->x+1), ly=y-(xw->y+TB);
+        if(lx>=0&&ly>=0&&lx<xw->xw&&ly<xw->xh){
+            if(lx!=xw->xlx||ly!=xw->xly){ xw->xlx=lx; xw->xly=ly; kinput_event(3,0,lx); kinput_event(3,1,ly); kinput_event(0,0,0); }
+            static const int bit[3]={1,2,4}, code[3]={0x110,0x111,0x112};
+            for(int k=0;k<3;k++) if((b^omb)&bit[k]){ kinput_event(1,code[k],(b&bit[k])?1:0); kinput_event(0,0,0); } } } }
+    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; { int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); dmark(bx-10,by-40,bw+20,bh+52); } }
+    if(drag>=0){
+        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
+        if(released){ Win *w=&wins[drag]; drag=-1;
+            if(win_resizable(w)){
+                if(my<=BARH+3){ win_set_max(w,0,BARH,gw,gh-BARH-86); }
+                else if(mx<=3){ win_set_max(w,0,BARH,gw/2,gh-BARH-86); }
+                else if(mx>=gw-4){ win_set_max(w,gw/2,BARH,gw-gw/2,gh-BARH-86); } } }
+    }
+    if(ddrag>=0){
+        DObj *o=&dobj[ddrag];
+        if(b&1){ int nx=mx-ddx, ny=my-ddy; if(nx<0) nx=0; if(ny<BARH) ny=BARH; if(nx+o->w>gw) nx=gw-o->w; if(ny+o->h>gh-70) ny=gh-70-o->h;
+                 if(nx!=o->x||ny!=o->y){ dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=nx; o->y=ny; dmark(o->x-6,o->y-6,o->w+12,o->h+12); dmoved=1; } }
+        if(released){ int i=ddrag; ddrag=-1;
+            if(dmoved && o->kind==200) dsk_drop(i);
+            if(!dmoved && ((o->kind>=0 && o->kind<8)||o->kind==200)){ uint32_t t=kticks();
+                if(dlast==i && t-dlastt<50){ if(o->kind==200) dsk_open(i); else open_app(DOCK_APP[o->kind]); dirty=1; dlast=-1; } else { dlast=i; dlastt=t; } } }
+    }
+    if(fd_cand){                                                    /* arrastrar un archivo desde el gestor */
+        if(b&1){
+            if(!fd_on&&(mx-fd_sx>6||fd_sx-mx>6||my-fd_sy>6||fd_sy-my>6)){ fd_on=1; dirty=1; }
+            if(fd_on){ dmark(fd_gx-4,fd_gy-4,240,36); fd_gx=mx+12; fd_gy=my+10; dmark(fd_gx-4,fd_gy-4,240,36);
+                for(int k=0;k<nord;k++) if(wins[order[k]].type==A_FILES) dwin(&wins[order[k]]); }
+        }
+        if(released){ if(fd_on) fm_drop(); fd_cand=0; fd_on=0; fd_gx=-1000; dirty=1; }
+    }
+    if(mu_open){ int h=mu_item_at(mx,my); if(h!=mu_hover){ mu_hover=h; dmark(mu_x-6,mu_y-6,mu_w+12,mu_h+12); } }
+    if(pressed||rpressed){ char d[48]="[raton] "; cat_int(d,48,mx); cat(d,48,","); cat_int(d,48,my); cat(d,48,pressed?" izq\n":" der\n"); kserial_puts(d); }   /* para las pruebas automaticas */
+    if(pressed) on_press();
+    if(rpressed) on_rpress();
+}
+void gui_rawkey(int byte){                                       /* bytes crudos del teclado PS/2 (set 1): se entregan tal cual si la ventana activa es la pantalla X */
+    static int e0;
+    if(byte==0xE0){ e0=1; return; }
+    int top=win_top(); int down=!(byte&0x80), sc=byte&0x7F, code=sc;
+    if(e0){ e0=0; switch(sc){ case 0x1C: code=96; break; case 0x1D: code=97; break; case 0x35: code=98; break; case 0x38: code=100; break; case 0x47: code=102; break; case 0x48: code=103; break;
+            case 0x49: code=104; break; case 0x4B: code=105; break; case 0x4D: code=106; break; case 0x4F: code=107; break; case 0x50: code=108; break; case 0x51: code=109; break;
+            case 0x52: code=110; break; case 0x53: code=111; break; case 0x5B: code=125; break; case 0x5C: code=126; break; default: return; } }
+    if(top<0||wins[top].type!=A_XSCR) return;
+    kinput_event(1,code,down); kinput_event(0,0,0);
+}
+void gui_mouse_abs(int x,int y,int b){ mouse_set(x,y,b); }
+void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
+
+static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
+void gui_key(int c){
+    if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
+    if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
+    if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
+    int top=win_top();
+    if(top<0){                                                      /* sin ventanas: las teclas son para el icono elegido del escritorio */
+        if(dsel>=0&&dobj[dsel].kind==200){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj[dsel].name):0;
+            if(f){ if(c=='\n') dsk_open(dsel); else if(c==0x7F) fm_do(M_DELETE,0,dk,f); else if(c==0x412) dren_start(dsel);
+                   else if(c==0x403) fm_do(M_COPY,0,dk,f); else if(c==0x418) fm_do(M_CUT,0,dk,f); } }
+        if(c==0x416){ FsNode *dk=desk_dir(); if(dk) fm_do(M_PASTE,0,dk,0); }
+        return; }
+    Win *w=&wins[top];
+    switch(w->type){
+    case A_TERM:
+        if(w->busy){                                           /* hay un programa pegado a esta terminal: las teclas son suyas */
+            if(c>=0x400||c<0x80) kproc_key(c);
+            else { char e[2]; int en=u8_enc(c,e); for(int i=0;i<en;i++) kproc_key((unsigned char)e[i]); }
+            break; }
+        if(c>=0x400) break;
+        if(c=='\n'){ term_put(w,'\n'); w->in[w->inlen]=0; char line[256]; memcpy(line,w->in,256); w->inlen=0;
+            fs_path(w->cwd,kshell_cwd,sizeof kshell_cwd); kattach_pid=0;
+            term_cmd(w,line);
+            if(kattach_pid){ w->busy=1; w->bpid=kattach_pid; kattach_pid=0; } else term_prompt(w); }
+        else if(c=='\b'){ if(w->inlen>0){ w->inlen-=u8_last(w->in,w->inlen); term_put(w,'\b'); } }
+        else { char e[2]; int en=u8_enc(c,e); if(en && w->inlen+en<250){ for(int i=0;i<en;i++){ w->in[w->inlen++]=e[i]; term_put(w,e[i]); } } }
+        break;
+    case A_FILES: {
+        if(w->editing){                                              /* cambiando el nombre */
+            if(c=='\n') fm_commit_rename(w); else if(c==27){ w->editing=0; dwin(w); }
+            else if(c<0x400){ fm_edit_key(c,w->ebuf,&w->elen,&w->selall,FS_NAME); dwin(w); }
+            break; }
+        int n=fs_list(w->dir,fl,FLMAX), idx=-1, rows=fm_rows(w);
+        for(int i=0;i<n;i++) if(fl[i]==w->sel) idx=i;
+        w->nstat[0]=0;
+        if(c==KEY_DOWN){ if(idx<n-1) w->sel=fl[idx+1]; }
+        else if(c==KEY_UP){ if(idx>0) w->sel=fl[idx-1]; else if(idx<0&&n) w->sel=fl[0]; }
+        else if(c==KEY_PGDN){ if(n){ int j=idx<0?rows-1:idx+rows; if(j>n-1) j=n-1; w->sel=fl[j]; } }
+        else if(c==KEY_PGUP){ if(n){ int j=idx<0?0:idx-rows; if(j<0) j=0; w->sel=fl[j]; } }
+        else if(c=='\n'&&w->sel) fm_do(M_OPEN,w,w->dir,w->sel);
+        else if(c=='\b'){ if(w->dir->parent){ FsNode *o=w->dir; w->dir=w->dir->parent; w->sel=o; w->scroll=0; } }
+        else if(c==0x7F&&w->sel) fm_do(M_DELETE,w,w->dir,w->sel);
+        else if(c==0x403&&w->sel) fm_do(M_COPY,w,w->dir,w->sel);
+        else if(c==0x418&&w->sel) fm_do(M_CUT,w,w->dir,w->sel);
+        else if(c==0x416) fm_do(M_PASTE,w,w->dir,0);
+        else if(c==0x412&&w->sel) fm_do(M_RENAME,w,w->dir,w->sel);
+        else if(c==0x40E) fm_do(M_NEWDIR,w,w->dir,0);
+        n=fs_list(w->dir,fl,FLMAX); idx=-1; for(int i=0;i<n;i++) if(fl[i]==w->sel) idx=i;
+        if(idx>=0){ if(idx<w->scroll) w->scroll=idx; if(idx>=w->scroll+rows) w->scroll=idx-rows+1; }
+        dirty=1;
+        break; }
+    case A_NOTES: notes_key(w,c); break;
+    case A_CALC:
+        if(c>='0'&&c<='9') calc_press(w,c);
+        else if(c=='+'||c=='-'||c=='*'||c=='/') calc_press(w,c);
+        else if(c=='x'||c=='X') calc_press(w,'*');
+        else if(c=='='||c=='\n') calc_press(w,'=');
+        else if(c=='c'||c=='C'||c==27||c==0x7F) calc_press(w,'C');
+        else if(c=='\b') calc_press(w,'<');
+        else if(c=='.'||c==',') calc_press(w,'.');
+        else if(c=='%') calc_press(w,'%');
+        break;
+    case A_SNAKE: snake_key(w,c); break;
+    case A_VIEWER:
+        if(c==KEY_DOWN) scroll_by(&w->scroll,1,100000); else if(c==KEY_UP) scroll_by(&w->scroll,-1,100000);
+        else if(c==KEY_PGDN) scroll_by(&w->scroll,20,100000); else if(c==KEY_PGUP) scroll_by(&w->scroll,-20,100000);
+        break;
+    case A_BROWSER:
+        if(w->editing){
+            if(c=='\n') browser_go_typed(w);
+            else if(c==27){ w->editing=0; dwin(w); }
+            else if(c=='\b'){ if(w->selall){ w->elen=0; w->selall=0; } else if(w->elen>0) w->elen-=u8_last(w->ebuf,w->elen); w->ebuf[w->elen]=0; dwin(w); }
+            else { char e[2]; int en=u8_enc(c,e); if(en && w->elen+en<186){ if(w->selall){ w->elen=0; w->selall=0; } for(int i=0;i<en;i++) w->ebuf[w->elen++]=e[i]; w->ebuf[w->elen]=0; dwin(w); } }
+        } else {
+            if(c==KEY_DOWN) scroll_by(&w->bscroll,24,100000); else if(c==KEY_UP) scroll_by(&w->bscroll,-24,100000);
+            else if(c==KEY_PGDN) scroll_by(&w->bscroll,300,100000); else if(c==KEY_PGUP) scroll_by(&w->bscroll,-300,100000);
+            else if(c=='\b') go_back(w);
+        }
+        break;
+    default: break;
+    }
+}
+
+/* despues de cargar el sistema base: se lee lo guardado en el disco (encima) y se aplican los ajustes guardados */
+void gui_storage_ready(void){
+    (void)kngfs_mount(); fs_track=1;
+    { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
+    { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
+    build_wall(); dsk_sync(); dirty=1;
+}
+int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
+    if(gfx_init(fb,w,h,pitch_bytes)) return -1;
+    fb_front=fb; fb_bpp0=pitch_bytes>=w*4?32:24;
+    wall=kmalloc((size_t)w*h*4); if(!wall) return -1;
+    if(!fs_root()){ fs_init(); }
+    build_wall();
+    dobj_init(); mx=w/2; my=h/2; dirty=1; cursor_dirty=1; clk_next=0;
+    kproc_done=term_done;
+    return 0;
+}
+
+/* Pantalla de error fatal: se dibuja directo al backbuffer (sin reservar memoria) para que una excepcion del kernel
+ * no deje la pantalla "congelada" sin explicacion. La llaman los manejadores de excepcion de los dos kernels. */
+static void hex_into(char *o,int max,uint64_t v){ static const char H[]="0123456789abcdef"; int n=k_strlen(o); if(n+19>=max) return; o[n++]='0'; o[n++]='x'; int st=0;
+    for(int s=60;s>=0;s-=4){ int d=(int)((v>>s)&15); if(d||st||s==0){ st=1; o[n++]=H[d]; } } o[n]=0; }
+int gui_ready(void){ return bb!=0 && gw>0; }
+void gui_panic(const char *name,const char *ipname,uint64_t ip,uint64_t err,uint64_t cr2,int has_cr2){
+    if(!gui_ready()) return;
+    clip_base(0,0,gw,gh); clip_reset();
+    fill(0,0,gw,gh,0x2a0a0e,255);
+    int x=gw/2-260, y=gh/2-130; if(x<20) x=20; if(y<20) y=20;
+    crown(x,y,48,0xe9c46a,0xb5373c,255);
+    text_big(x+64,y+6,"Error fatal del kernel",0xffffff);
+    char b[120]; b[0]=0; cat(b,120,"Excepcion: "); cat(b,120,name); text_bold(x,y+72,b,0xffd6d6);
+    b[0]=0; cat(b,120,ipname); cat(b,120," = "); hex_into(b,120,ip); text(x,y+104,b,0xffffff);
+    b[0]=0; cat(b,120,"codigo de error = "); hex_into(b,120,err); text(x,y+126,b,0xffffff);
+    if(has_cr2){ b[0]=0; cat(b,120,"direccion (cr2) = "); hex_into(b,120,cr2); text(x,y+148,b,0xffffff); }
+    text(x,y+190,"El sistema se detuvo para no danar nada. Reinicia la maquina virtual.",0xe8b4b4);
+    text(x,y+212,"Si se repite, copia estos datos (tambien salen por el puerto serie).",0xe8b4b4);
+    gfx_present();
+}

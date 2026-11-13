@@ -1,0 +1,6 @@
+# Brave real desde su repositorio oficial. Tope de 20 min: si se atasca, ci_drive manda Ctrl+] y queda el estado de los procesos
+240|actualizar
+1200|instalar brave
+20|ejecutar /bin/ls -l /opt/brave.com/brave/brave
+20|procesos
+20|mem
