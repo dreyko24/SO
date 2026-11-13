@@ -186,7 +186,7 @@ static int nvme_init(void){
             uint32_t lo=pcir(b,d,fn,0x10), hi=(lo&4)?pcir(b,d,fn,0x14):0;
             uint64_t bar=((uint64_t)hi<<32)|(lo&~0xFu);
             if(sizeof(void*)==4&&hi) continue;                                 /* el kernel de 32 bits no llega por encima de 4 GB */
-            if(bar+0x4000>(16ull<<30)){ if(!kng_mmio_map||!kng_mmio_map(bar,0x4000)) continue; }   /* BAR alta (UEFI / Above 4G): mapearla */
+            if(bar+0x4000>(16ull<<30)){ if(!vortex_mmio_map||!vortex_mmio_map(bar,0x4000)) continue; }   /* BAR alta (UEFI / Above 4G): mapearla */
             pciw(b,d,fn,0x04,pcir(b,d,fn,0x04)|0x06);
             nvr=(volatile uint8_t*)(uintptr_t)bar;
             uint64_t cap=(uint64_t)nv32(0)|((uint64_t)nv32(4)<<32); nv_dstrd=(uint32_t)((cap>>32)&0xF);
@@ -253,14 +253,14 @@ static uint32_t sum(const uint8_t *p,uint32_t n){                         /* Adl
 static uint32_t last_size;
 static uint32_t kbase, kcap;                                                 /* zona de KNGFS: la particion de tipo 0xDA si existe; si no, el disco entero */
 static uint32_t le32(const uint8_t *p){ return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
-static void kngfs_area(void){
+static void vortexfs_area(void){
     kbase=0; kcap=disk_sectors();
     uint8_t m[512]; if(disk_read(0,m,1)||m[510]!=0x55||m[511]!=0xAA) return;
     for(int i=0;i<4;i++){ const uint8_t *e=m+446+i*16; if(e[4]==0xDA){ uint32_t st=le32(e+8), sz=le32(e+12); if(st&&sz>8&&st+sz<=disk_sectors()){ kbase=st; kcap=sz; } return; } }
 }
-int kngfs_active(void){ return mounted; }
-uint32_t kngfs_last_size(void){ return last_size; }
-int kngfs_save(void){
+int vortexfs_active(void){ return mounted; }
+uint32_t vortexfs_last_size(void){ return last_size; }
+int vortexfs_save(void){
     if(!mounted) return -1;
     int need=fs_serialize(0,0); if(need<0||(uint32_t)need>KNGFS_MAXB) return -2;
     uint32_t secs=((uint32_t)need+511)/512; if(1+secs>kcap) return -2;
@@ -273,10 +273,10 @@ int kngfs_save(void){
     if(!r) r=disk_write(kbase,buf,1);                                            /* la cabecera va al final: si se corta, queda la copia anterior */
     kfree(buf); if(!r){ saved_gen=fs_gen(); last_size=(uint32_t)n; } return r;
 }
-int kngfs_mount(void){
+int vortexfs_mount(void){
     if(mounted) return 0;
     if(disk_init()) return -1;
-    kngfs_area();
+    vortexfs_area();
     uint8_t hd[512]; if(disk_read(kbase,hd,1)||bcmp_(hd,KNGFS_MAGIC,8)) return -2;
     uint32_t v[2]; memcpy(v,hd+8,8); if(v[0]==0||v[0]>KNGFS_MAXB) return -3;
     uint32_t secs=(v[0]+511)/512; if(1+secs>kcap) return -3;
@@ -285,13 +285,13 @@ int kngfs_mount(void){
     if(r||sum(buf,v[0])!=v[1]||fs_overlay(buf,(int)v[0])){ kfree(buf); return -5; }
     kfree(buf); mounted=1; saved_gen=fs_gen(); last_size=v[0]; return 0;
 }
-int kngfs_format(void){ if(disk_init()) return -1; kngfs_area(); mounted=1; int r=kngfs_save(); if(r) mounted=0; return r; }
+int vortexfs_format(void){ if(disk_init()) return -1; vortexfs_area(); mounted=1; int r=vortexfs_save(); if(r) mounted=0; return r; }
 /* ===== instalador: copia al disco la imagen arrancable (MBR + GRUB BIOS/UEFI + FAT32) que GRUB cargo desde el USB,
  *       y crea despues una particion de tipo 0xDA con el resto del disco para los datos (KNGFS) ===== */
-void *(*kng_mmio_map)(uint64_t phys, uint64_t len);
-const uint8_t *(*kng_disk_image)(uint32_t *len);
-int kng_install(void){
-    uint32_t n=0; const uint8_t *img=kng_disk_image?kng_disk_image(&n):0;
+void *(*vortex_mmio_map)(uint64_t phys, uint64_t len);
+const uint8_t *(*vortex_disk_image)(uint32_t *len);
+int vortex_install(void){
+    uint32_t n=0; const uint8_t *img=vortex_disk_image?vortex_disk_image(&n):0;
     if(!img||n<(1u<<20)) return -1;                                          /* no se arranco con el instalador */
     if(disk_init()) return -2;                                               /* no hay disco */
     uint32_t isec=(n+511)/512, total=disk_sectors(), pstart=(isec+2047)&~2047u;
@@ -304,17 +304,17 @@ int kng_install(void){
         if(disk_write(i,img+(size_t)i*512,(int)c)) return -4;
     }
     uint8_t mbr[512]; memcpy(mbr,img,512);
-    uint8_t *e=mbr+446+16; memset(e,0,16); e[1]=0xFE; e[2]=0xFF; e[3]=0xFF; e[4]=0xDA; e[5]=0xFE; e[6]=0xFF; e[7]=0xFF;   /* particion 2: datos de Konigreich OS */
+    uint8_t *e=mbr+446+16; memset(e,0,16); e[1]=0xFE; e[2]=0xFF; e[3]=0xFF; e[4]=0xDA; e[5]=0xFE; e[6]=0xFF; e[7]=0xFF;   /* particion 2: datos de Vortex OS */
     uint32_t sz=total-pstart; e[8]=(uint8_t)pstart; e[9]=(uint8_t)(pstart>>8); e[10]=(uint8_t)(pstart>>16); e[11]=(uint8_t)(pstart>>24);
     e[12]=(uint8_t)sz; e[13]=(uint8_t)(sz>>8); e[14]=(uint8_t)(sz>>16); e[15]=(uint8_t)(sz>>24);
     memset(tmp,0,512); if(disk_write(pstart,tmp,1)) return -4;              /* sin copia vieja de datos en esa zona */
     if(disk_write(0,mbr,1)) return -4;                                       /* el MBR al final: si algo fallo antes, el disco no queda a medias */
-    kbase=pstart; kcap=sz; mounted=1; if(kngfs_save()) return -5;
+    kbase=pstart; kcap=sz; mounted=1; if(vortexfs_save()) return -5;
     return 0;
 }
-void kngfs_tick(void){                                                       /* guarda solo si hubo cambios: cada 5 s si es poco, cada 3 min si es mucho */
+void vortexfs_tick(void){                                                       /* guarda solo si hubo cambios: cada 5 s si es poco, cada 3 min si es mucho */
     if(!mounted||fs_gen()==saved_gen) return;
     uint32_t t=kticks(); if((int)(t-next_try)<0) return;
     next_try=t+(last_size<(32u<<20)?500:18000);
-    (void)kngfs_save();
+    (void)vortexfs_save();
 }
