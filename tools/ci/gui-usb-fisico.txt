@@ -14,3 +14,11 @@ raton 240 339
 clic
 esperar 2
 captura 04-archivos-usb
+raton 245 209
+doble
+esperar 2
+captura 05-visor-imagen-usb
+raton 695 559
+clic
+esperar 2
+captura 06-fondo-desde-usb
