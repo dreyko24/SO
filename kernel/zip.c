@@ -1,7 +1,7 @@
 /* zip.c — archivos .zip de verdad, sin bibliotecas: deflate (LZ77 + Huffman fijo) para comprimir,
  * inflate completo (bloques guardados, Huffman fijo y dinamico) para descomprimir. CRC-32 estandar. */
 #include "zip.h"
-#include "kng.h"
+#include "vortex.h"
 
 /* ---------- utilidades ---------- */
 static uint32_t crc_tab[256]; static int crc_ok;
