@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Genera out/VortexOS-vortex.iso (arranque BIOS con GRUB) con los kernels de 32 y de 64 bits. Sin Debian, sin Linux.
+# Genera out/VortexOS.iso (arranque BIOS con GRUB) con los kernels de 32 y de 64 bits. Sin Debian, sin Linux.
 set -e
 cd "$(dirname "$0")/.."
 faltan=""
@@ -84,13 +84,13 @@ else echo "[aviso] ISO sin instalador (falta sudo/losetup/dosfstools o VORTEX_SI
 # ISO hibrida: arranca con BIOS/Legacy y, si esta instalado grub-efi-amd64-bin, tambien en PCs solo UEFI.
 # (En UEFI sin "CSM/Legacy" algunos PC no emulan teclado/raton PS/2: si no responden, activa Legacy/CSM en la BIOS.)
 if [ -d /usr/lib/grub/x86_64-efi ]; then
-  grub-mkrescue -o out/VortexOS-vortex.iso build/iso 2>&1 | tail -3
+  grub-mkrescue -o out/VortexOS.iso build/iso 2>&1 | tail -3
 else
   echo "[aviso] sin grub-efi-amd64-bin: el ISO solo arrancara en modo BIOS/Legacy (sudo apt install grub-efi-amd64-bin)"
-  grub-mkrescue -d /usr/lib/grub/i386-pc -o out/VortexOS-vortex.iso build/iso 2>&1 | tail -3
+  grub-mkrescue -d /usr/lib/grub/i386-pc -o out/VortexOS.iso build/iso 2>&1 | tail -3
 fi
-( cd out && sha256sum VortexOS-vortex.iso > VortexOS-vortex.iso.sha256 )
-ls -la out/VortexOS-vortex.iso
-echo "Listo: out/VortexOS-vortex.iso"
+( cd out && sha256sum VortexOS.iso > VortexOS.iso.sha256 )
+ls -la out/VortexOS.iso
+echo "Listo: out/VortexOS.iso"
 echo "PC real o VM: mejor en BIOS/Legacy (CSM). RAM: 256 MB o mas (con Debian: 4 GB o mas). Red: solo tarjetas Intel e1000/RTL8139 (en PC real puede no haber red)."
 echo "USB booteable: Rufus en modo \"imagen DD\" o balenaEtcher."
