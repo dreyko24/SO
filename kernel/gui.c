@@ -355,6 +355,19 @@ static void open_file(FsNode *n){
     int l=k_strlen(n->name);
     if(l>5 && !k_strcmp(n->name+l-5,".html")){
         Win *b=open_app(A_BROWSER); char u[192]="file://"; char p[80]; fs_path(n,p,sizeof p); cat(u,sizeof u,p); if(b) nav(b,u,1);
+    } else if(ext_is(n,"odt")||ext_is(n,"doc")||ext_is(n,"docx")||
+              ext_is(n,"ods")||ext_is(n,"xls")||ext_is(n,"xlsx")||
+              ext_is(n,"odp")||ext_is(n,"ppt")||ext_is(n,"pptx")||
+              ext_is(n,"odg")||ext_is(n,"rtf")||ext_is(n,"pdf")){
+        if(papp_installed(5)){
+            char cmd[160]="abrir libreoffice ";
+            if(ext_is(n,"pdf")||ext_is(n,"odg"))cat(cmd,sizeof cmd,"--draw ");
+            else if(ext_is(n,"ods")||ext_is(n,"xls")||ext_is(n,"xlsx"))cat(cmd,sizeof cmd,"--calc ");
+            else if(ext_is(n,"odp")||ext_is(n,"ppt")||ext_is(n,"pptx"))cat(cmd,sizeof cmd,"--impress ");
+            else cat(cmd,sizeof cmd,"--writer ");
+            char path[116];fs_path(n,path,sizeof path);cat(cmd,sizeof cmd,path);
+            run_quiet(cmd);
+        }else open_app(A_OFFICE);
     } else if(n->size<NOTEMAX && (ext_is(n,"txt")||ext_is(n,"md")||ext_is(n,"sh")||ext_is(n,"py")||ext_is(n,"c")||ext_is(n,"h")||ext_is(n,"json")||ext_is(n,"css")||ext_is(n,"js")||ext_is(n,"csv")||ext_is(n,"conf")||ext_is(n,"cfg")||ext_is(n,"log")||(!*ext_of(n->name)&&(!n->size||n->data[0]!=0x7f)))){
         Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
     } else if(ext_is(n,"wav")){
