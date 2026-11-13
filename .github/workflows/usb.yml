@@ -1,0 +1,45 @@
+name: vortex-usb-mass-storage
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+concurrency:
+  group: vortex-usb-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  usb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 gcc gcc-multilib binutils python3 grub-pc-bin grub-efi-amd64-bin xorriso mtools dosfstools cpio
+      - name: Compilar kernels
+        run: |
+          make -C kernel64
+          make -C kernel
+          python3 tools/mkrootfs.py --debian vortex-extra.cpio
+      - name: Pendrive FAT32 de prueba
+        run: |
+          dd if=/dev/zero of=pendrive.img bs=1M count=128 status=none
+          mkfs.vfat -F 32 -n VORTEXUSB pendrive.img
+          mcopy -i pendrive.img docs/vortex-logo.png ::/VORTEX.PNG
+          mdir -i pendrive.img ::
+      - name: Arranque USB UHCI real emulado y exploracion FAT32
+        run: |
+          mkdir -p g/boot/grub
+          cp kernel64/vortex-kernel64.elf vortex-extra.cpio g/boot/
+          printf 'set timeout=0\ninsmod all_video\nmenuentry "Vortex OS" {\n  set gfxpayload=1024x768x32\n  multiboot /boot/vortex-kernel64.elf\n  module /boot/vortex-extra.cpio\n  boot\n}\n' > g/boot/grub/grub.cfg
+          grub-mkrescue -o usb-boot.iso g >/tmp/grub.log 2>&1 || { cat /tmp/grub.log; exit 1; }
+          python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -usb -drive if=none,id=stick,format=raw,file=pendrive.img -device usb-storage,bus=usb-bus.0,drive=stick > usb-gui.log 2>&1
+          tail -100 usb-gui.log
+          grep -Fq "USB FAT32 real leido" usb-gui.log || { echo "FALLO: no detecto ni leyo la memoria USB"; exit 1; }
+          grep -Fq "VORTEX.PNG" usb-gui.log || true
+          test -s capturas/04-archivos-usb.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vortex-usb
+          path: |
+            usb-gui.log
+            capturas/*.png
