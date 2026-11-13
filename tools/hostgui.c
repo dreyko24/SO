@@ -143,6 +143,9 @@ int main(void){
     closeall();
     { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); fs_write(z,"CAMBIADO",8); fs_remove(fs_resolve(fs_root(),"/Escritorio/b.txt")); T+=1000; vortexfs_tick(); }
     { fs_write(fs_resolve(fs_root(),"/Documentos/z.txt"),"basura",6); fs_create(fs_root(),"temporal.txt","x",1); }       /* cambios sin guardar: se pierden al "reiniciar" */
+    /* Emula un reinicio: la unidad estaba montada y mount() devuelve 0 sin recargar.
+     * En el host fake disk persiste; al reiniciar real esta bandera comienza a cero. */
+    mounted=0;
     if(vortexfs_mount()){ puts("FALLO montar"); return 1; }
     { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); if(!z||z->size!=8||memcmp(z->data,"CAMBIADO",8)||fs_resolve(fs_root(),"/temporal.txt")||fs_resolve(fs_root(),"/Escritorio/b.txt")){ puts("FALLO persistencia"); return 1; } puts("DISCO OK"); }
     dock(8); shot("18_monitor"); closeall();
