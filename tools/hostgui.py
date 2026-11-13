@@ -9,6 +9,7 @@ subprocess.check_call(['gcc', '-O1', '-g', '-w', '-fsanitize=address,undefined',
     os.path.join(here, '../kernel/zip.c'),
     os.path.join(here, '../kernel/usb.c'),
     os.path.join(here, '../kernel/audio.c'),
+    os.path.join(here, '../kernel/video.c'),
     os.path.join(here, '../kernel/media_logo.S')
 ], cwd=os.path.join(here, '../kernel'))
 env = dict(os.environ, OUTDIR=out, ASAN_OPTIONS='detect_leaks=0')
