@@ -1,4 +1,4 @@
-/* kng-kernel 0.5 — kernel propio de Königreich OS (i386, Multiboot).
+/* kng-kernel 0.5 — kernel propio de Vortex OS (i386, Multiboot).
  * Consola VGA + serie, GDT/IDT, PIC, PIT, teclado PS/2, memoria física, paginación,
  * heap (kmalloc/kfree), hilos con planificador expropiativo, PMM con liberacion (bitmap),
  * procesos de usuario en ring 3 (espacio propio, TSS), ELF32, fork/exec/wait/brk, syscalls (numeros Linux i386) y shell.
@@ -840,7 +840,7 @@ static void selftest(void){
 /* ---------- Shell ---------- */
 static void cmd_info(void){
     kprintf("kng-kernel %s (%s, Multiboot)\n", KNG_VERSION, KNG_ARCH);
-    kprintf("Parte de Konigreich OS. PMM, paginacion, heap, hilos, procesos ring 3, ELF, syscalls, red.\n");
+    kprintf("Parte de Vortex OS. PMM, paginacion, heap, hilos, procesos ring 3, ELF, syscalls, red.\n");
 }
 static void run(char *l){
     while(*l==' ') l++;
@@ -902,7 +902,7 @@ void kmain(uint32_t magic, struct mb_info *mi){
     if(magic==0x2BADB002 && (mi->flags&(1u<<12)) && mi->fb_type==1 && (mi->fb_bpp==32||mi->fb_bpp==24) && mi->fb_hi==0 && mi->fb_w>=640 && mi->fb_h>=480){
         gfx_set_bpp(mi->fb_bpp);
         fb_addr=mi->fb_lo; fb_pitch=mi->fb_pitch; fb_w=mi->fb_w; fb_h=mi->fb_h; fb_ok=1; }
-    kprintf("== kng-kernel %s :: Konigreich OS ==\n", KNG_VERSION);
+    kprintf("== kng-kernel %s :: Vortex OS ==\n", KNG_VERSION);
     if(magic!=0x2BADB002){ kprintf("Arranque no Multiboot (magic=0x%x). Detenido.\n",magic); for(;;) __asm__ volatile("hlt"); }
     gdt_init(); idt_init(); pic_init(); pit_init(); irq_handlers[1]=kb_irq;
     mouse_init();
