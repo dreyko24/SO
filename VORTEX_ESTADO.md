@@ -7,7 +7,7 @@
 - Gestor de ventanas: minimizar, restaurar desde el dock, maximizar, restaurar geometría, cierre, pantalla completa auténtica con F11 o el botón de la ventana. F10 crea una nueva instancia de la aplicación activa; Ctrl+M minimiza y Ctrl+W cierra. Soporta hasta 24 ventanas simultáneas en la interfaz.
 - Dock lateral: área de trabajo reservada en el modo maximizado y acceso a aplicaciones integrado en el logotipo de Vortex de la barra superior o en el primer icono lateral. Fullscreen oculta las barras.
 - Aplicaciones: lanzador de herramientas integradas y catálogo de aplicaciones Linux presentes o instalables mediante el entorno Debian. La opción de Chromium requiere la imagen con Debian y la capa gráfica X para ejecutarse.
-- Vortex Saber: lecciones de matemáticas, ciencias, historia peruana y tecnología; 12 preguntas evaluables, explicaciones, puntuaciones, XP, niveles y registro de la mejor nota de cada lección. El archivo de progreso es `/Documentos/Vortex-Saber-progreso.txt`. El progreso persiste entre reinicios **solo si** se activó un disco KNGFS de almacenamiento.
+- Vortex Saber: lecciones de matemáticas, ciencias, historia peruana y tecnología; 12 preguntas evaluables, explicaciones, puntuaciones, XP y niveles. Incluye un minijuego interactivo de cuatro parejas (conceptos y definiciones) con errores, puntuación y registro de las mejores marcas. El archivo de progreso es `/Documentos/Vortex-Saber-progreso.txt`. El progreso persiste entre reinicios **solo si** se activó un disco KNGFS de almacenamiento.
 - Fecha y hora: lee fecha UTC del reloj de la máquina y presenta hora/calendario local, UTC-5 por defecto, equivalente a America/Lima. Guarda preferencia de huso horario y formato del reloj en la configuración persistente si el disco está activo. **No se implementó aún NTP.**
 - Identidad visual Vortex en la interfaz; se mantiene el nombre kng de los binarios del kernel para evitar romper compatibilidad.
 
@@ -29,7 +29,7 @@ make -C kernel64
 bash tools/build-iso.sh
 ```
 
-La ISO generada se almacena en `out/` (el nombre actual lo determina el script heredado, normalmente `KonigreichOS-kng.iso`). Para una imagen que incluya Debian y permita instalar aplicaciones Linux:
+La ISO generada se almacena en `out/VortexOS.iso`; también se genera `out/VortexOS.iso.sha256`. Para una imagen que incluya Debian y permita instalar aplicaciones Linux:
 
 ```sh
 KNG_DEBIAN=1 bash tools/build-iso.sh
@@ -49,7 +49,7 @@ Atajos: F11 pantalla completa; Esc sale de pantalla completa; F10 abre una segun
 | Usuarios, permisos, autenticación y aislamiento seguro | Parciales; no adecuados aún para datos sensibles |
 | Compatibilidad con apps de escritorio, suite ofimática gráfica | Integración incompleta; pruebas previas de LibreOffice headless no equivalen a escritorio usable |
 | Sincronización NTP y ajuste automático del reloj | Pendiente; se lee RTC de la VM o del equipo |
-| Vortex Saber: ilustraciones, más materias, minijuegos y evaluación avanzada | La biblioteca y los cuestionarios ya funcionan; funciones avanzadas pendientes |
+| Vortex Saber: ilustraciones, más materias y evaluación avanzada | Biblioteca, cuestionarios y juego de parejas integrados; ampliación pedagógica pendiente |
 | ISO integral lista para hardware genérico | No verificada; las ISO de prueba se han ejecutado en QEMU, no en una variedad de equipos reales |
 | Gestión moderna de actualizaciones, cifrado, seguridad de aplicaciones, notificaciones | Pendiente |
 
