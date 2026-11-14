@@ -895,6 +895,35 @@ int krtc(int *h,int *m){
     if(!(b&2)){ hh%=12; if(pm) hh+=12; }
     *h=hh%24; *m=mm%60; return 0;
 }
+/* Mismo reloj UTC que utiliza el kernel de 64 bits; tambien incluye la fecha. */
+static int rtc_days_32(int y,int m,int d){
+    y-=m<=2;
+    int era=(y>=0?y:y-399)/400;
+    unsigned yoe=(unsigned)(y-era*400);
+    unsigned doy=(153u*(unsigned)(m+(m>2?-3:9))+2u)/5u+(unsigned)d-1u;
+    unsigned doe=yoe*365u+yoe/4u-yoe/100u+doy;
+    return era*146097+(int)doe-719468;
+}
+uint64_t krtc_epoch(void){
+    int tries=0; while((cmos(0x0A)&0x80)&&++tries<10000);
+    uint8_t b=cmos(0x0B); int bcd=!(b&4);
+    int ss=cmos(0), mm=cmos(2), hh=cmos(4);
+    int pm=hh&0x80; hh&=0x7F;
+    int d=cmos(7), mo=cmos(8), yy=cmos(9), cen=cmos(0x32);
+    if(bcd){
+        ss=(ss&15)+((ss>>4)*10); mm=(mm&15)+((mm>>4)*10);
+        hh=(hh&15)+((hh>>4)*10); d=(d&15)+((d>>4)*10);
+        mo=(mo&15)+((mo>>4)*10); yy=(yy&15)+((yy>>4)*10);
+        cen=(cen&15)+((cen>>4)*10);
+    }
+    if(!(b&2)){ hh%=12; if(pm) hh+=12; }
+    if(cen<19||cen>30) cen=20;
+    int year=cen*100+yy;
+    if(year<1970||year>2400||mo<1||mo>12||d<1||d>31||hh>23||mm>59||ss>59) return 0;
+    int days=rtc_days_32(year,mo,d);
+    if(days<0) return 0;
+    return (uint64_t)(unsigned)days*86400ull+(uint64_t)hh*3600u+(uint64_t)mm*60u+(uint64_t)ss;
+}
 
 void kmain(uint32_t magic, struct mb_info *mi){
     serial_init(); clear();
