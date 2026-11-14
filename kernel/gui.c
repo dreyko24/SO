@@ -2180,9 +2180,11 @@ void gui_key(int c){
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
     if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; } /* Ctrl+T: terminal */
     int top=win_top();
-    if(c==0x502||c==0x503){ /* Ctrl+Tab: recorrer ventanas, incluidas minimizadas */
+    if(c==0x502||c==0x503){ /* Ctrl+Tab: foco anterior/siguiente, recuperando minimizadas */
         if(nord>1){
-            int target=c==0x502?order[0]:order[nord-2];
+            int active=win_top(), idx=nord-1;
+            while(idx>0 && order[idx]!=active) idx--;
+            int target=order[(idx+nord+(c==0x502?-1:1))%nord];
             focus(target);
         } else if(nord==1) focus(order[0]);
         return;
