@@ -69,11 +69,11 @@ void blit_scaled32(int x,int y,int w,int h,const uint32_t *src,int sw,int sh){
     int y0=k_max(y,cy0),y1=k_min(y+h,cy1);
     if(x1<=x0||y1<=y0)return;
     for(int yy=y0;yy<y1;yy++){
-        int sy=(int)(((uint64_t)(yy-y)*sh)/(uint32_t)h);if(sy>=sh)sy=sh-1;
+        int sy=((yy-y)*sh)/h;if(sy>=sh)sy=sh-1;
         const uint32_t *r=src+(size_t)sy*sw;
         uint32_t *d=bb+(size_t)yy*gw;
         for(int xx=x0;xx<x1;xx++){
-            int sx=(int)(((uint64_t)(xx-x)*sw)/(uint32_t)w);if(sx>=sw)sx=sw-1;
+            int sx=((xx-x)*sw)/w;if(sx>=sw)sx=sw-1;
             d[xx]=r[sx];
         }
     }
@@ -86,12 +86,12 @@ void blit_bgr_scaled(int x,int y,int w,int h,const uint8_t *src,int sw,int sh,in
     unsigned bytepp=(unsigned)bits/8u;
     size_t stride=((size_t)sw*bytepp+3u)&~3u;
     for(int yy=y0;yy<y1;yy++){
-        int sy=(int)(((uint64_t)(yy-y)*sh)/(uint32_t)h);if(sy>=sh)sy=sh-1;
+        int sy=((yy-y)*sh)/h;if(sy>=sh)sy=sh-1;
         if(!topdown)sy=sh-1-sy;
         const uint8_t *r=src+(size_t)sy*stride;
         uint32_t *d=bb+(size_t)yy*gw;
         for(int xx=x0;xx<x1;xx++){
-            int sx=(int)(((uint64_t)(xx-x)*sw)/(uint32_t)w);if(sx>=sw)sx=sw-1;
+            int sx=((xx-x)*sw)/w;if(sx>=sw)sx=sw-1;
             const uint8_t *p=r+(size_t)sx*bytepp;
             d[xx]=((uint32_t)p[2]<<16)|((uint32_t)p[1]<<8)|p[0];
         }
