@@ -1232,6 +1232,11 @@ static int set_resolution(int w,int h){
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
+    if(w->fullscreen){
+        /* La ventana cubre absolutamente todos los píxeles; ninguna app ni widget
+         * del escritorio puede quedar visible a través del contenido. */
+        fill(0,0,gw,gh,C_BG,255);
+    }
     if(!w->fullscreen){
     { int X0=x-8,Y0=y-6,X1=x+w->w+8,Y1=y+w->h+14;                                     /* sombra suave, solo fuera de la ventana */
       for(int bnd=0;bnd<4;bnd++){
