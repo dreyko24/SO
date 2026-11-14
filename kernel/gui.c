@@ -153,15 +153,47 @@ static const char vortex_icon_data[] =
     "00000000096000000000"
     "00000000024000000000";
 static int vortex_hex(char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:0;}
+static int vortex_logo_px(int x,int y){
+    if(x<0||x>=40||y<0||y>=31)return 0;
+    int k=y*20+(x>>2)*2;
+    int v=(vortex_hex(vortex_icon_data[k])<<4)|vortex_hex(vortex_icon_data[k+1]);
+    return (v>>(6-2*(x&3)))&3;
+}
+/* Emblema oficial suavizado por muestreo bilineal.
+ * El anterior escalado por celdas de 40x31 mostraba un logotipo dentado
+ * de varios centimetros cuando se usaba como marca de agua. */
 static void vortex_logo(int x,int y,int w,int alpha){
-    if(w<=0)return;int h=w*31/40;if(h<1)h=1;
-    for(int yy=0;yy<31;yy++)for(int xx=0;xx<40;xx++){
-        int k=yy*20+(xx>>2)*2;
-        int v=(vortex_hex(vortex_icon_data[k])<<4)|vortex_hex(vortex_icon_data[k+1]);
-        int idx=(v>>(6-2*(xx&3)))&3;if(!idx)continue;
-        int x0=x+xx*w/40,x1=x+(xx+1)*w/40,y0=y+yy*h/31,y1=y+(yy+1)*h/31;
-        if(x1<=x0)x1=x0+1;if(y1<=y0)y1=y0+1;
-        fill(x0,y0,x1-x0,y1-y0,idx==1?0x22234f:0x8067d5,alpha);
+    if(w<=0||alpha<=0)return;
+    int h=w*31/40;if(h<1)h=1;
+    static const uint32_t pal[]={0x000000,0x242850,0x8b72db,0x8b72db};
+    for(int yy=0;yy<h;yy++){
+        int py=(yy*31*256)/h-128;
+        int by=py/256;if(py<0&&py%256)by--;
+        int fy=py-by*256;
+        for(int xx=0;xx<w;xx++){
+            int px=(xx*40*256)/w-128;
+            int bx=px/256;if(px<0&&px%256)bx--;
+            int fx=px-bx*256;
+            int w00=(256-fx)*(256-fy),w10=fx*(256-fy);
+            int w01=(256-fx)*fy,w11=fx*fy;
+            int i00=vortex_logo_px(bx,by);
+            int i10=vortex_logo_px(bx+1,by);
+            int i01=vortex_logo_px(bx,by+1);
+            int i11=vortex_logo_px(bx+1,by+1);
+            int a00=i00?w00:0,a10=i10?w10:0;
+            int a01=i01?w01:0,a11=i11?w11:0;
+            int sum=a00+a10+a01+a11;
+            if(sum<=0)continue;
+            uint32_t c0=pal[i00],c1=pal[i10],c2=pal[i01],c3=pal[i11];
+            int rr=(a00*(int)((c0>>16)&255)+a10*(int)((c1>>16)&255)+
+                    a01*(int)((c2>>16)&255)+a11*(int)((c3>>16)&255))/sum;
+            int gg=(a00*(int)((c0>>8)&255)+a10*(int)((c1>>8)&255)+
+                    a01*(int)((c2>>8)&255)+a11*(int)((c3>>8)&255))/sum;
+            int bb0=(a00*(int)(c0&255)+a10*(int)(c1&255)+
+                     a01*(int)(c2&255)+a11*(int)(c3&255))/sum;
+            int aa=(sum*alpha+32768)>>16;
+            if(aa)px_blend(x+xx,y+yy,(uint32_t)((rr<<16)|(gg<<8)|bb0),aa);
+        }
     }
 }
 
@@ -1610,8 +1642,9 @@ static void draw_icon(int i,int x,int y){
     fill(x+13,y+2,TILE-26,1,0xffffff,27);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: /* Logo original de Vortex OS como acceso unico a Aplicaciones. */
-        vortex_logo(x+5,y+7,42,255);
+    case 0: /* La imagen de marca contrasta sobre una placa clara. */
+        rrect(x+6,y+7,40,38,10,0xe7e0fa,255);
+        vortex_logo(x+9,y+9,34,255);
         break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
@@ -1754,8 +1787,8 @@ static void appmenu_draw(void){
     rrect(x+5,y+8,w,h,18,0x000000,85);
     rrect(x,y,w,h,18,0x111629,250);
     rrect(x+2,y+2,w-4,h-4,16,0x1b2340,244);
-    rrect(x+13,y+14,40,40,11,0x2b3159,255);
-    vortex_logo(x+19,y+20,29,255);
+    rrect(x+13,y+14,40,40,11,0xe7e0fa,255);
+    vortex_logo(x+18,y+20,31,255);
     text_big(x+64,y+17,"Aplicaciones",0xffffff);
     text(x+w-164,y+27,"Vortex OS",0xb7bdf0);
     fill(x+156,y+69,w-174,1,0xffffff,26);
