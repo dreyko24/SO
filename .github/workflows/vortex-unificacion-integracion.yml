@@ -1,0 +1,39 @@
+name: vortex-unificacion-integracion
+on:
+  push:
+    branches:
+      - vortex/integracion-total-20261114
+      - main
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: vortex-integracion-total-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  kernels-y-componentes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar compiladores de Vortex
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc gcc-multilib binutils make python3
+      - name: Compilar kernel propio Vortex 32 y 64 bits
+        run: |
+          make -C kernel -j2
+          make -C kernel64 -j2
+          test -s kernel/vortex-kernel.elf
+          test -s kernel64/vortex-kernel64.elf
+      - name: Validar fecha y reloj NTP
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror tools/ntp_test.c -o /tmp/vortex-ntp && /tmp/vortex-ntp
+          gcc -std=gnu11 -O2 -w tools/ntp_stack_test.c -o /tmp/vortex-ntp-stack && /tmp/vortex-ntp-stack
+      - name: Verificar seguridad del destino HTTPS y busqueda Google
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror tools/browser_launch_test.c -o /tmp/vortex-browser && /tmp/vortex-browser
+      - name: Red simulada con pila Vortex real
+        run: python3 tools/nettest.py
+      - name: Atajos del gestor de ventanas Vortex
+        run: |
+          gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbd && /tmp/vortex-kbd
