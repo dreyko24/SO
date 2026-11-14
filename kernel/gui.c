@@ -65,7 +65,7 @@ static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
 static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
-static int clk_h=12, clk_m=0; static uint32_t clk_next;
+static int clk_h=12, clk_m=0, clk_y=0, clk_mon=0, clk_day=0; static uint32_t clk_next;
 static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
 #define ACCENT ACC[acc_i]
 #define C_BG 0x161826
@@ -85,6 +85,7 @@ static void cat_int(char *d,int max,int v){
     if(v<0) cat(d,max,"-");
     char o[12]; int k=0; while(i) o[k++]=b[--i]; o[k]=0; cat(d,max,o);
 }
+static void cat2(char *d,int max,int v){ if(v<10) cat(d,max,"0"); cat_int(d,max,v); }
 static void l1_to_utf8(const unsigned char *s,int n,char *d){
     int k=0; for(int i=0;i<n;i++){ unsigned char c=s[i];
         if(c<0x80) d[k++]=(char)c; else { d[k++]=(char)(0xC0|(c>>6)); d[k++]=(char)(0x80|(c&0x3F)); } }
@@ -1503,11 +1504,16 @@ static void draw_window(int wi,int focused){
                 { uint32_t *th=get_thumb(i); if(th) for(int yy=2;yy<58;yy++) for(int xx=2;xx<94;xx++) px_blend(tx2+xx,ty+yy,th[yy*THW+xx],255); } }
             text_bold(cx+20,oy+192,"Hora",C_TXT);
             button(cx+20,oy+218,28,24,"-",0); button(cx+56,oy+218,28,24,"+",0);
-            { char b[40]="Zona horaria: UTC"; if(tz>=0) cat(b,40,"+"); cat_int(b,40,tz); text(cx+98,oy+222,b,C_TXT); }
+            { char b[70]="Zona: "; if(tz==-5) cat(b,sizeof b,"America/Lima (UTC-5)");
+              else { cat(b,sizeof b,"UTC"); if(tz>=0) cat(b,sizeof b,"+"); cat_int(b,sizeof b,tz); }
+              text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
-            text_bold(cx+20,oy+296,"Teclado",C_TXT);
-            for(int i=0;i<3;i++) button(cx+20+i*150,oy+322,140,26,kbd_layout_name(i),kbd_layout()==i);
-            text(cx+20,oy+354,"Tambien: escribe  teclado latam | es | us  en la terminal",C_DIM);
+            { char fecha[80]="RTC UTC: "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
+              cat(fecha,sizeof fecha,"/"); cat_int(fecha,sizeof fecha,clk_y); }
+              else cat(fecha,sizeof fecha,"fecha no disponible"); text(cx+20,oy+285,fecha,C_DIM); }
+            text_bold(cx+20,oy+312,"Teclado",C_TXT);
+            for(int i=0;i<3;i++) button(cx+20+i*150,oy+340,140,26,kbd_layout_name(i),kbd_layout()==i);
+            text(cx+20,oy+376,"Tambien: teclado latam | es | us desde Terminal",C_DIM);
         } else if(set_tab==1){
             char b[80]=""; cat(b,80,"Resolucion actual: "); cat_int(b,80,gw); cat(b,80," x "); cat_int(b,80,gh); cat(b,80,fb_bpp0==24?" (24 bits)":" (32 bits)");
             text_bold(cx+20,oy+14,b,C_TXT);
@@ -1566,9 +1572,12 @@ static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
     crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Königreich OS",C_TXT);
-    char t[16]=""; int h=clk_h;
-    if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
-    else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
+    char t[44]="";
+    if(clk_y){ cat2(t,sizeof t,clk_day); cat(t,sizeof t,"/"); cat2(t,sizeof t,clk_mon); cat(t,sizeof t,"/"); cat_int(t,sizeof t,clk_y); cat(t,sizeof t,"  "); }
+    else cat(t,sizeof t,"RTC sin fecha  ");
+    int h=clk_h;
+    if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; cat2(t,sizeof t,h); cat(t,sizeof t,":"); cat2(t,sizeof t,clk_m); cat(t,sizeof t,am?" PM":" AM"); }
+    else { cat2(t,sizeof t,h); cat(t,sizeof t,":"); cat2(t,sizeof t,clk_m); }
     text_bold((gw-text_w(t))/2,6,t,0xffffff);
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
     { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
@@ -1770,7 +1779,27 @@ static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==
 void gui_frame(void){
     uint32_t t=kticks();
     browser_poll();
-    if(t>=clk_next){ int h,m; clk_next=t+100; if(!krtc(&h,&m)){ h=((h+tz)%24+24)%24; if(h!=clk_h||m!=clk_m){ clk_h=h; clk_m=m; dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230); } } }
+    if((int)(t-clk_next)>=0){ clk_next=t+100;
+        uint64_t utc=krtc_epoch();
+        if(utc>=946684800ull&&utc<13569465600ull){
+            long long local=(long long)utc+(long long)tz*3600ll;
+            if(local>=0){
+                unsigned long long seconds;
+                int days=(int)udiv64((unsigned long long)local,86400,&seconds);
+                int h=(int)(seconds/3600), m=(int)((seconds%3600)/60);
+                /* Conversion de dias UTC al calendario gregoriano, con cambio de dia correcto en Peru. */
+                int z=days+719468, era=(z>=0?z:z-146096)/146097;
+                int doe=z-era*146097, yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
+                int yy=yoe+era*400, doy=doe-(365*yoe+yoe/4-yoe/100);
+                int mp=(5*doy+2)/153, dd=doy-(153*mp+2)/5+1;
+                int mo=mp+(mp<10?3:-9); yy+=mo<=2;
+                if(h!=clk_h||m!=clk_m||yy!=clk_y||mo!=clk_mon||dd!=clk_day){
+                    clk_h=h; clk_m=m; clk_y=yy; clk_mon=mo; clk_day=dd;
+                    dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230);
+                }
+            }
+        }
+    }
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
         if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
     { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
@@ -1827,12 +1856,15 @@ static void settings_click(int lx,int ly,int cw,int ch){
     if(set_tab==0){
         for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
         for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i){ wall_i=i; build_wall(); } dirty=1; return; }
-        if(in_rect(lx,y,20,218,28,24)){ if(tz>-12) tz--; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,56,218,28,24)){ if(tz<14) tz++; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; dirty=1; }
-        else if(in_rect(lx,y,20,322,140,26)) set_layout(KBD_US);
-        else if(in_rect(lx,y,170,322,140,26)) set_layout(KBD_LATAM);
-        else if(in_rect(lx,y,320,322,140,26)) set_layout(KBD_ES);
+        if(in_rect(lx,y,20,218,28,24)||in_rect(lx,y,56,218,28,24)){
+            if(lx<52&&tz>-12) tz--; else if(lx>=52&&tz<14) tz++;
+            char zona[12]=""; cat_int(zona,sizeof zona,tz); cfg_set("zona",zona);
+            clk_next=0; dirty=1;
+        }
+        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; cfg_set("reloj24",show24?"1":"0"); dirty=1; }
+        else if(in_rect(lx,y,20,340,140,26)) set_layout(KBD_US);
+        else if(in_rect(lx,y,170,340,140,26)) set_layout(KBD_LATAM);
+        else if(in_rect(lx,y,320,340,140,26)) set_layout(KBD_ES);
     } else if(set_tab==1){
         if(bga_ok()) for(int i=0;i<NRES;i++) if(in_rect(lx,y,20+(i%3)*160,70+(i/3)*36,150,28)){ set_resolution(RES[i][0],RES[i][1]); return; }
     } else if(set_tab==2){
@@ -2129,6 +2161,11 @@ void gui_key(int c){
 void gui_storage_ready(void){
     (void)kngfs_mount(); fs_track=1;
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
+    { char kv[16]; if(cfg_get("zona",kv,sizeof kv)){
+        const char *p=kv; int neg=0, v=0; if(*p=='-'){ neg=1; p++; } else if(*p=='+') p++;
+        if(*p>='0'&&*p<='9'){ while(*p>='0'&&*p<='9') v=v*10+(*p++-'0');
+            if(!*p){ if(neg) v=-v; if(v>=-12&&v<=14) tz=v; } }
+      } if(cfg_get("reloj24",kv,sizeof kv)) show24=(kv[0]!='0'); clk_next=0; }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
     saber_loaded=0; saber_load();
     build_wall(); dsk_sync(); dirty=1;
