@@ -87,6 +87,22 @@ static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) 
 int main(void){
     fb=calloc(W*H,4);
     if(gui_init(fb,W,H,W*4)){ puts("gui_init fallo"); return 1; }
+    /* Regresion de gestor de ventanas: 24 ventanas independientes sin
+     * ampliar la seccion BSS y sobrepasar el limite de 4MiB del kernel64. */
+    if(!wins){puts("FALLO: ventanas dinamicas no reservadas");return 1;}
+    for(int i=0;i<MAXW;i++){
+        open_new=1;Win *w=open_app(A_CALC);open_new=0;
+        if(!w||nord!=i+1||!w->used){
+            puts("FALLO: no se pueden abrir 24 ventanas independientes");return 1;
+        }
+    }
+    open_new=1;
+    Win *overflow=open_app(A_CALC);
+    open_new=0;
+    if(overflow||nord!=MAXW){puts("FALLO: limite de ventanas");return 1;}
+    while(nord>0)win_close(order[nord-1]);
+    if(win_top()!=-1){puts("FALLO: cerrar ventanas no libera el foco");return 1;}
+    puts("VORTEX VENTANAS: 24 instancias independientes en heap OK");
     { T+=101;gui_frame();
       if(clk_y!=2026||clk_mon!=11||clk_d!=14||clk_h!=10||clk_m!=45){
           puts("FALLO fecha Lima convertida desde UTC");return 1;
