@@ -1,4 +1,4 @@
-/* Vortex OS USB Mass Storage nativo: UHCI (PCI), BOT/SCSI, FAT32 lectura.
+/* Vortex OS USB Mass Storage nativo: UHCI (PCI), BOT/SCSI, FAT32/exFAT solo lectura.
  * No se usa BIOS ni Linux. Soporta raiz USB fisica conectada a controlador UHCI.
  * No escribe jamas al USB. Los archivos importados son una instantanea de la unidad.
  */
@@ -34,7 +34,7 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
 }
 static u16 io,port;static int low,found,ready,ever,probe_once;
 static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
-static char info[120]="Sin memoria USB FAT32 reconocida";
+static char info[120]="Sin memoria USB FAT32/exFAT reconocida";
 typedef struct {volatile u32 link,sts,token,buf,software[4];} TD;
 typedef struct {volatile u32 head,element,soft[2];} QH;
 static volatile u32 frame[1024] __attribute__((aligned(4096)));

@@ -17,7 +17,7 @@ if not exist "%ISO%" (
     exit /b 1
 )
 if defined USB_IMG if not exist "%USB_IMG%" (
-    echo [VORTEX] No existe la imagen USB FAT32: "%USB_IMG%"
+    echo [VORTEX] No existe la imagen USB FAT32/exFAT: "%USB_IMG%"
     exit /b 1
 )
 set "QEMU=qemu-system-x86_64.exe"
@@ -33,7 +33,7 @@ if errorlevel 1 (
 echo [VORTEX] Probando ISO: "%ISO%"
 echo [VORTEX] RAM 4 GB, video std, red Intel e1000, audio AC97, USB UHCI, reloj UTC, BIOS.
 if defined USB_IMG (
-    echo [VORTEX] Adjuntando USB virtual FAT32 solo lectura: "%USB_IMG%"
+    echo [VORTEX] Adjuntando USB virtual FAT32/exFAT solo lectura: "%USB_IMG%"
     "%QEMU%" -name "Vortex OS - prueba" -m 4096 -smp 2 -boot d -drive "file=%ISO%,media=cdrom,if=ide,readonly=on" -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot -drive "if=none,id=vortexusb,format=raw,file=%USB_IMG%,readonly=on" -device "usb-storage,drive=vortexusb,bus=usb-bus.0"
 ) else (
     "%QEMU%" -name "Vortex OS - prueba" -m 4096 -smp 2 -boot d -drive "file=%ISO%,media=cdrom,if=ide,readonly=on" -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot
