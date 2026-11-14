@@ -484,6 +484,31 @@ int main(void){
       if(n->scroll!=0){puts("FALLO scroll abajo Notas");return 1;}
       closeall();
       puts("VORTEX NOTAS: RUEDA BIDIRECCIONAL OK");
+      FsNode *imgs=fs_resolve(fs_root(),"/Imagenes");
+      int pnglen=(int)(vortex_demo_png_end-vortex_demo_png_start);
+      FsNode *im=imgs?fs_create(imgs,"RuedaVista.png",
+                    (const char*)vortex_demo_png_start,pnglen):0;
+      if(!im){puts("FALLO imagen demo para zoom");return 1;}
+      open_file(im);
+      int vi=win_top();
+      if(vi<0||wins[vi].type!=A_VIEWER||!wins[vi].picture.pixels){
+          puts("FALLO abrir PNG para zoom");return 1;
+      }
+      Win *v=&wins[vi];
+      gui_mouse_abs(v->x+v->w/2,v->y+TB+v->h/2,0);
+      gui_mouse_wheel(2);
+      if(v->image_zoom!=130){puts("FALLO zoom rueda arriba");return 1;}
+      shot("44_zoom_galeria");
+      gui_mouse_wheel(-2);
+      if(v->image_zoom!=100){puts("FALLO zoom rueda abajo");return 1;}
+      gui_mouse_wheel(-8);gui_mouse_wheel(-8);
+      if(v->image_zoom!=25){puts("FALLO limite minimo zoom");return 1;}
+      gui_mouse_wheel(8);gui_mouse_wheel(8);gui_mouse_wheel(8);
+      if(v->image_zoom>400||v->image_zoom<100){
+          puts("FALLO limites de zoom");return 1;
+      }
+      closeall();fs_remove(im);
+      puts("VORTEX VISOR PNG: ZOOM REVERSIBLE 25%-400% OK");
     }
     /* Enciclopedia original sin internet: lanzador, indexado, artículos y
      * rueda para desplazarse entre resultados. */
