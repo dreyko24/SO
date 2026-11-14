@@ -1968,8 +1968,23 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
     if(in_rect(lx,ly,cw-138,6,130,24)){
         w->editing=0;
-        if(papp_installed(4)) run_quiet("abrir chromium");
-        else run_in_terminal("instalar chromium");
+        if(papp_installed(4)){
+            /* Chromium usa el motor moderno. Mantener la URL actual al abrirlo
+             * y no permitir que entradas sin validar se conviertan en comandos. */
+            char cmd[160]="abrir chromium";
+            const char *u=w->url;
+            int n=k_strlen(u), safe=n>0&&n<=120;
+            if(!(k_startswith(u,"http://")||k_startswith(u,"https://"))) safe=0;
+            for(int i=0;safe&&i<n;i++){
+                int c=(unsigned char)u[i];
+                if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||
+                     (c>='0'&&c<='9')||c=='.'||c=='/'||c==':'||
+                     c=='?'||c=='&'||c=='='||c=='%'||c=='#'||
+                     c=='_'||c=='-'||c=='+'||c=='~'||c=='@')) safe=0;
+            }
+            if(safe){ cat(cmd,sizeof cmd," "); cat(cmd,sizeof cmd,u); }
+            run_quiet(cmd);
+        } else run_in_terminal("instalar chromium");
         dirty=1; return;
     }
     if(in_rect(lx,ly,48,6,cw-194,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
