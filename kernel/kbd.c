@@ -66,6 +66,8 @@ int kbd_feed(uint8_t b){
     /* F10: otra ventana de la aplicacion; F11: pantalla completa. */
     if(sc==0x44) return 0x501;
     if(sc==0x57) return 0x500;
+    /* Ctrl+Tab y Ctrl+Mayus+Tab: cambiar entre ventanas sin raton. */
+    if(ctrl&&sc==0x0F) return shift?0x503:0x502;
     int c=lookup(sc); if(!c) return 0;
     if(ctrl&&((c>='a'&&c<='z')||(c>='A'&&c<='Z'))) return 0x400|(c&31);    /* Ctrl+letra: codigo aparte para no chocar con las flechas */
     if(c==DEAD_ACUTE||c==DEAD_DIAER){ if(dead){ int d=dead; dead=0; return d==DEAD_ACUTE?0xB4:0xA8; } dead=c; return 0; }
