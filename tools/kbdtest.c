@@ -32,7 +32,12 @@ int main(void){
     kbd_feed(0x1D);
     chk(press(0x32),0x40D,"Ctrl+M minimiza");
     chk(press(0x11),0x417,"Ctrl+W cierra");
+    chk(press(0x0F),0x502,"Ctrl+Tab siguiente ventana");
+    kbd_feed(0x2A);
+    chk(press(0x0F),0x503,"Ctrl+Mayus+Tab ventana anterior");
+    kbd_feed(0xAA);
     kbd_feed(0x9D);
+    chk(press(0x0F),'\t',"Tab normal sin Ctrl");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }
