@@ -2129,6 +2129,8 @@ static void draw_icon(int i,int x,int y){
     case 8: rrect(x+9,y+10,34,32,5,0x0d0e16,255); fill(x+14,y+30,5,9,0x4ade80,255); fill(x+23,y+22,5,17,0x60a5fa,255); fill(x+32,y+16,5,23,0xf59e0b,255); break;
     }
 }
+/* Declaracion adelantada: la funcion completa sigue junto al compositor. */
+static int rect_hit(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh);
 static int dock_overlaps_window(void){
     int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
     for(int k=0;k<nord;k++){
