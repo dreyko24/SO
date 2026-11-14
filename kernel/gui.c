@@ -86,6 +86,8 @@ static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static VImage custom_wall;
 static int appmenu_open,appmenu_cat,power_menu_open,power_sleep;
+static char app_search[42]; static int app_search_len;
+static uint64_t gui_painted_pixels; /* estadistica de composicion para pruebas host */
 extern const unsigned char vortex_demo_png_start[],vortex_demo_png_end[];
 static void cfg_set(const char *key,const char *val);
 static int cfg_get(const char *key,char *val,int max);
@@ -231,13 +233,18 @@ static void wallpaper_default(int i){
 /* ---------------- ventanas ---------------- */
 static int win_top(void){ return nord? order[nord-1] : -1; }
 static void focus(int wi){
+    if(nord&&order[nord-1]==wi)return;
+    if(nord)dwin(&wins[order[nord-1]]);
+    dwin(&wins[wi]);
     int k=0; while(k<nord && order[k]!=wi) k++;
     if(k==nord) return;
     for(;k<nord-1;k++) order[k]=order[k+1];
-    order[nord-1]=wi; dirty=1;
+    order[nord-1]=wi;
 }
 static void doc_free(Win *w);
 static void win_close(int wi){
+    dwin(&wins[wi]);
+    if(nord)dwin(&wins[order[nord-1]]);
     if(wins[wi].type==A_TERM&&wins[wi].busy){ char kc[32]="matar "; cat_int(kc,sizeof kc,wins[wi].bpid); kshell_exec(kc); wins[wi].busy=0; }
     int k=0; while(k<nord && order[k]!=wi) k++;
     for(;k<nord-1;k++) order[k]=order[k+1];
@@ -245,7 +252,8 @@ static void win_close(int wi){
     if(wins[wi].type==A_AUDIO)audio_stop();
     if((wins[wi].type==A_AUDIO||wins[wi].type==A_VIDEO)&&wins[wi].file)fs_node_unref(wins[wi].file);
     vimage_release(&wins[wi].picture);
-    nord--; wins[wi].used=0; dirty=1;
+    nord--; wins[wi].used=0;
+    dmark(0,gh-108,gw,108);
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
 static void crect(Win *w,int *x,int *y,int *cw,int *ch){ *x=w->x+1; *y=w->y+TB; *cw=w->w-2; *ch=w->h-TB-1; }
@@ -371,7 +379,8 @@ static Win *open_app(int type){
     w->x=60+off+(gw>800?60:0); w->y=BARH+24+off;
     if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
-    order[nord++]=wi; dirty=1;
+    order[nord++]=wi;
+    dwin(w); dmark(0,gh-108,gw,108);
     if(type==A_BROWSER) nav(w,"vortex://inicio",0);
     return w;
 }
@@ -1134,10 +1143,10 @@ static void fm_drop(void){                                          /* se solto 
 }
 
 static int win_resizable(const Win *w){ return w->type==A_BROWSER||w->type==A_FILES||w->type==A_NOTES||w->type==A_VIEWER; }
-static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dirty=1; }
+static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dwin(w); }
 static void win_set_max(Win *w,int x,int y,int ww,int hh){
     if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
-    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dirty=1;
+    dwin(w); w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dwin(w);
 }
 static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
 static int text_w_big(const char *s){ return text_w(s)*3/2; }
@@ -1665,19 +1674,38 @@ static const AppMenuEntry APPMENU[]={
 #define APPMENU_CATS ((int)(sizeof APP_CATS/sizeof APP_CATS[0]))
 static void launcher_geom(int *x,int *y,int *w,int *h){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    *w=k_min(gw-24,760);*h=k_min(by-BARH-14,458);
+    *w=k_min(gw-24,760);*h=k_min(by-BARH-14,490);
     *x=(gw-*w)/2;*y=by-*h-9;
     if(*y<BARH+4)*y=BARH+4;
 }
+static void launcher_damage(void){
+    int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+    dmark(x-9,y-8,w+18,h+20);
+    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    dmark(bx,by,bw,bh);
+}
+static void power_damage(void){dmark(gw-236,BARH+1,230,208);}
+static int app_ascii(char c){
+    return c>='A'&&c<='Z'?c+('a'-'A'):c;
+}
+static int app_match(const char *hay,const char *needle){
+    if(!*needle)return 1;
+    for(const char *h=hay;*h;h++){
+        const char *a=h,*b=needle;
+        while(*a&&*b&&app_ascii(*a)==app_ascii(*b)){a++;b++;}
+        if(!*b)return 1;
+    }
+    return 0;
+}
 static int appmenu_index(int nth){
-    for(int i=0;i<APPMENU_N;i++)if(appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat){
+    for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search)){
         if(!nth)return i;nth--;
     }
     return -1;
 }
 static int appmenu_hit(int px,int py){
     int x,y,w,h; launcher_geom(&x,&y,&w,&h);
-    int left=x+156,top=y+77,cols=4,cw=(w-177)/cols,rh=(h-87)/4;
+    int left=x+156,top=y+112,cols=4,cw=(w-177)/cols,rh=(h-124)/4;
     if(px<left||px>=left+cols*cw||py<top||py>=top+4*rh)return -1;
     int col=(px-left)/cw,row=(py-top)/rh;
     return appmenu_index(row*cols+col);
@@ -1732,12 +1760,21 @@ static void appmenu_draw(void){
     text(x+w-164,y+27,"Vortex OS",0xb7bdf0);
     fill(x+156,y+69,w-174,1,0xffffff,26);
     rrect(x+9,y+66,143,h-78,12,0x12182d,210);
+    rrect(x+164,y+67,w-187,35,11,0x0e172a,255);
+    rrect(x+166,y+69,w-191,31,10,0x27334c,245);
+    circle(x+184,y+84,6,0xc6d4ed,220);
+    line(x+188,y+89,x+193,y+94,2,0xc6d4ed,220);
+    if(app_search_len)text(x+202,y+76,app_search,0xf0f4ff);
+    else text(x+202,y+76,"Buscar aplicaciones...",0x99aac6);
+    text(x+w-83,y+110,"Enter / Esc",0x8698b2);
     for(int i=0;i<APPMENU_CATS;i++){
         int row=y+76+i*42;
         if(i==appmenu_cat)rrect(x+16,row,130,37,8,0x6358b4,230);
         text(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:0xb5c1d9);
     }
-    int left=x+156,top=y+77,cw=(w-177)/4,rh=(h-87)/4;
+    int left=x+156,top=y+122,cw=(w-177)/4,rh=(h-134)/4;
+    int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search))count++;
+    if(!count)text(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
     for(int n=0;n<APPMENU_N;n++){
         int idx=appmenu_index(n);if(idx<0)break;
         int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
@@ -1882,6 +1919,7 @@ static int rect_hit(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ re
 static void render_region(int x0,int y0,int x1,int y1){
     int rw=x1-x0,rh=y1-y0;
     if(rw<=0||rh<=0)return;
+    gui_painted_pixels+=(uint64_t)(unsigned)rw*(unsigned)rh;
     clip_base(x0,y0,rw,rh);
     if(power_sleep){
         fill(x0,y0,rw,rh,0x040710,255);
