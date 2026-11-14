@@ -510,6 +510,25 @@ int main(void){
           puts("FALLO rueda en enciclopedia");return 1;
       }
       shot("41_vortex_saber_geografia");
+      click(e->x+1+54,e->y+TB+94+342+16);
+      if(!e->enc_quiz||e->enc_qindex!=0||e->enc_qscore!=0){
+          puts("FALLO cuestionario inicial");return 1;
+      }
+      gui_key('1'); /* primera respuesta correcta: El Sol */
+      if(e->enc_qanswer!=0||e->enc_qscore!=1){
+          puts("FALLO respuesta cuestionario");return 1;
+      }
+      gui_key('\n');
+      if(e->enc_qindex!=1||e->enc_qanswer!=-1){
+          puts("FALLO siguiente pregunta");return 1;
+      }
+      gui_key('2'); /* ADN */
+      if(e->enc_qanswer!=1||e->enc_qscore!=2){
+          puts("FALLO puntuacion de quiz");return 1;
+      }
+      shot("42_vortex_saber_cuestionario");
+      gui_key(27);
+      if(e->enc_quiz){puts("FALLO salir del cuestionario");return 1;}
       closeall();
       puts("VORTEX SABER: INDICE, ARTICULOS, BUSQUEDA, CATEGORIAS Y SCROLL OK");
     }

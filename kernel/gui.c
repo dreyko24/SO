@@ -39,6 +39,7 @@ typedef struct {
     VImage picture; int media_tab; /* multimedia */
     VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
     int enc_category,enc_topic,enc_scroll,enc_search_len;
+    int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
     char enc_search[48];
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
@@ -492,7 +493,7 @@ static Win *open_app(int type){
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
     case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
-    case A_ENCARTA:  w->w=770; w->h=575; w->enc_topic=-1;
+    case A_ENCARTA:  w->w=770; w->h=575; w->enc_topic=-1;w->enc_qanswer=-1;
                      set_title(w,"Vortex Saber - Enciclopedia");break;
     case A_AUDIO:    w->w=520; w->h=275; set_title(w,"Vortex Musica"); break;
     case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
@@ -1456,6 +1457,22 @@ static int enc_body_height(const Win *w){
     int h=w->h-TB-1;
     return k_max(3,(h-265)/18);
 }
+static void enc_quiz_answer(Win *w,int choice){
+    if(!w->enc_quiz||w->enc_qindex>=ENC_QUIZ_N||
+       w->enc_qanswer>=0||choice<0||choice>=4)return;
+    w->enc_qanswer=choice;
+    if(ENC_QUIZ[w->enc_qindex].correct==choice)w->enc_qscore++;
+    dwin(w);
+}
+static void enc_quiz_next(Win *w){
+    if(!w->enc_quiz)return;
+    if(w->enc_qindex==ENC_QUIZ_N){
+        w->enc_qindex=0;w->enc_qscore=0;w->enc_qanswer=-1;
+    }else if(w->enc_qanswer>=0){
+        w->enc_qindex++;w->enc_qanswer=-1;
+    }
+    dwin(w);
+}
 static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     /* Cabecera editorial y búsqueda, integrada en la paleta Vortex. */
     rrect(cx+10,cy+8,cw-20,74,18,light_theme?0xf5e4db:0x3b283c,255);
@@ -1477,9 +1494,48 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
         if(i==w->enc_category)rrect(sx+8,iy,sw-16,34,11,ACCENT,238);
         text_ui_bold(sx+20,iy+9,ENC_CATEGORIES[i],i==w->enc_category?0xffffff:C_TXT);
     }
+    rrect(sx+8,sy+342,sw-16,36,12,w->enc_quiz?ACCENT:C_HOVER,250);
+    text_ui_bold(sx+24,sy+353,"Practicar",w->enc_quiz?0xffffff:C_TXT);
     int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
     rrect(rx,ry,rw,rh,16,C_TILE,255);
-    if(w->enc_topic<0){
+    if(w->enc_quiz){
+        text_ui_bold(rx+20,ry+16,"Aprende jugando",C_TXT);
+        char result[40]="Aciertos: ";
+        cat_int(result,sizeof result,w->enc_qscore);
+        cat(result,sizeof result," / ");
+        cat_int(result,sizeof result,ENC_QUIZ_N);
+        text_ui(rx+rw-148,ry+16,result,C_DIM);
+        fill(rx+20,ry+49,rw-40,2,ACCENT,150);
+        if(w->enc_qindex>=ENC_QUIZ_N){
+            text_big(rx+22,ry+87,"Cuestionario completado",C_TXT);
+            text_ui(rx+22,ry+136,"Has terminado todas las preguntas.",C_DIM);
+            text_ui(rx+22,ry+164,"Repasa tus articulos y vuelve a jugar.",C_DIM);
+        }else{
+            const EncQuiz *q=&ENC_QUIZ[w->enc_qindex];
+            char num[46]="Pregunta ";
+            cat_int(num,sizeof num,w->enc_qindex+1);
+            text_ui_bold(rx+22,ry+61,num,C_DIM);
+            enc_wrap(q->question,rx+22,ry+81,rw-45,2,0,1);
+            for(int i=0;i<4;i++){
+                int oy=ry+119+i*54;
+                uint32_t bc=C_PANEL,fg=C_TXT;
+                if(w->enc_qanswer>=0){
+                    if(i==q->correct){bc=0x237d59;fg=0xffffff;}
+                    else if(i==w->enc_qanswer){bc=0xa43f51;fg=0xffffff;}
+                }
+                rrect(rx+18,oy,rw-36,47,12,bc,255);
+                char prefix[4]={(char)('1'+i),'.',' ',0};
+                text_ui_bold(rx+31,oy+13,prefix,fg);
+                text_ui(rx+58,oy+13,q->answers[i],fg);
+            }
+            if(w->enc_qanswer>=0){
+                enc_wrap(q->explanation,rx+22,ry+338,rw-44,2,0,1);
+            }
+        }
+        rrect(rx+rw-184,ry+rh-46,166,32,11,ACCENT,255);
+        text_ui_bold(rx+rw-169,ry+rh-37,
+                     w->enc_qindex>=ENC_QUIZ_N?"Reiniciar":"Siguiente",0xffffff);
+    }else if(w->enc_topic<0){
         int matches=enc_count(w);
         char count[48]="";cat_int(count,sizeof count,matches);
         cat(count,sizeof count,matches==1?" articulo":" articulos");
@@ -2577,10 +2633,29 @@ static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     switch(w->type){
     case A_ENCARTA:{
-        if(in_rect(lx,ly,238,22,cw-260,34)){w->enc_topic=-1;dwin(w);return;}
+        if(in_rect(lx,ly,20,94+342,175,36)){
+            w->enc_quiz=1;w->enc_qindex=0;w->enc_qanswer=-1;
+            w->enc_qscore=0;w->enc_scroll=0;dwin(w);return;
+        }
+        if(in_rect(lx,ly,238,22,cw-260,34)){
+            w->enc_quiz=0;w->enc_topic=-1;dwin(w);return;
+        }
+        if(w->enc_quiz){
+            int ry=94,rh=ch-104,rw=cw-230,rx=218;
+            if(in_rect(lx,ly,rx+rw-184,ry+rh-46,166,32)){
+                enc_quiz_next(w);return;
+            }
+            if(w->enc_qindex<ENC_QUIZ_N)
+                for(int i=0;i<4;i++)
+                    if(in_rect(lx,ly,rx+18,ry+119+i*54,rw-36,47)){
+                        enc_quiz_answer(w,i);return;
+                    }
+            return;
+        }
         for(int i=0;i<ENC_CATEGORIES_N;i++)
             if(in_rect(lx,ly,20,137+i*40,175,34)){
                 w->enc_category=i;w->enc_topic=-1;w->enc_scroll=0;
+                w->enc_quiz=0;
                 dwin(w);return;
             }
         if(w->enc_topic>=0){
@@ -2906,6 +2981,7 @@ void gui_mouse_wheel(int steps){
         case A_VIEWER:
             maximum=100000;increment=5;break;
         case A_ENCARTA:
+            if(w->enc_quiz)return;
             if(w->enc_topic<0){
                 int h=w->h-TB-1,visible=k_max(1,(h-178)/57);
                 maximum=k_max(0,enc_count(w)-visible);increment=2;
@@ -3028,6 +3104,12 @@ void gui_key(int c){
         dirty=1;
         break; }
     case A_ENCARTA:
+        if(w->enc_quiz){
+            if(c==27)w->enc_quiz=0;
+            else if(c>='1'&&c<='4')enc_quiz_answer(w,c-'1');
+            else if(c=='\n')enc_quiz_next(w);
+            dwin(w);break;
+        }
         if(c==27){
             if(w->enc_search_len){w->enc_search_len=0;w->enc_search[0]=0;}
             else w->enc_topic=-1;
