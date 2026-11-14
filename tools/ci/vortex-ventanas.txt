@@ -24,3 +24,15 @@ captura minimizada
 raton 42 650
 clic
 captura restaurada
+# Nueva instancia independiente y cierre sin afectar a la original
+tecla f10
+captura segunda_instancia
+tecla ctrl-w
+captura instancia_cerrada
+# Doble clic maximiza, deja libre la barra lateral y restaura geometria
+raton 360 95
+doble
+captura maximizada
+raton 360 43
+doble
+captura tamano_restaurado
