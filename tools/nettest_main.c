@@ -13,6 +13,7 @@ void kfree(void *p){ free(p); }
 static uint32_t T;
 uint32_t kticks(void){ return T; }
 void kprintf(const char *f,...){ va_list a; va_start(a,f); vfprintf(stderr,f,a); va_end(a); }
+uint64_t krtc_epoch(void){ return 1794650400ull; } /* RTC ficticio del simulador */
 #include "../kernel/net.c"
 
 static int fdin=3, fdout=4, fdsync=5, nsent; static uint8_t rb[1<<20]; static int rn;
