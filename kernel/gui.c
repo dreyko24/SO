@@ -45,7 +45,7 @@ typedef struct {
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
-    int rx, ry, rw, rh, maxed, minimized, workspace; uint32_t tclick;                                   /* maximizar / ajustar */
+    int rx, ry, rw, rh, maxed, minimized, workspace, fullscreen, fs_was_maxed; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -378,7 +378,13 @@ static void win_close(int wi){
     dmark(0,gh-108,gw,108);
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
-static void crect(Win *w,int *x,int *y,int *cw,int *ch){ *x=w->x+1; *y=w->y+TB; *cw=w->w-2; *ch=w->h-TB-1; }
+static void crect(Win *w,int *x,int *y,int *cw,int *ch){
+    /* Pantalla completa real: la aplicacion utiliza cada pixel. */
+    *x=w->fullscreen?w->x:w->x+1;
+    *y=w->fullscreen?w->y:w->y+TB;
+    *cw=w->fullscreen?w->w:w->w-2;
+    *ch=w->fullscreen?w->h:w->h-TB-1;
+}
 
 static int layout_from_name(const char *n);
 static void set_layout(int l);
@@ -1319,12 +1325,39 @@ static void win_drag_resize(Win *w,int px,int py){
     if(l==w->x&&t==w->y&&r-l==w->w&&b-t==w->h)return;
     dwin(w);w->x=l;w->y=t;w->w=r-l;w->h=b-t;dwin(w);
 }
-static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dwin(w); }
-static void win_set_max(Win *w,int x,int y,int ww,int hh){
-    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
-    dwin(w); w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dwin(w);
+/* El dock ocupa una reserva lateral al maximizar; nunca cubre la app. */
+static int desktop_work_x(void){
+    int left=DASH_LEFT+DASH_WIDTH+12;
+    return left<gw/3?left:0; /* seguridad en resoluciones estrechas */
 }
-static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
+static void win_restore(Win *w){
+    if(!w->maxed)return;
+    dwin(w);w->x=w->rx;w->y=w->ry;w->w=w->rw;w->h=w->rh;
+    w->maxed=0;w->fullscreen=0;dwin(w);dirty=1;
+}
+static void win_set_max(Win *w,int x,int y,int ww,int hh){
+    if(!w->maxed){w->rx=w->x;w->ry=w->y;w->rw=w->w;w->rh=w->h;}
+    dwin(w);w->x=x;w->y=y;w->w=ww;w->h=hh;
+    w->maxed=1;w->fullscreen=0;dwin(w);dirty=1;
+}
+static void win_toggle_max(Win *w){
+    if(w->fullscreen)return;
+    if(w->maxed)win_restore(w);
+    else {int x=desktop_work_x();win_set_max(w,x,BARH,gw-x,gh-BARH);}
+}
+static void win_toggle_fullscreen(Win *w){
+    if(!w)return;
+    if(w->fullscreen){
+        int was_maxed=w->fs_was_maxed;
+        win_restore(w);
+        if(was_maxed){int x=desktop_work_x();win_set_max(w,x,BARH,gw-x,gh-BARH);}
+    }else{
+        w->fs_was_maxed=w->maxed;
+        if(!w->maxed){w->rx=w->x;w->ry=w->y;w->rw=w->w;w->rh=w->h;}
+        dwin(w);w->x=0;w->y=0;w->w=gw;w->h=gh;
+        w->maxed=1;w->fullscreen=1;dirty=1;
+    }
+}
 static void win_minimize(Win *w){if(!w||w->minimized)return;dwin(w);w->minimized=1;dirty=1;}
 static int text_w_big(const char *s){ return text_w(s)*3/2; }
 /* ---------------- ajustes: almacenamiento y pantalla ---------------- */
@@ -1587,6 +1620,7 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
+    if(!w->fullscreen){
     /* Sombra en bandas finas, nunca 12 rectangulos de tamano ventana:
      * anteriormente cada movimiento recalculaba millones de mezclas. */
     /* Sombra difusa de GNOME/Adwaita en vez de bandas grises duras. */
@@ -1613,6 +1647,9 @@ static void draw_window(int wi,int focused){
     rrect(x+w->w-31,y+5,23,20,12,focused?0xc74557:(light_theme?0xf0d4da:0x4b343d),255);
     line(x+w->w-24,y+10,x+w->w-15,y+19,1,0xffdce0,255);
     line(x+w->w-15,y+10,x+w->w-24,y+19,1,0xffdce0,255);
+    }else{
+        fill(x,y,w->w,w->h,C_BG,255); /* sin bordes ni decoraciones */
+    }
 
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     clip_set(cx,cy,cw,ch);
@@ -2092,7 +2129,23 @@ static void draw_icon(int i,int x,int y){
     case 8: rrect(x+9,y+10,34,32,5,0x0d0e16,255); fill(x+14,y+30,5,9,0x4ade80,255); fill(x+23,y+22,5,17,0x60a5fa,255); fill(x+32,y+16,5,23,0xf59e0b,255); break;
     }
 }
+static int dock_overlaps_window(void){
+    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    for(int k=0;k<nord;k++){
+        Win *w=&wins[order[k]];
+        if(!w->used||w->minimized||w->workspace!=active_workspace)continue;
+        if(w->fullscreen)return 1;
+        if(rect_hit(w->x,w->y,w->w,w->h,bx,by,bw,bh))return 1;
+    }
+    return 0;
+}
+static int dock_available(void){
+    int top=win_top();
+    if(top>=0&&wins[top].fullscreen)return 0;
+    return !dock_overlaps_window()||mx<=3;
+}
 static void draw_dock(void){
+    if(!dock_available())return;
     int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
     fill(bx+10,by+bh-3,bw-20,7,0x09040d,48);
     rrect(bx,by,bw,bh,23,light_theme?0xe2dfeb:0x1a1423,241);
@@ -2501,7 +2554,11 @@ static void render_region(int x0,int y0,int x1,int y1){
         }
         if(!hidden)draw_window(order[k],order[k]==win_top());
     }
-    draw_topbar();draw_dock();appmenu_draw();power_menu_draw();language_menu_draw();
+    {int top=win_top();
+     if(top<0||!wins[top].fullscreen){
+         draw_topbar();draw_dock();appmenu_draw();power_menu_draw();language_menu_draw();
+     }
+    }
     if(fd_on){
         char g[FS_NAME+4];k_strcpy(g,fd_name,sizeof g);g[26]=0;
         int tw=text_w(g)+44;
@@ -2572,6 +2629,7 @@ void gui_frame(void){
 /* ---------------- entrada ---------------- */
 static int in_rect(int px,int py,int x,int y,int w,int h){ return px>=x&&px<x+w&&py>=y&&py<y+h; }
 static int dock_hit(int px,int py){
+    if(!dock_available())return -1;
     int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
     if(!in_rect(px,py,bx,by,bw,bh))return -1;
     for(int i=0;i<NDOCK;i++)
@@ -2821,7 +2879,7 @@ static void on_press(void){
             kserial_puts("[vortex-apps] menu abierto\n");
         }else open_app(DOCK_APP[d]);return; }
     if(d==-2) return;
-    if(my<BARH){
+    if(my<BARH && !(win_top()>=0&&wins[win_top()].fullscreen)){
         if(mx>=9&&mx<126){
             appmenu_open=!appmenu_open;
             app_search_len=0;app_search[0]=0;appmenu_cat=MC_ALL;
@@ -2844,12 +2902,12 @@ static void on_press(void){
         if(w->minimized||w->workspace!=active_workspace||
            !in_rect(mx,my,w->x,w->y,w->w,w->h))continue;
         focus(wi);
-        if(my<w->y+TB){
+        if(my<w->y+TB&&!w->fullscreen){
             if(in_rect(mx,my,w->x+w->w-32,w->y+4,25,23)){win_close(wi);return;}
             if(in_rect(mx,my,w->x+w->w-63,w->y+4,25,23)){win_toggle_max(w);return;}
             if(in_rect(mx,my,w->x+w->w-93,w->y+4,25,23)){win_minimize(w);return;}
         }
-        if(win_free_resize(w)&&!w->maxed){
+        if(win_free_resize(w)&&!w->maxed&&!w->fullscreen){
             int edges=0;
             if(mx<w->x+8)edges|=RE_LEFT;
             else if(mx>=w->x+w->w-9)edges|=RE_RIGHT;
@@ -2861,7 +2919,7 @@ static void on_press(void){
                 return;
             }
         }
-        if(my<w->y+TB){
+        if(my<w->y+TB&&!w->fullscreen){
             uint32_t t=kticks(); int rs=win_resizable(w);
             if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
             w->tclick=t;
@@ -2924,9 +2982,10 @@ static void mouse_set(int x,int y,int b){
         if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
         if(released){ Win *w=&wins[drag]; drag=-1;
             if(win_resizable(w)){
-                if(my<=BARH+3){ win_set_max(w,0,BARH,gw,gh-BARH-86); }
-                else if(mx<=3){ win_set_max(w,0,BARH,gw/2,gh-BARH-86); }
-                else if(mx>=gw-4){ win_set_max(w,gw/2,BARH,gw-gw/2,gh-BARH-86); } } }
+                int safe=desktop_work_x(),avail=gw-safe;
+                if(my<=BARH+3){win_set_max(w,safe,BARH,avail,gh-BARH);}
+                else if(mx<=3){win_set_max(w,safe,BARH,avail/2,gh-BARH);}
+                else if(mx>=gw-4){win_set_max(w,safe+avail/2,BARH,avail-avail/2,gh-BARH);}  } }
     }
     if(ddrag>=0){
         DObj *o=&dobj[ddrag];
@@ -3067,6 +3126,10 @@ void gui_key(int c){
         appmenu_open=!appmenu_open;appmenu_cat=MC_ALL;
         app_search_len=0;app_search[0]=0;
         launcher_damage();return;
+    }
+    if(c==KBD_FULLSCREEN){
+        int top=win_top();if(top>=0)win_toggle_fullscreen(&wins[top]);
+        return;
     }
     if(c==KBD_WORKSPACE_PREV){workspace_set(active_workspace-1);return;}
     if(c==KBD_WORKSPACE_NEXT){workspace_set(active_workspace+1);return;}

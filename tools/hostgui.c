@@ -150,6 +150,29 @@ int main(void){
       closeall();
       puts("VORTEX REDIMENSIONAMIENTO BORDES/ESQUINAS Y LIMITES OK");
     }
+    /* Pantalla completa real sin barra ni dock; F11 restaura la geometria
+     * original incluso si antes existia una ventana maximizada. */
+    {
+      closeall();dock(2);
+      int wi=win_top();Win *w=&wins[wi];
+      int x=w->x,y=w->y,ww=w->w,hh=w->h;
+      gui_key(KBD_FULLSCREEN);
+      if(!w->fullscreen||!w->maxed||w->x||w->y||w->w!=W||w->h!=H||
+         dock_available()){puts("FALLO F11 pantalla completa real");return 1;}
+      int rx,ry,rw,rh;crect(w,&rx,&ry,&rw,&rh);
+      if(rx||ry||rw!=W||rh!=H){puts("FALLO geometria contenido fullscreen");return 1;}
+      shot("45_pantalla_completa_sin_dock");
+      gui_key(KBD_FULLSCREEN);
+      if(w->fullscreen||w->maxed||w->x!=x||w->y!=y||w->w!=ww||w->h!=hh){
+          puts("FALLO restaurar F11");return 1;}
+      win_toggle_max(w);
+      gui_key(KBD_FULLSCREEN);
+      gui_key(KBD_FULLSCREEN);
+      if(!w->maxed||w->fullscreen||w->x!=desktop_work_x()||w->w!=W-desktop_work_x()){
+          puts("FALLO restaurar maximizada despues F11");return 1;}
+      closeall();
+      puts("VORTEX FULLSCREEN F11 / DOCK RESERVADO Y RESTAURACION OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];
@@ -200,7 +223,9 @@ int main(void){
       click(322,14); /* barra de ventanas minimizadas tras espacios */
       if(win_top()!=wi||w->minimized){puts("FALLO restaurar minimizada");return 1;}
       click(w->x+w->w-51,w->y+14);
-      if(!w->maxed||w->x!=0||w->y!=BARH){puts("FALLO maximizar");return 1;}
+      if(!w->maxed||w->x!=desktop_work_x()||w->y!=BARH||w->w!=W-desktop_work_x()||w->h!=H-BARH){
+         puts("FALLO maximizar sin invadir dock");return 1;
+      }
       click(w->x+w->w-51,w->y+14);
       if(w->maxed||w->x!=oldx||w->y!=oldy||w->w!=oldw||w->h!=oldh){puts("FALLO restaurar tamano");return 1;}
       puts("VORTEX VENTANAS MINIMIZAR/MAXIMIZAR OK");
@@ -389,7 +414,9 @@ int main(void){
       if(dobj[0].x<200){ puts("FALLO arrastrar icono"); return 1; }
       dclick(ox+300,oy+200); if(nord<1||wins[win_top()].type!=A_BROWSER){ puts("FALLO abrir icono"); return 1; } }
     shot("14_escritorio_modular");
-    { Win *b=&wins[win_top()]; int tx=b->x+300, ty=b->y+TB/2; T+=100; click(tx,ty); T+=3; click(tx,ty); if(!b->maxed||b->w!=W){ puts("FALLO maximizar"); return 1; } shot("15_maximizada");
+    { Win *b=&wins[win_top()]; int tx=b->x+300, ty=b->y+TB/2; T+=100; click(tx,ty); T+=3; click(tx,ty); if(!b->maxed||b->x!=desktop_work_x()||b->w!=W-desktop_work_x()){
+         puts("FALLO maximizar con reserva del dock");return 1;
+       } shot("15_maximizada");
       T+=100; ty=b->y+TB/2; click(tx,ty); T+=3; click(tx,ty); if(b->maxed){ puts("FALLO restaurar"); return 1; }
       T+=100; gui_mouse_abs(b->x+300,b->y+10,0); gui_frame(); gui_mouse_abs(b->x+300,b->y+10,1); gui_frame(); gui_mouse_abs(2,300,1); gui_frame(); gui_mouse_abs(2,300,0); gui_frame();
       if(!b->maxed||b->w!=W/2||b->x!=0){ puts("FALLO ajustar izquierda"); return 1; } shot("16_ajustada"); }

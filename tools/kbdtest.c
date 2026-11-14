@@ -50,6 +50,8 @@ int main(void){
     chk(kbd_feed(0x4b),KBD_WORKSPACE_PREV,"Ctrl+Alt+Izquierda");
     chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt soltado tras espacio");
     chk(kbd_feed(0x9d),0,"Ctrl soltado tras espacio");
+    chk(press(0x57),KBD_FULLSCREEN,"F11 pantalla completa");
+    chk(kbd_feed(0xd7),0,"soltar F11");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }
