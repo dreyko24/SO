@@ -1079,7 +1079,7 @@ static FsNode *fm_row_node(Win *w,int ly,int *n_out){             /* elemento ba
 static void fm_drop(void){                                          /* se solto un archivo arrastrado */
     FsNode *s=fs_resolve_nf(fs_root(),fd_path); if(!s) return;
     FsNode *dst=0; Win *tw=0; int onwin=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     FsNode *dk=desk_dir();
@@ -1715,7 +1715,7 @@ static void dsk_open(int i){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj
 static int dsk_drop(int i){                                         /* se solto un icono del escritorio: sobre una ventana de archivos o una carpeta, se mueve ahi */
     FsNode *dk=desk_dir(); FsNode *s=dk?fs_find(dk,dobj[i].name):0; if(!s) return 0;
     FsNode *dst=0; Win *tw=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     if(!dst){ for(int j=NDO-1;j>=0;j--) if(j!=i&&dobj[j].kind==200&&in_rect(mx,my,dobj[j].x,dobj[j].y,dobj[j].w,dobj[j].h)){ FsNode *f=fs_find(dk,dobj[j].name); if(f&&f->dir&&f!=s) dst=f; break; } }
@@ -1772,7 +1772,7 @@ void gui_frame(void){
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
         if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
     { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
-    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
+    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->minimized) continue; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
     snake_tick(t); kngfs_tick();
@@ -1925,7 +1925,7 @@ static void on_press(void){
     { int top=win_top(); if(my<BARH&&(top<0||!wins[top].fullscreen)){ if(mx>gw-48) open_app(A_SETTINGS); return; } }
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi);
         if(!w->fullscreen&&my<w->y+TB){
             if(mx>=w->x+w->w-32){ win_close(wi); return; }
@@ -1949,7 +1949,7 @@ static void on_rpress(void){                                         /* boton de
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi); dirty=1;
         if(w->type==A_FILES&&my>=w->y+TB){
             if(w->editing) fm_commit_rename(w);
