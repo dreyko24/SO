@@ -13,24 +13,25 @@ terminal, navegador con red, ajustes. **No utiliza el kernel Linux.** Su núcleo
 - **Escritorio modular**: iconos y widgets (reloj, sistema) arrastrables; doble clic abre; ventanas se maximizan con doble clic en el título y se ajustan arrastrando a los bordes.
 - **Kernel de 32 bits** (`kernel/`): procesos en ring 3, ELF, fork/exec/wait, memoria virtual.
 - **Kernel de 64 bits** (`kernel64/`): modo largo, misma interfaz y misma red. Incluye procesos y compatibilidad con binarios Linux ELF en el estado documentado en v24.
-- **Escritorio gráfico** con el emblema Vortex, ventanas, dock, reloj y menú superior **Aplicaciones**. Resoluciones dependientes del framebuffer (hasta 1920x1080 probadas en QEMU).
+- **Escritorio gráfico** con el nombre Vortex OS en la barra superior, menu **Aplicaciones** en el primer icono del dock, ventanas y reloj. Resoluciones dependientes del framebuffer (hasta 1920x1080 probadas en QEMU).
 - **Archivos**, **Terminal**, **Ajustes** y **Navegador** (con **buscador**: palabras sueltas buscan en páginas y archivos; opcionalmente en la web por http con `buscador=http://.../?q=%s` en `/Sistema/vortex.cfg`).
 - **Apps simples**: **Notas** (guarda en /Documentos; los .txt se abren aquí), **Calculadora**, **Snake**.
-- Interfaz con fondos predefinidos o personalizados, indicador de red y dock de 10 aplicaciones.
+- Interfaz con fondos predefinidos o personalizados, indicador de red y dock con un lanzador de aplicaciones y accesos rapidos.
 - **Red**: tarjetas Intel e1000 y Realtek RTL8139, DHCP, DNS, TCP, HTTP. Navegador con `http://`; terminal con `red`, `ping`, `dns`, `wget`.
 
 Capturas de la interfaz: carpeta `docs/` (generadas con el mismo código de la interfaz).
 
-## Multimedia y personalización (versión de desarrollo)
+## Aplicaciones, multimedia, USB y LibreOffice
 
-- **Aplicaciones → Galería de imágenes:** abrir archivos de la carpeta `/Imagenes` en un visor nativo de Vortex OS. La interfaz también tiene pestañas **Música**, **Vídeos** y **USB**.
-- **Imágenes que se dibujan de verdad:** PNG sin entrelazado (profundidad 1/2/4/8 bits en escala de grises o paleta; 8 bits RGB/RGBA), BMP sin compresión de 24/32 bits y PPM P6. JPEG y GIF se reconocen por extensión, pero su decodificador aún no existe. El visor limita las dimensiones a 2048 × 2048.
-- **Fondo personalizado:** abre una imagen compatible y pulsa **Usar de fondo**, o usa el menú contextual del archivo → **Usar como fondo de pantalla**. Se guarda la ruta en `/Sistema/vortex.cfg` y se restaura si el archivo persiste en VortexFS.
-- **Biblioteca multimedia:** `/Imagenes`, `/Musica`, `/Videos` y panel de dispositivos USB. Por ahora **no hay reproducción de audio ni vídeo ni un controlador de tarjetas de sonido**.
-- **USB:** el panel detecta controladores PCI USB (UHCI, OHCI, EHCI, XHCI), pero **no detecta ni monta aún pendrives ni importa sus archivos**. No conectar un USB equivale a perder archivos; el sistema no debe escribir sobre él sin autorización.
-- **Pruebas:** GitHub Actions → `prueba-grafica` verifica abrir Aplicaciones, abrir la Galería, decodificar el PNG de ejemplo y aplicarlo como fondo. El flujo `arranque-qemu` comprueba ambos kernels; `vortex-escritorio-host` cubre regresiones con AddressSanitizer.
+- **Identidad visual:** la barra superior muestra **Vortex OS** sin icono. El primer boton del dock se llama **Aplicaciones**, tiene una cuadricula y despliega un menu utilizable con explorador, galeria, musica, video, USB, LibreOffice y otras aplicaciones.
+- **Imagenes:** galeria y visor nativos PNG (sin entrelazado), JPEG de base compatible, BMP 24/32 bits y PPM P6. Las imagenes abiertas desde el explorador pueden usarse como fondo de pantalla; se guarda la ruta en `/Sistema/vortex.cfg` si hay almacenamiento persistente.
+- **Audio nativo:** reproductor WAV PCM 8/16 bits, mono/estereo, salida por **Intel AC'97 PCI** con DMA. Incluye Play/Pausa/Detener y archivo de muestra en `/Musica`. **MP3, OGG y FLAC aun no se reproducen de forma nativa**. En equipos sin AC'97 hace falta otro controlador.
+- **Video nativo:** reproductor de AVI con cuadros RGB de 24/32 bits **sin compresion**, controles de reproduccion y muestra en `/Videos`. MP4/H.264, WebM y otros codecs comprimidos **no estan implementados**.
+- **USB fisico:** controlador propio para tarjetas **PCI UHCI (USB 1.1)**, enumeracion de almacenamiento USB Mass Storage Bulk-Only/SCSI y lectura de particiones **FAT32 (512 bytes/sector)**. La unidad se detecta por el hardware, NO se crea una carpeta fingiendo un USB. **Cuando se detecta**, el explorador muestra en `/Dispositivos/Unidad-USB` una instantanea de los archivos leidos desde el pendrive. La instantanea NO es un montaje dinamico: el sistema no escribe al USB y la copia de archivos esta limitada actualmente. Se probo con un dispositivo USB Mass Storage emulado en QEMU, no en un pendrive real conectado a PC. **No soporta aun controladores EHCI/XHCI (USB 2/3), exFAT ni NTFS**.
+- **LibreOffice:** la ventana **Aplicaciones → LibreOffice** ofrece Writer, Calc, Impress, Draw y Math, deteccion de instalacion y acceso a instalacion/actualizacion. Se ejecuta como programa Debian para Linux sobre la **capa de compatibilidad propia de Vortex 64 bits**, con Xvfb como interfaz grafica. En la ISO con Debian, usa **Instalar LibreOffice** cuando aun no esta instalado; no se incluye LibreOffice de serie en el Debian base para evitar una imagen demasiado pesada.
+- **Pruebas reales:** `vortex-usb-mass-storage` verifico la lectura de FAT32 desde USB virtualizado, apertura del PNG y cambio de fondo. `vortex-reproductores` verifico AC'97 con audio WAV generado y AVI mostrado en QEMU. `prueba-grafica`, `vortex-jpeg-nativo`, `vortex-escritorio-host` y `arranque-qemu` comprueban componentes independientes.
 
-Consulta `docs/AUDITORIA_FUNCIONAL_VORTEX.md` para límites y siguientes controladores previstos.
+Estos avances **no implican** compatibilidad universal con memorias USB de PCs modernas, con todos los formatos multimedia, ni ejecucion grafica de LibreOffice verificada en hardware fisico. Consulta `docs/AUDITORIA_FUNCIONAL_VORTEX.md`.
 
 ## Construir la ISO (Windows + WSL)
 1. Una sola vez, en WSL: `sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin xorriso mtools python3`
@@ -47,7 +48,7 @@ Consulta `docs/AUDITORIA_FUNCIONAL_VORTEX.md` para límites y siguientes control
 - El navegador ignora CSS, JavaScript e imágenes: es un visor de HTML simple.
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
-- El teclado y ratón nativos usan principalmente PS/2. Hay detección de controladores USB PCI, pero **todavía no existe controlador USB Mass Storage ni montaje de memorias USB**. Se admiten distribuciones US/Latam/ES.
+- El teclado y ratón nativos usan principalmente PS/2. USB Mass Storage **solo soporta UHCI con FAT32 en lectura e instantanea**, no XHCI/EHCI ni exFAT; aun falta validar pendrives fisicos. Se admiten teclados US/Latam/ES.
 - El sistema sí ha arrancado en QEMU mediante GitHub Actions. Eso no equivale a validación completa en equipos físicos, ni a compatibilidad de todos los dispositivos.
 
 ## Pruebas
