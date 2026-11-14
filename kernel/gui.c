@@ -1733,7 +1733,7 @@ static void draw_dock(void){
 static int ddrag=-1, ddx, ddy, dmoved, dlast=-1; static uint32_t dlastt;
 static void dobj_init(void){
     static const int ik[4]={1,2,4,6};
-    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=22; dobj[i].y=BARH+18+i*96; }
+    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=DOCK_SIDE+24; dobj[i].y=BARH+18+i*96; }
     dobj[4].kind=100; dobj[4].w=210; dobj[4].h=92; dobj[4].x=gw-232; dobj[4].y=BARH+18;
     dobj[5].kind=101; dobj[5].w=210; dobj[5].h=108; dobj[5].x=gw-232; dobj[5].y=BARH+124;
     for(int i=6;i<NDO;i++) dobj[i].kind=-1;
@@ -1776,14 +1776,14 @@ static int dobj_hit(int px,int py){ for(int i=NDO-1;i>=0;i--) if(dobj[i].kind>=0
 static int dsk_find(const char *name){ for(int i=0;i<NDO;i++) if(dobj[i].kind==200&&!k_strcmp(dobj[i].name,name)) return i; return -1; }
 static int dsk_find_at(int x,int y){ int i=dobj_hit(x,y); return (i>=0&&dobj[i].kind==200)?i:-1; }
 static const char *dsk_name(int i){ return dobj[i].name; }
-static void dsk_clamp(DObj *o){ if(o->x<0) o->x=0; if(o->y<BARH) o->y=BARH; if(o->x+o->w>gw) o->x=gw-o->w; if(o->y+o->h>gh-70) o->y=gh-70-o->h; }
+static void dsk_clamp(DObj *o){ if(o->x<DOCK_SIDE+8) o->x=DOCK_SIDE+8; if(o->y<BARH) o->y=BARH; if(o->x+o->w>gw) o->x=gw-o->w; if(o->y+o->h>gh-70) o->y=gh-70-o->h; }
 static void dsk_moveto(int i,int x,int y){ DObj *o=&dobj[i]; dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=x; o->y=y; dsk_clamp(o); dmark(o->x-6,o->y-6,o->w+12,o->h+12); }
 static void dsk_free_slot(int *x,int *y){                           /* primer hueco libre de la cuadricula, de arriba abajo y de izquierda a derecha */
     for(int col=0;col<14;col++) for(int row=0;row<8;row++){
-        int px=22+col*90, py=BARH+18+row*96; if(py+84>gh-90||px+76>gw) continue;
+        int px=DOCK_SIDE+24+col*90, py=BARH+18+row*96; if(py+84>gh-90||px+76>gw) continue;
         int ok=1; for(int j=0;j<NDO&&ok;j++){ DObj *o=&dobj[j]; if(o->kind>=0&&px<o->x+o->w&&px+76>o->x&&py<o->y+o->h&&py+84>o->y) ok=0; }
         if(ok){ *x=px; *y=py; return; } }
-    *x=110; *y=BARH+18;
+    *x=DOCK_SIDE+24; *y=BARH+18;
 }
 static void dsk_sync(void){                                         /* los iconos de archivos del escritorio siguen a la carpeta /Escritorio */
     FsNode *d=desk_dir(); if(!d) return;
@@ -2125,7 +2125,7 @@ static void mouse_set(int x,int y,int b){
     }
     if(ddrag>=0){
         DObj *o=&dobj[ddrag];
-        if(b&1){ int nx=mx-ddx, ny=my-ddy; if(nx<0) nx=0; if(ny<BARH) ny=BARH; if(nx+o->w>gw) nx=gw-o->w; if(ny+o->h>gh-70) ny=gh-70-o->h;
+        if(b&1){ int nx=mx-ddx, ny=my-ddy; if(nx<DOCK_SIDE+8) nx=DOCK_SIDE+8; if(ny<BARH) ny=BARH; if(nx+o->w>gw) nx=gw-o->w; if(ny+o->h>gh-70) ny=gh-70-o->h;
                  if(nx!=o->x||ny!=o->y){ dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=nx; o->y=ny; dmark(o->x-6,o->y-6,o->w+12,o->h+12); dmoved=1; } }
         if(released){ int i=ddrag; ddrag=-1;
             if(dmoved && o->kind==200) dsk_drop(i);
