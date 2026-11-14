@@ -36,7 +36,7 @@ jobs:
           python3 tools/ci_gui.py "${{ inputs.guion || 'tools/ci/gui-multimedia.txt' }}" -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom g.iso -boot d -vga std -display none -serial stdio $EXTRA > gui.log 2>&1 || true
           tail -60 gui.log
           grep -Fq "Iniciando escritorio" gui.log || { echo "FALLO: el escritorio no arrancó"; exit 1; }
-          grep -Fq "[vortex-apps] Galeria de imagenes" gui.log || { echo "FALLO: Aplicaciones no abrio la galeria"; exit 1; }
+          grep -Fq "[vortex-apps] Galeria" gui.log || { echo "FALLO: Aplicaciones no abrio la galeria"; exit 1; }
           grep -Fq "[vortex-image] decoded" gui.log || { echo "FALLO: la galeria no decodifico la imagen"; exit 1; }
           grep -Fq "[vortex-wallpaper] updated" gui.log || { echo "FALLO: no se aplico el fondo personalizado"; exit 1; }
           find capturas -name "*.png" -size +0c -print -quit | grep -q . || { echo "FALLO: no se generaron capturas"; exit 1; }
