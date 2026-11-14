@@ -747,6 +747,11 @@ int main(void){
       closeall();fs_remove(im);
       puts("VORTEX VISOR PNG: ZOOM REVERSIBLE 25%-400% OK");
     }
+    /* Enciclopedia: cabecera no debe solapar el buscador y debe funcionar
+     * tanto con ventana estándar como en anchura mínima. */
+    if(77+text_ui_w("Enciclopedia sin conexion")+14>300){
+        puts("FALLO colision cabecera y buscador Saber");return 1;
+    }
     /* Enciclopedia original sin internet: lanzador, indexado, artículos y
      * rueda para desplazarse entre resultados. */
     {

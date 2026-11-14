@@ -1757,7 +1757,9 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     text_big(cx+33,cy+23,"V",0xffffff);
     text_ui_bold(cx+77,cy+16,"Vortex Saber",C_TXT);
     text_ui(cx+77,cy+41,"Enciclopedia sin conexion",C_DIM);
-    int searchx=cx+238,searchw=cw-260;
+    /* Mantener nombre y subtitulo separados del buscador. Antes el
+     * campo empezaba a 238px y tapaba "Enciclopedia sin conexion". */
+    int searchx=cx+300,searchw=cw-322;
     rrect(searchx,cy+22,searchw,34,12,C_TILE,255);
     const char *prompt=w->enc_search_len?w->enc_search:"Buscar conocimientos...";
     text_ui(searchx+15,cy+31,prompt,w->enc_search_len?C_TXT:C_DIM);
@@ -3237,7 +3239,7 @@ static void app_click(Win *w,int lx,int ly){
         if(in_rect(lx,ly,20,94+380,175,33)){
             enc_memory_start(w);return;
         }
-        if(in_rect(lx,ly,238,22,cw-260,34)){
+        if(in_rect(lx,ly,300,22,cw-322,34)){
             w->enc_quiz=0;w->enc_game=0;w->enc_topic=-1;dwin(w);return;
         }
         if(w->enc_game){
