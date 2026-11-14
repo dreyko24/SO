@@ -40,7 +40,7 @@ typedef struct {
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
-    int rx, ry, rw, rh, maxed; uint32_t tclick;                                   /* maximizar / ajustar */
+    int rx, ry, rw, rh, maxed, minimized; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -263,8 +263,9 @@ static void wallpaper_default(int i){
     build_wall();dirty=1;
 }
 /* ---------------- ventanas ---------------- */
-static int win_top(void){ return nord? order[nord-1] : -1; }
+static int win_top(void){ for(int k=nord-1;k>=0;k--)if(!wins[order[k]].minimized)return order[k];return -1; }
 static void focus(int wi){
+    if(wins[wi].minimized){wins[wi].minimized=0;dirty=1;}
     if(nord&&order[nord-1]==wi)return;
     if(nord)dwin(&wins[order[nord-1]]);
     dwin(&wins[wi]);
@@ -1155,7 +1156,7 @@ static FsNode *fm_row_node(Win *w,int ly,int *n_out){             /* elemento ba
 static void fm_drop(void){                                          /* se solto un archivo arrastrado */
     FsNode *s=fs_resolve_nf(fs_root(),fd_path); if(!s) return;
     FsNode *dst=0; Win *tw=0; int onwin=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     FsNode *dk=desk_dir();
@@ -1174,13 +1175,14 @@ static void fm_drop(void){                                          /* se solto 
     dsk_sync(); dirty=1;
 }
 
-static int win_resizable(const Win *w){ return w->type==A_BROWSER||w->type==A_FILES||w->type==A_NOTES||w->type==A_VIEWER; }
+static int win_resizable(const Win *w){ (void)w;return 1; }
 static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dwin(w); }
 static void win_set_max(Win *w,int x,int y,int ww,int hh){
     if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
     dwin(w); w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dwin(w);
 }
 static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
+static void win_minimize(Win *w){if(!w||w->minimized)return;dwin(w);w->minimized=1;dirty=1;}
 static int text_w_big(const char *s){ return text_w(s)*3/2; }
 /* ---------------- ajustes: almacenamiento y pantalla ---------------- */
 typedef struct { int x, y, w, h, kind; char name[FS_NAME]; } DObj;   /* kind 0..7 = icono de la app del dock; 100 reloj; 101 sistema; 200 archivo de /Escritorio */
@@ -1279,6 +1281,15 @@ static void draw_window(int wi,int focused){
     fill(x+16,y+3,54,2,focused?ACCENT:0x475674,focused?230:85);
     clip_reset();
     fill(x+1,y+TB-1,w->w-2,1,0xffffff,22);
+    /* Tres acciones independientes: minimizar, maximizar/restaurar y cerrar. */
+    rrect(x+w->w-92,y+5,23,20,7,0x344961,255);
+    line(x+w->w-86,y+18,x+w->w-76,y+18,2,0xe7f0ff,255);
+    rrect(x+w->w-62,y+5,23,20,7,0x344961,255);
+    line(x+w->w-56,y+10,x+w->w-46,y+10,1,0xe7f0ff,255);
+    line(x+w->w-56,y+10,x+w->w-56,y+19,1,0xe7f0ff,255);
+    line(x+w->w-46,y+10,x+w->w-46,y+19,1,0xe7f0ff,255);
+    line(x+w->w-56,y+19,x+w->w-46,y+19,1,0xe7f0ff,255);
+    if(w->maxed)line(x+w->w-58,y+13,x+w->w-48,y+13,2,0xe7f0ff,255);
     rrect(x+w->w-31,y+5,23,20,7,focused?0x59333e:0x303b51,255);
     line(x+w->w-24,y+10,x+w->w-15,y+19,1,0xffdce0,255);
     line(x+w->w-15,y+10,x+w->w-24,y+19,1,0xffdce0,255);
@@ -1615,15 +1626,36 @@ static void draw_window(int wi,int focused){
     }
     clip_reset();
     { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-40,TB-1); text_ui_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+      clip_set(x+1,y+1,w->w-110,TB-1); text_ui_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
+/* Ventanas minimizadas recuperables incluso sin icono en el dock. */
+static int minimized_at(int px,int py){
+    if(py<1||py>=BARH)return -1;
+    int n=0;
+    for(int k=0;k<nord;k++){
+        int wi=order[k];if(!wins[wi].minimized)continue;
+        int x=120+n*105;if(x+101>=gw/2-48)break;
+        if(px>=x&&px<x+101)return wi;
+        n++;
+    }
+    return -1;
+}
 /* ---------------- barra superior y dock ---------------- */
 static void draw_topbar(void){
     fill(0,0,gw,BARH,0x0b1221,248);
     fill(0,BARH-1,gw,1,0x7086b3,50);
     fill(16,7,3,14,ACCENT,255);
     text_ui_bold(27,6,"Vortex OS",0xf4f7ff);
+    { int n=0;
+      for(int k=0;k<nord;k++){Win *w=&wins[order[k]];
+        if(!w->minimized)continue;
+        int x=120+n*105;if(x+101>=gw/2-48)break;
+        rrect(x,3,101,BARH-6,5,0x34445f,255);
+        char label[14];k_strcpy(label,w->title,sizeof label);
+        text(x+6,6,label,0xffffff);n++;
+      }
+    }
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
@@ -1678,7 +1710,7 @@ static void draw_dock(void){
         if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,90);
         draw_icon(i,x,y);
         if(i==0&&appmenu_open)circle(x+TILE/2,by+bh-5,3,0xffffff,255);
-        else for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
+        else for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,3,wins[order[k]].minimized?0xf59e0b:0xffffff,255); break; }
         if(hover==i){ int lw=text_ui_w(DOCK_LBL[i])+18; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x0b1428,245); text_ui(x+TILE/2-lw/2+9,by-27,DOCK_LBL[i],0xffffff); }
     }
 }
@@ -1991,10 +2023,12 @@ static void render_region(int x0,int y0,int x1,int y1){
     for(int i=0;i<NDO;i++)if(dobj[i].kind>=0&&rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh))draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
+        if(w->minimized)continue;
         if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh))continue;
         int hidden=0;
         for(int j=k+1;j<nord;j++){
             Win *o=&wins[order[j]];
+            if(o->minimized)continue;
             if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){
                 hidden=1;break;
             }
@@ -2257,17 +2291,18 @@ static void on_press(void){
             kserial_puts("[vortex-apps] menu abierto\n");
         }else open_app(DOCK_APP[d]);return; }
     if(d==-2) return;
-    if(my<BARH){if(mx>gw-48){
+    if(my<BARH){int mi=minimized_at(mx,my);if(mi>=0){focus(mi);return;}if(mx>gw-48){
             power_menu_open=!power_menu_open;power_damage();
             if(appmenu_open){appmenu_open=0;launcher_damage();}
         }return;}
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi);
         if(my<w->y+TB){
-            int dx=mx-(w->x+w->w-20), dy=my-(w->y+TB/2);
-            if(dx*dx+dy*dy<=100){ win_close(wi); return; }
+            if(in_rect(mx,my,w->x+w->w-32,w->y+4,25,23)){win_close(wi);return;}
+            if(in_rect(mx,my,w->x+w->w-63,w->y+4,25,23)){win_toggle_max(w);return;}
+            if(in_rect(mx,my,w->x+w->w-93,w->y+4,25,23)){win_minimize(w);return;}
             { uint32_t t=kticks(); int rs=win_resizable(w);
               if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
               w->tclick=t;
@@ -2287,7 +2322,7 @@ static void on_rpress(void){                                         /* boton de
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi); dirty=1;
         if(w->type==A_FILES&&my>=w->y+TB){
             if(w->editing) fm_commit_rename(w);

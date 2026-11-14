@@ -88,6 +88,20 @@ int main(void){
     dock(1); shot("04_navegador");
     click(190,254); shot("05_navegador_enlace");
     /* navegador con http simulado: cargando -> pagina -> enlaces relativos */
+    /* Minimizar y restaurar no destruye contenido ni dimensiones. */
+    closeall();dock(2);
+    { int wi=win_top();Win *w=&wins[wi];
+      int oldx=w->x,oldy=w->y,oldw=w->w,oldh=w->h;
+      click(w->x+w->w-82,w->y+14);
+      if(win_top()!=-1||!w->minimized){puts("FALLO minimizar");return 1;}
+      click(150,14);
+      if(win_top()!=wi||w->minimized){puts("FALLO restaurar minimizada");return 1;}
+      click(w->x+w->w-51,w->y+14);
+      if(!w->maxed||w->x!=0||w->y!=BARH){puts("FALLO maximizar");return 1;}
+      click(w->x+w->w-51,w->y+14);
+      if(w->maxed||w->x!=oldx||w->y!=oldy||w->w!=oldw||w->h!=oldh){puts("FALLO restaurar tamano");return 1;}
+      puts("VORTEX VENTANAS MINIMIZAR/MAXIMIZAR OK");
+    }
     closeall(); dock(1);
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("example.test/dir/index.html\\"); }
     shot("05b_http_cargando");
