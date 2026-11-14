@@ -3146,8 +3146,18 @@ void gui_frame(void){
     }
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
         if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
-    { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
-    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
+    { static uint32_t nm; if(t>=nm){ nm=t+100;
+        for(int i=0;i<nord;i++){ Win *w=&wins[order[i]];
+            if(!w->minimized && w->workspace==active_workspace && w->type==A_MONITOR) dwin(w);
+        }
+    } }
+    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]];
+        /* No gastar CPU copiando la pantalla X si esta minimizada o en otro escritorio.
+         * Al restaurarla, el primer frame pendiente se pinta inmediatamente. */
+        if(xw->minimized||xw->workspace!=active_workspace) continue;
+        if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); }
+        else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); }
+    } }
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
     {static uint32_t usbnext;
@@ -3156,7 +3166,9 @@ void gui_frame(void){
     audio_tick();
     {static uint32_t next_audio;
      if((int)(t-next_audio)>=0){next_audio=t+15;
-        for(int j=0;j<nord;j++)if(wins[order[j]].type==A_AUDIO)dwin(&wins[order[j]]);
+        for(int j=0;j<nord;j++){ Win *w=&wins[order[j]];
+            if(w->type==A_AUDIO&&!w->minimized&&w->workspace==active_workspace)dwin(w);
+        }
      }
      for(int j=0;j<nord;j++){Win *w=&wins[order[j]];
         if(w->type!=A_VIDEO||!w->movie_play||!w->movie.frames)continue;
@@ -3170,8 +3182,10 @@ void gui_frame(void){
             int next=w->movie_frame+(int)skips;
             if(next>=w->movie.frames)next=w->movie.frames-1;
             w->movie_frame=next;w->movie_next+=skips*(unsigned)step;
-            dwin(w);
-        }else{w->movie_play=0;dwin(w);}
+            if(!w->minimized&&w->workspace==active_workspace)dwin(w);
+        }else{w->movie_play=0;
+            if(!w->minimized&&w->workspace==active_workspace)dwin(w);
+        }
      }
     }
     snake_tick(t); vortexfs_tick();
