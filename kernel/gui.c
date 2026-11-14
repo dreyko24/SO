@@ -1972,7 +1972,11 @@ static void on_press(void){
     int d=dock_hit(mx,my);
     if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    { int top=win_top(); if(my<BARH&&(top<0||!wins[top].fullscreen)){ if(mx>gw-48) open_app(A_SETTINGS); return; } }
+    { int top=win_top(); if(my<BARH&&(top<0||!wins[top].fullscreen)){
+        if(mx<146) open_app(A_PROGS); /* logo y nombre abren Aplicaciones */
+        else if(mx>gw-48) open_app(A_SETTINGS);
+        return;
+    } }
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
