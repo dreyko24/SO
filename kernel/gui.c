@@ -227,6 +227,7 @@ static void win_close(int wi){
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
     if(wins[wi].type==A_AUDIO)audio_stop();
+    if((wins[wi].type==A_AUDIO||wins[wi].type==A_VIDEO)&&wins[wi].file)fs_node_unref(wins[wi].file);
     vimage_release(&wins[wi].picture);
     nord--; wins[wi].used=0; dirty=1;
 }
@@ -382,10 +383,12 @@ static void open_file(FsNode *n){
         Win *nw=open_app(A_NOTES); if(nw){ nw->file=n; nw->nlen=n->size; if(n->size) memcpy(nw->note,n->data,(size_t)n->size); nw->note[nw->nlen]=0; nw->nstat[0]=0; set_title(nw,n->name); dirty=1; }
     } else if(ext_is(n,"wav")){
         Win *a=open_app(A_AUDIO);
-        if(a){a->file=n;set_title(a,n->name);(void)audio_play(n);dirty=1;}
+        if(a){if(a->file)fs_node_unref(a->file);fs_node_ref(n);a->file=n;
+            set_title(a,n->name);(void)audio_play(n);dirty=1;}
     } else if(ext_is(n,"avi")){
         Win *a=open_app(A_VIDEO);
-        if(a){a->file=n;set_title(a,n->name);
+        if(a){if(a->file)fs_node_unref(a->file);fs_node_ref(n);a->file=n;
+            set_title(a,n->name);
             a->movie_play=(vvideo_open((const unsigned char*)n->data,n->size,&a->movie)==0);
             a->movie_frame=0;a->movie_next=kticks();dirty=1;
             kserial_puts(a->movie_play?"[vortex-video] AVI cargado\n":"[vortex-video] AVI no compatible\n");
