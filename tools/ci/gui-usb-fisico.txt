@@ -2,11 +2,11 @@
 captura 01-escritorio-usb
 raton 5 80
 clic
-raton 215 724
+raton 248 724
 clic
 esperar 1
 captura 02-menu-aplicaciones
-raton 225 409
+raton 505 438
 clic
 esperar 3
 captura 03-memoria-usb-detectada
