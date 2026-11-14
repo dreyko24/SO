@@ -2097,24 +2097,24 @@ static void app_click(Win *w,int lx,int ly){
         if(in_rect(lx,ly,20,ch-48,160,30)){
             if(audio_active())audio_pause(!audio_paused());
             else if(w->file)(void)audio_play(w->file);
-            dirty=1;
-        }else if(in_rect(lx,ly,194,ch-48,138,30)){audio_stop();dirty=1;}
+            dwin(w);
+        }else if(in_rect(lx,ly,194,ch-48,138,30)){audio_stop();dwin(w);}
         break;
     case A_VIDEO:
-        if(in_rect(lx,ly,18,ch-35,156,27)&&w->movie.frames>0){w->movie_play=!w->movie_play;w->movie_next=kticks();dirty=1;}
-        else if(in_rect(lx,ly,188,ch-35,132,27)){w->movie_frame=0;w->movie_play=w->movie.frames>0;w->movie_next=kticks();dirty=1;}
+        if(in_rect(lx,ly,18,ch-35,156,27)&&w->movie.frames>0){w->movie_play=!w->movie_play;w->movie_next=kticks();dwin(w);}
+        else if(in_rect(lx,ly,188,ch-35,132,27)){w->movie_frame=0;w->movie_play=w->movie.frames>0;w->movie_next=kticks();dwin(w);}
         break;
     case A_MEDIA:{
         for(int i=0;i<4;i++)if(in_rect(lx,ly,12+i*136,12,130,28)){
             w->media_tab=i;w->scroll=0;
             if(i==3)(void)usb_storage_probe();
-            dirty=1;return;}
+            dwin(w);return;}
         if(w->media_tab==3){
-            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_probe();dirty=1;return;}
+            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_probe();dwin(w);return;}
             if(usb_storage_ready()&&in_rect(lx,ly,20,242,200,34)){
                 FsNode *root=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
                 if(root){Win *f=open_app(A_FILES);if(f){f->dir=root;f->scroll=0;f->sel=0;}}
-                dirty=1;return;
+                dwin(w);return;
             }
         }
         if(w->media_tab<3&&ly>=108){
@@ -2127,8 +2127,8 @@ static void app_click(Win *w,int lx,int ly){
     case A_SETTINGS: settings_click(lx,ly,cw,ch); break;
     case A_BROWSER: browser_click(w,lx,ly,cw,ch); break;
     case A_NOTES:
-        if(in_rect(lx,ly,8,6,70,24)){ notes_new(w); dirty=1; }
-        else if(in_rect(lx,ly,86,6,80,24)){ notes_save(w); dirty=1; }
+        if(in_rect(lx,ly,8,6,70,24)){ notes_new(w); dwin(w); }
+        else if(in_rect(lx,ly,86,6,80,24)){ notes_save(w); dwin(w); }
         break;
     case A_CALC:
         for(int i=0;i<NCKEYS;i++){ int x,y,kw,kh; ckey_rect(&CKEYS[i],&x,&y,&kw,&kh); if(in_rect(lx,ly,x,y,kw,kh)){ calc_press(w,CKEYS[i].k); break; } }
@@ -2141,17 +2141,17 @@ static void app_click(Win *w,int lx,int ly){
                                   "abrir libreoffice --impress","abrir libreoffice --draw","abrir libreoffice --math"};
         for(int i=0;i<5;i++)if(in_rect(lx,ly,18,102+i*54,cw-36,43)){
             if(papp_installed(5))run_quiet(cmd[i]);else run_in_terminal("instalar libreoffice");
-            dirty=1;return;
+            dwin(w);return;
         }
         if(in_rect(lx,ly,18,413,214,32))run_in_terminal(papp_installed(5)?"actualizar":"instalar libreoffice");
         else if(in_rect(lx,ly,244,413,240,32))run_quiet("pantalla");
-        dirty=1;break;
+        dwin(w);break;
     }
     case A_PROGS:
-        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
+        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dwin(w); }
         else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
         else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){ int x=16+(i%2)*(cwid+16), y=64+(i/2)*76;
-            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dirty=1; break; } } }
+            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dwin(w); break; } } }
         break;
     default: break;
     }
