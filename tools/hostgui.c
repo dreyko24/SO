@@ -433,6 +433,35 @@ int main(void){
       closeall();workspace_set(0);closeall();
       puts("VORTEX GNOME WORKSPACES INDEPENDIENTES OK");
     }
+    /* Wheel real: bajo cursor, sin cambiar foco, con limites y sentidos. */
+    {
+      closeall();workspace_set(0);
+      Win *a=open_app(A_FILES),*b=open_app(A_BROWSER);
+      if(!a||!b){puts("FALLO ventanas prueba rueda");return 1;}
+      FsNode *folder=fs_mkdir(fs_root(),"rueda-test");
+      if(!folder){puts("FALLO directorio rueda");return 1;}
+      for(int i=0;i<42;i++){char n[24]="fila-";cat_int(n,24,i);
+          if(!fs_create(folder,n,"x",1)){puts("FALLO archivos rueda");return 1;}}
+      a->dir=folder;a->scroll=0;
+      gui_mouse_abs(a->x+25,a->y+a->h/2,0);
+      gui_mouse_wheel(-2);
+      if(a->scroll!=6||b->bscroll!=0){puts("FALLO scroll archivos bajo cursor");return 1;}
+      gui_mouse_wheel(1);
+      if(a->scroll!=3){puts("FALLO scroll inverso");return 1;}
+      gui_mouse_wheel(8);
+      if(a->scroll!=0){puts("FALLO scroll limite superior");return 1;}
+      gui_mouse_wheel(-8);
+      if(a->scroll<=0||a->scroll>42){puts("FALLO scroll limite inferior");return 1;}
+      shot("38_rueda_en_gestor_archivos");
+      gui_mouse_abs(b->x+b->w-20,b->y+TB+80,0);
+      b->page.content_h=2600;b->bscroll=0;
+      gui_mouse_wheel(-1);
+      if(b->bscroll!=56){puts("FALLO scroll navegador");return 1;}
+      gui_mouse_wheel(1);
+      if(b->bscroll!=0){puts("FALLO scroll arriba navegador");return 1;}
+      closeall();fs_remove(folder);
+      puts("VORTEX INTELLIMOUSE SCROLL VENTANA BAJO CURSOR OK");
+    }
     /* Ubuntu/GNOME: dock vertical, Actividades y vista de aplicaciones. */
     { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
       if(bx!=DASH_LEFT||bw!=DASH_WIDTH||bh!=NDOCK*DASH_STEP+20||

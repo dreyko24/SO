@@ -18,6 +18,10 @@ jobs:
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/kbdtest.c -o /tmp/vortex-kbd-test
           /tmp/vortex-kbd-test
+      - name: Decodificador IntelliMouse PS/2 (ASan/UBSan)
+        run: |
+          gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/ps2_mouse_test.c -o /tmp/vortex-ps2-wheel-test
+          /tmp/vortex-ps2-wheel-test
       - name: Seguridad de framebuffer, pitch y clipping
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/gfx_dimensions_test.c kernel/gfx.c -o /tmp/vortex-gfx-test

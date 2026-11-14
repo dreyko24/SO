@@ -136,19 +136,26 @@ static void rk_push(unsigned char b){ int n=(rk_h+1)&255; if(n!=rk_t){ rk_buf[rk
 static int rk_pop(void){ if(rk_t==rk_h) return -1; int b=rk_buf[rk_t]; rk_t=(rk_t+1)&255; return b; }
 static void kb_irq(void){ unsigned char raw=inb(0x60); rk_push(raw); int c=kbd_feed(raw); if(c) kb_push((unsigned short)c); }   /* traduccion en kbd.c (US/Latam/ES) */
 
+#include "ps2_mouse.h"
 /* ---------- Raton PS/2 (IRQ12) ---------- */
-struct mev { int dx, dy, b; };
-static volatile struct mev mq[64]; static volatile int mq_h, mq_t;
+struct mev { int dx,dy,b,wheel; };
+static volatile struct mev mq[64];static volatile int mq_h,mq_t;
+static VMouseDecoder mdecoder;
 static void mouse_irq(void){
-    static uint8_t pk[3]; static int n; uint8_t d=inb(0x60);
-    if(n==0 && !(d&8)) return;
-    pk[n++]=d; if(n<3) return; n=0;
-    if(pk[0]&0xC0) return;
-    int dx=pk[1], dy=pk[2]; if(pk[0]&0x10) dx-=256; if(pk[0]&0x20) dy-=256;
+    VMouseEvent e;
+    if(!vmouse_feed(&mdecoder,inb(0x60),&e))return;
     int nx=(mq_h+1)%64;
-    if(nx!=mq_t){ mq[mq_h].dx=dx; mq[mq_h].dy=-dy; mq[mq_h].b=pk[0]&7; mq_h=nx; }
+    if(nx!=mq_t){
+        mq[mq_h].dx=e.dx;mq[mq_h].dy=e.dy;mq[mq_h].b=e.buttons;
+        mq[mq_h].wheel=e.wheel;mq_h=nx;
+    }
 }
-static int mouse_pop(struct mev *e){ if(mq_t==mq_h) return 0; e->dx=mq[mq_t].dx; e->dy=mq[mq_t].dy; e->b=mq[mq_t].b; mq_t=(mq_t+1)%64; return 1; }
+static int mouse_pop(struct mev *e){
+    if(mq_t==mq_h)return 0;
+    e->dx=mq[mq_t].dx;e->dy=mq[mq_t].dy;
+    e->b=mq[mq_t].b;e->wheel=mq[mq_t].wheel;
+    mq_t=(mq_t+1)%64;return 1;
+}
 static void kbc_wait_w(void){ int t=100000; while((inb(0x64)&2)&&t--); }
 static void kbc_wait_r(void){ int t=100000; while(!(inb(0x64)&1)&&t--); }
 static void mouse_cmd(uint8_t v){ kbc_wait_w(); outb(0x64,0xD4); kbc_wait_w(); outb(0x60,v); kbc_wait_r(); (void)inb(0x60); }
@@ -156,7 +163,16 @@ static void mouse_init(void){
     kbc_wait_w(); outb(0x64,0xA8);
     kbc_wait_w(); outb(0x64,0x20); kbc_wait_r(); uint8_t st=inb(0x60)|2;
     kbc_wait_w(); outb(0x64,0x60); kbc_wait_w(); outb(0x60,st);
-    mouse_cmd(0xF6); mouse_cmd(0xF4);
+    /* Secuencia IntelliMouse 200,100,80 Hz; consultar Device ID.
+     * Si el ratón clásico no admite rueda, conservar paquetes de 3 bytes. */
+    mouse_cmd(0xF6);
+    mouse_cmd(0xF3);mouse_cmd(200);
+    mouse_cmd(0xF3);mouse_cmd(100);
+    mouse_cmd(0xF3);mouse_cmd(80);
+    mouse_cmd(0xF2);
+    int id=(inb(0x64)&1)?inb(0x60):0;
+    vmouse_init(&mdecoder,id);
+    mouse_cmd(0xF4);
     irq_handlers[12]=mouse_irq;
     outb(0x21,inb(0x21)&~4); outb(0xA1,inb(0xA1)&~0x10);
 }
@@ -493,7 +509,7 @@ void kmain64(uint32_t magic, struct mb_info *mi){
             for(;;){
                 { int rb; while((rb=rk_pop())>=0) gui_rawkey(rb); }
                 int c; while((c=getc_nb())>=0) gui_key(c);
-                struct mev e; while(mouse_pop(&e)) gui_mouse_event(e.dx,e.dy,e.b);
+                struct mev e; while(mouse_pop(&e)) gui_mouse_event(e.dx,e.dy,e.b); if(e.wheel)gui_mouse_wheel(e.wheel);
                 net_poll(); proc_pump(); gui_frame();
                 if(!proc_has_ready()) __asm__ volatile("sti;hlt"); else __asm__ volatile("sti");   /* dormir solo si no hay procesos listos: si no, cada bloqueo costaba un tic de 10 ms */
             }

@@ -10,6 +10,7 @@
 int  gui_init(uint32_t *fb, int w, int h, int pitch_bytes);   /* 0 ok */
 void gui_mouse_event(int dx, int dy, int buttons);            /* movimiento relativo (PS/2) */
 void gui_mouse_abs(int x, int y, int buttons);                /* posicion absoluta (pruebas) */
+void gui_mouse_wheel(int steps);                              /* IntelliMouse PS/2, +/- desplazamiento */
 void gui_key(int c);
 void gui_frame(void);                                          /* dibuja si hace falta */
 void gui_rawkey(int byte);                                     /* byte crudo del teclado (set 1) para la pantalla X */

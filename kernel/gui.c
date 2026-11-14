@@ -2709,6 +2709,60 @@ void gui_rawkey(int byte){                                       /* teclas cruda
 }
 void gui_mouse_abs(int x,int y,int b){ mouse_set(x,y,b); }
 void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
+void gui_mouse_wheel(int steps){
+    if(!steps||power_sleep)return;
+    if(steps>8)steps=8;
+    if(steps< -8)steps=-8;
+    if(appmenu_open){
+        /* En Actividades la búsqueda es el medio principal de navegación. */
+        return;
+    }
+    /* La rueda actúa sobre la ventana bajo el cursor, NO necesariamente
+     * sobre la enfocada, como en GNOME/Ubuntu. */
+    for(int k=nord-1;k>=0;k--){
+        Win *w=&wins[order[k]];
+        if(w->minimized||w->workspace!=active_workspace||
+           !in_rect(mx,my,w->x,w->y,w->w,w->h))continue;
+        int before=0,after=0,maximum=0,increment=1;
+        switch(w->type){
+        case A_FILES:{
+            int n=fs_list(w->dir,fl,FLMAX);
+            maximum=k_max(0,n-fm_rows(w));increment=3;break;
+        }
+        case A_BROWSER:
+            maximum=k_max(0,w->page.content_h-(w->h-TB-1-38));
+            increment=56;break;
+        case A_VIEWER:
+            maximum=100000;increment=5;break;
+        case A_MEDIA:{
+            if(w->media_tab==3)return;
+            static const char *paths[]={"/Imagenes","/Musica","/Videos"};
+            FsNode *d=fs_resolve(fs_root(),paths[w->media_tab]);
+            int n=d?fs_list(d,fl,FLMAX):0;
+            int rows=k_max(1,(w->h-TB-1-115)/32);
+            maximum=k_max(0,n-rows);increment=2;break;
+        }
+        case A_XSCR:{
+            int lx=mx-w->x-1,ly=my-w->y-TB;
+            if(lx>=0&&ly>=0&&lx<w->xw&&ly<w->xh){
+                kinput_event(2,8,steps);kinput_event(0,0,0);
+            }
+            return;
+        }
+        default:return;
+        }
+        before=w->type==A_BROWSER?w->bscroll:w->scroll;
+        after=before-steps*increment;
+        if(after<0)after=0;
+        if(after>maximum)after=maximum;
+        if(after!=before){
+            if(w->type==A_BROWSER)w->bscroll=after;
+            else w->scroll=after;
+            dwin(w);
+        }
+        return;
+    }
+}
 
 static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
 void gui_key(int c){
