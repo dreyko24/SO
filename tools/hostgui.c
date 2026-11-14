@@ -120,14 +120,14 @@ int main(void){
       if(!chromium){puts("FALLO instalar binario simulado Chromium");return 1;}
       host_last_shell[0]=0;
       if(!browser_open_modern("https://www.google.com/")||
-         strcmp(host_last_shell,"abrir chromium https://www.google.com/")){
+         strcmp(host_last_shell,"abrir vortex-chromium https://www.google.com/")){
           puts("FALLO puente a Chromium real");return 1;
       }
       Win *web=open_app(A_BROWSER);
       k_strcpy(web->ebuf,"sistema operativo",sizeof web->ebuf);
       web->elen=k_strlen(web->ebuf);
       host_last_shell[0]=0;browser_go_typed(web);
-      if(strcmp(host_last_shell,"abrir chromium https://www.google.com/search?q=sistema+operativo")){
+      if(strcmp(host_last_shell,"abrir vortex-chromium https://www.google.com/search?q=sistema+operativo")){
           puts("FALLO Google busqueda de palabras desde navegador");return 1;
       }
       closeall();fs_remove(chromium);
