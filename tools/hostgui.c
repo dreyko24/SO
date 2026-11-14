@@ -771,6 +771,28 @@ int main(void){
       closeall();fs_remove(im);
       puts("VORTEX VISOR PNG: ZOOM REVERSIBLE 25%-400% OK");
     }
+    /* Navegador nativo y enciclopedia comparten resultados buscables.
+     * El enlace abre un articulo real, no un marcador visual falso. */
+    {
+      int n=0;
+      const char *page=build_search("vortex://buscar?q=universo",&n);
+      if(!page||n<=0||!strstr(page,"Vortex Saber")||
+         !strstr(page,"vortex://saber/0")){
+          puts("FALLO busqueda integrada de Vortex Saber en navegador");return 1;
+      }
+      closeall();workspace_set(0);
+      if(!browser_open_saber_link("vortex://saber/0")){
+          puts("FALLO abrir articulo desde enlace navegador");return 1;
+      }
+      int wi=win_top();
+      if(wi<0||wins[wi].type!=A_ENCARTA||wins[wi].enc_topic!=0||
+         browser_open_saber_link("vortex://saber/999")||
+         browser_open_saber_link("vortex://saber/0/../1")){
+          puts("FALLO navegacion segura de articulo educativo");return 1;
+      }
+      closeall();
+      puts("VORTEX WEB/SABER: BUSQUEDA Y ENLACE ABREN ARTICULO REAL OK");
+    }
     /* La búsqueda española acepta mayúsculas, tildes y eñes Latin-1. */
     if(!enc_contains("Historia del Peru","PER\xfa")||
        !enc_contains("Geografia","Geograf\xed""a")||

@@ -730,6 +730,7 @@ static void urldec(char *o,int max,const char *q){
 static void a_html(const char *s2){ esc_into(srcbuf,sizeof srcbuf,s2); }
 static void a_raw(const char *s2){ cat(srcbuf,sizeof srcbuf,s2); }
 static int s_found;
+static int enc_contains(const char *text0,const char *query); /* busqueda compartida */
 static void s_walk(FsNode *d,const char *q){
     for(FsNode *c=d->child;c && s_found<30;c=c->next){
         if(c->dir){ s_walk(c,q); continue; }
@@ -797,6 +798,23 @@ static const char *build_search(const char *url,int *len){
         if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
         a_raw("<li><a href=\""); a_raw(PG[i].u); a_raw("\">"); a_html(PG[i].t); a_raw("</a></li>"); }
     if(any) a_raw("</ul>");
+    /* Vortex Saber usa el mismo buscador del escritorio sin depender
+     * de Internet. Un resultado abre el articulo en la app educativa. */
+    int saber_matches=0;
+    for(int id=0;id<ENC_ARTICLES_N&&saber_matches<12;id++){
+        const EncArticle *article=&ENC_ARTICLES[id];
+        if(!enc_contains(article->title,q)&&
+           !enc_contains(article->subtitle,q)&&
+           !enc_contains(article->body,q))continue;
+        if(!saber_matches)a_raw("<h2>Vortex Saber - Enciclopedia</h2><ul>");
+        char link[40]="vortex://saber/";
+        cat_int(link,sizeof link,id);
+        a_raw("<li><a href=\"");a_raw(link);a_raw("\">");
+        a_html(article->title);a_raw("</a> - ");
+        a_html(article->subtitle);a_raw("</li>");
+        saber_matches++;
+    }
+    if(saber_matches)a_raw("</ul>");
     a_raw("<h2>Archivos</h2>"); s_found=0;
     { int mark=k_strlen(srcbuf); a_raw("<ul>"); s_walk(fs_root(),q);
       if(!s_found){ srcbuf[mark]=0; a_raw("<p>Ningun archivo contiene eso.</p>"); } else a_raw("</ul>"); }
@@ -939,8 +957,27 @@ static void go_back(Win *w){
     if(w->nhist<=0) return;
     k_strcpy(w->url,w->hist[--w->nhist],192); w->bscroll=0; w->editing=0; dirty=1; load(w);
 }
+static int browser_open_saber_link(const char *u){
+    static const char *const prefix="vortex://saber/";
+    if(!k_startswith(u,prefix))return 0;
+    const char *p=u+k_strlen(prefix);
+    if(!*p)return 0;
+    int id=0;
+    while(*p){
+        if(*p<'0'||*p>'9')return 0;
+        if(id>=ENC_ARTICLES_N)return 0;
+        id=id*10+*p-'0';
+        p++;
+    }
+    if(id<0||id>=ENC_ARTICLES_N)return 0;
+    Win *saber=open_app(A_ENCARTA);
+    if(!saber)return 0;
+    enc_article_open(saber,id);
+    return 1;
+}
 static void browser_go_typed(Win *w){
     char u[192]; w->ebuf[w->elen]=0;
+    if(browser_open_saber_link(w->ebuf)){w->editing=0;return;}
     if(k_strlen(w->ebuf)==0){ w->editing=0; return; }
     int has=0; for(int i=0;w->ebuf[i]&&w->ebuf[i+2];i++) if(w->ebuf[i]==':'&&w->ebuf[i+1]=='/'&&w->ebuf[i+2]=='/') has=1;
     int dot=0, sp=0; for(int i=0;w->ebuf[i];i++){ if(w->ebuf[i]=='.') dot=1; if(w->ebuf[i]==' ') sp=1; }
@@ -3227,6 +3264,7 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
             const char *hr=w->page.hrefs[k->href];
             if(hr[0]=='#')return;
             char u[192];resolve(w->url,hr,u,sizeof u);
+            if(browser_open_saber_link(u))return;
             if(browser_safe_target(u)&&browser_open_modern(u))return;
             nav(w,u,1);return;
         }
