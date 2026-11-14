@@ -93,11 +93,12 @@ static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=3
 static int clk_h=12, clk_m=0; static uint32_t clk_next;
 static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
 #define ACCENT ACC[acc_i]
-#define C_BG 0x161826
-#define C_BORDER 0x2b2e45
-#define C_TXT 0xdfe3f0
-#define C_DIM 0x9aa0b8
-#define C_BTN 0x2a2e4a
+/* Vortex Flow: superficies limpias con jerarquia visual y menos veladuras. */
+#define C_BG 0x121b2c
+#define C_BORDER 0x34415b
+#define C_TXT 0xeaf2ff
+#define C_DIM 0xaab9d0
+#define C_BTN 0x26334e
 
 void gui_force_redraw(void){ dirty=1; }
 
@@ -1223,24 +1224,23 @@ static int set_resolution(int w,int h){
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
-    { int X0=x-8,Y0=y-6,X1=x+w->w+8,Y1=y+w->h+14;                                     /* sombra suave, solo fuera de la ventana */
-      for(int bnd=0;bnd<4;bnd++){
-          if(bnd==0) clip_set(X0,Y0,X1-X0,y-Y0); else if(bnd==1) clip_set(X0,y+w->h,X1-X0,Y1-(y+w->h));
-          else if(bnd==2) clip_set(X0,y,x-X0,w->h); else clip_set(x+w->w,y,X1-(x+w->w),w->h);
-          for(int i=3;i>=1;i--) rrect(x-i*2,y-i*2+6,w->w+4*i,w->h+4*i,11+i*2,0x000000,16);
-      }
-      clip_reset(); }
-    rrect(x,y,w->w,w->h,10,focused?mix(C_BORDER,ACCENT,60):C_BORDER,255);
-    rrect(x+1,y+1,w->w-2,w->h-2,9,C_BG,255);
+    /* Sombra en bandas finas, nunca 12 rectangulos de tamano ventana:
+     * anteriormente cada movimiento recalculaba millones de mezclas. */
+    fill(x-7,y+9,7,w->h,0x03070f,60);
+    fill(x+w->w,y+9,7,w->h,0x03070f,60);
+    fill(x+7,y+w->h,w->w-14,8,0x03070f,60);
+    fill(x-3,y+w->h,w->w+6,3,0x03070f,35);
+    rrect(x,y,w->w,w->h,12,focused?mix(C_BORDER,ACCENT,45):C_BORDER,255);
+    rrect(x+1,y+1,w->w-2,w->h-2,11,C_BG,255);
     clip_set(x+1,y+1,w->w-2,TB-1);
-    rrect(x+1,y+1,w->w-2,TB+10,9,focused?mix(0x20233a,ACCENT,70):0x1b1d30,255);
-    { static const unsigned char INS[9]={6,4,3,2,1,1,0,0,0};                         /* brillo degradado del titulo */
-      for(int j=0;j<TB-1;j++){ int in=j<9?INS[j]:0; fill(x+1+in,y+1+j,w->w-2-2*in,1,0xffffff,(focused?20:10)-j*(focused?20:10)/(TB-1)); } }
+    rrect(x+1,y+1,w->w-2,TB+10,11,focused?0x24324a:0x19253a,255);
+    /* Acento sutil en lugar del anticuado borde morado completo. */
+    fill(x+16,y+3,54,2,focused?ACCENT:0x475674,focused?230:85);
     clip_reset();
-    fill(x+1,y+TB-1,w->w-2,1,focused?ACCENT:0x000000,focused?110:60);
-    circle(x+w->w-20,y+TB/2,7,focused?0xe5534b:0x4a4d63,255);                     /* boton cerrar */
-    line(x+w->w-23,y+TB/2-3,x+w->w-17,y+TB/2+3,1,0xffffff,focused?255:120);
-    line(x+w->w-17,y+TB/2-3,x+w->w-23,y+TB/2+3,1,0xffffff,focused?255:120);
+    fill(x+1,y+TB-1,w->w-2,1,0xffffff,22);
+    rrect(x+w->w-31,y+5,23,20,7,focused?0x59333e:0x303b51,255);
+    line(x+w->w-24,y+10,x+w->w-15,y+19,1,0xffdce0,255);
+    line(x+w->w-15,y+10,x+w->w-24,y+19,1,0xffdce0,255);
 
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     clip_set(cx,cy,cw,ch);
@@ -1579,9 +1579,10 @@ static void draw_window(int wi,int focused){
 
 /* ---------------- barra superior y dock ---------------- */
 static void draw_topbar(void){
-    for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
-    fill(0,BARH-1,gw,1,0xffffff,14);
-    text_bold(16,6,"Vortex OS",0xffffff);
+    fill(0,0,gw,BARH,0x0b1221,248);
+    fill(0,BARH-1,gw,1,0x7086b3,50);
+    fill(16,7,3,14,ACCENT,255);
+    text_bold(27,6,"Vortex OS",0xf4f7ff);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
@@ -1595,9 +1596,9 @@ static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)
 static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
 static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
-    rrect(x,y,TILE,TILE,13,0x1a1d33,255);
-    clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
-    rrect(x,y,TILE,TILE,13,0xffffff,10);
+    rrect(x,y,TILE,TILE,13,0x23314d,255);
+    rrect(x+1,y+1,TILE-2,TILE-2,12,0x2b3b59,230);
+    fill(x+13,y+2,TILE-26,1,0xffffff,27);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
     case 0: /* Logo original de Vortex OS como acceso unico a Aplicaciones. */
@@ -1626,10 +1627,13 @@ static void draw_icon(int i,int x,int y){
 }
 static void draw_dock(void){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    rrect(bx,by,bw,bh,18,0x05060c,150); rrect(bx,by,bw,bh,18,0xffffff,16);
+    fill(bx+15,by+bh-2,bw-30,5,0x030918,55);
+    rrect(bx,by,bw,bh,18,0x101a2c,243);
+    rrect(bx+1,by+1,bw-2,bh-2,17,0x1b2941,225);
+    fill(bx+20,by+2,bw-40,1,0xffffff,22);
     for(int i=0;i<NDOCK;i++){
         int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
-        if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,70);
+        if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,90);
         draw_icon(i,x,y);
         if(i==0&&appmenu_open)circle(x+TILE/2,by+bh-5,3,0xffffff,255);
         else for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
