@@ -1,4 +1,4 @@
-/* gui.c — escritorio de Königreich OS: fondo, barra, dock, ventanas y aplicaciones integradas.
+/* gui.c — escritorio de Vortex OS: fondo, barra, dock, ventanas y aplicaciones integradas.
  * Todo se dibuja por software en un backbuffer; el cursor se pinta directo sobre el frontbuffer. */
 #include "gui.h"
 #include "kbd.h"
@@ -456,15 +456,15 @@ static void term_cmd(Win *w,char *line){
     else if(!k_strcmp(cmd,"df")){ int f,d2,by; fs_usage(&f,&d2,&by); char b[100]=""; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,d2); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes\n"); tp(w,b); }
     else if(!k_strcmp(cmd,"instalar-sistema")){
         uint32_t n=0;
-        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Konigreich OS en el disco duro\".\n"); }
+        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Vortex OS en el disco duro\".\n"); }
         else if(disk_init()){ tp(w,"No se encontro un disco duro (IDE, SATA o NVMe).\n"); }
         else {
             char b[140]="Disco: "; cat(b,140,disk_kind()); cat(b,140," "); cat(b,140,disk_model()); cat(b,140,", "); cat_int(b,140,(int)(disk_sectors()/2048)); cat(b,140," MB\n"); tp(w,b);
-            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Konigreich OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
+            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Vortex OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
             else {
                 tp(w,"Instalando... no apagues la PC (de 1 a 3 minutos).\n"); dirty=1; render();
                 int r=kng_install();
-                if(r==0) tp(w,"LISTO: Konigreich OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
+                if(r==0) tp(w,"LISTO: Vortex OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
                 else { char e2[80]="No se pudo instalar (error "; cat_int(e2,80,r); cat(e2,80,r==-3?": disco demasiado chico)\n":r==-4?": error al escribir el disco)\n":")\n"); tp(w,e2); }
             }
         } }
@@ -987,9 +987,9 @@ static const char *NEWN[]={"Nueva carpeta","Nuevo documento.txt","Nueva pagina.h
 static const char *NEWT[]={"","",
     "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>Nueva pagina</title></head>\n<body>\n<h1>Hola</h1>\n<p>Escribe aqui.</p>\n</body>\n</html>\n",
     "# Titulo\n\nEscribe aqui.\n",
-    "#!/bin/sh\necho \"Hola desde Konigreich OS\"\n",
-    "print(\"Hola desde Konigreich OS\")\n",
-    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Konigreich OS\\n\");\n    return 0;\n}\n",
+    "#!/bin/sh\necho \"Hola desde Vortex OS\"\n",
+    "print(\"Hola desde Vortex OS\")\n",
+    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Vortex OS\\n\");\n    return 0;\n}\n",
     "{\n  \"nombre\": \"valor\"\n}\n",""};
 static FsNode *fm_unz;                                              /* ultima carpeta extraida de un .zip */
 static void fm_do(int act,Win *w,FsNode *dir,FsNode *t){
