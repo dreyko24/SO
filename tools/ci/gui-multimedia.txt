@@ -3,11 +3,11 @@ captura 01-escritorio
 raton 5 80
 clic
 esperar 1
-raton 215 724
+raton 248 724
 clic
 esperar 1
 captura 02-menu-aplicaciones
-raton 215 326
+raton 650 346
 clic
 esperar 1
 captura 03-galeria
