@@ -1591,10 +1591,11 @@ static void draw_window(int wi,int focused){
               else { cat(b,sizeof b,"UTC"); if(tz>=0) cat(b,sizeof b,"+"); cat_int(b,sizeof b,tz); }
               text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
-            { char fecha[80]="Fecha local (RTC UTC): "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
+            { char fecha[80]="Fecha local (UTC): "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
               cat(fecha,sizeof fecha,"/"); cat_int(fecha,sizeof fecha,clk_y); }
               else cat(fecha,sizeof fecha,"fecha no disponible");
-              text(cx+20,oy+285,fecha,C_DIM); }
+              text(cx+20,oy+285,fecha,C_DIM);
+              text(cx+290,oy+285,net_time_synced()?"NTP sincronizado":"RTC / NTP pendiente",net_time_synced()?0x7ee787:C_DIM); }
             text_bold(cx+20,oy+312,"Teclado",C_TXT);
             for(int i=0;i<3;i++) button(cx+20+i*150,oy+340,140,26,kbd_layout_name(i),kbd_layout()==i);
             text(cx+20,oy+376,"Tambien: teclado latam | es | us desde Terminal",C_DIM);
@@ -1864,7 +1865,7 @@ void gui_frame(void){
     uint32_t t=kticks();
     browser_poll();
     if((int)(t-clk_next)>=0){ clk_next=t+100;
-        uint64_t utc=krtc_epoch();
+        uint64_t utc=net_utc_epoch();
         if(utc>=946684800ull&&utc<13569465600ull){
             long long local=(long long)utc+(long long)tz*3600ll;
             if(local>=0){
