@@ -12,6 +12,7 @@ sudo debootstrap --variant=minbase \
   bookworm "$RAIZ" http://deb.debian.org/debian > build/debootstrap.log 2>&1 || { tail -30 build/debootstrap.log; exit 1; }
 echo "[2/4] Agregando comandos en espanol y ajustes de vortex..."
 sudo cp -a tools/rootfs-es/. "$RAIZ"/
+sudo chmod 0755 "$RAIZ/usr/local/bin/vortex-chromium"  # wrapper generado por el repositorio, no fichero 0644
 sudo mkdir -p "$RAIZ"/root "$RAIZ"/tmp "$RAIZ"/run "$RAIZ"/var/lib/xvfb "$RAIZ"/tmp/.X11-unix
 sudo chmod 1777 "$RAIZ"/tmp "$RAIZ"/tmp/.X11-unix
 sudo tee "$RAIZ"/etc/apt/sources.list > /dev/null <<'L'
