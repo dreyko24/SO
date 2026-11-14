@@ -8,6 +8,7 @@ on:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
       - 'kernel/encyclopedia.h'
+      - 'kernel/saber_progress.h'
       - 'kernel/ps2_mouse.h'
       - 'kernel/disk.c'
       - 'kernel/fs.c'

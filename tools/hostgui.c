@@ -577,8 +577,9 @@ int main(void){
       }
       shot("39_vortex_saber_biblioteca");
       click(e->x+1+260,e->y+TB+146+19);
-      if(e->enc_topic<0||strcmp(ENC_ARTICLES[e->enc_topic].title,"Universo")){
-          puts("FALLO abrir articulo educativo");return 1;
+      if(e->enc_topic<0||strcmp(ENC_ARTICLES[e->enc_topic].title,"Universo")||
+         !(e->enc_progress.articles&1u)){
+          puts("FALLO abrir articulo educativo y guardar lectura");return 1;
       }
       shot("40_vortex_saber_articulo");
       click(e->x+1+238+35,e->y+TB+94+11+13);
@@ -627,8 +628,33 @@ int main(void){
           puts("FALLO puntuacion de quiz");return 1;
       }
       shot("42_vortex_saber_cuestionario");
+      /* Completar las 12 preguntas y comprobar puntuacion, nivel y
+       * persistencia de progreso incluso tras cerrar la aplicación. */
+      for(int i=2;i<ENC_QUIZ_N;i++){
+          enc_quiz_next(e);
+          enc_quiz_answer(e,ENC_QUIZ[i].correct);
+      }
+      enc_quiz_next(e);
+      if(e->enc_qindex!=ENC_QUIZ_N||e->enc_progress.completed!=1||
+         e->enc_progress.best!=ENC_QUIZ_N||
+         e->enc_progress.total_correct!=ENC_QUIZ_N||
+         saber_level(&e->enc_progress)<2){
+          puts("FALLO cierre cuestionario y logros");return 1;
+      }
+      FsNode *saved=fs_resolve(fs_root(),"/Sistema/saber-progress.dat");
+      VortexSaberProgress progress;
+      if(!saved||saber_decode((const uint8_t*)saved->data,saved->size,&progress)||
+         progress.completed!=1||!(progress.articles&1u)){
+          puts("FALLO guardar progreso de la enciclopedia");return 1;
+      }
       gui_key(27);
       if(e->enc_quiz){puts("FALLO salir del cuestionario");return 1;}
+      closeall();
+      e=open_app(A_ENCARTA);
+      if(!e||e->enc_progress.best!=ENC_QUIZ_N||
+         e->enc_progress.completed!=1||!(e->enc_progress.articles&1u)){
+          puts("FALLO restaurar progreso tras cerrar Vortex Saber");return 1;
+      }
       closeall();
       puts("VORTEX SABER: INDICE, ARTICULOS, BUSQUEDA, CATEGORIAS Y SCROLL OK");
     }

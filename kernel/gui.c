@@ -16,6 +16,7 @@
 #include "media_demo.h"
 #include "ui_locale.h"
 #include "encyclopedia.h"
+#include "saber_progress.h"
 #include "clock_calendar.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA };
@@ -41,6 +42,7 @@ typedef struct {
     VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
     int enc_category,enc_topic,enc_scroll,enc_search_len;
     int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
+    VortexSaberProgress enc_progress;
     char enc_search[48];
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
@@ -514,6 +516,9 @@ static int browser_open_modern(const char *url){
     run_quiet(cmd);
     return 1;
 }
+static void enc_progress_load(Win *w);
+static void enc_progress_save(Win *w);
+static void enc_article_open(Win *w,int id);
 static Win *open_app(int type){
     if(!open_new) for(int i=0;i<nord;i++){ Win *e=&wins[order[i]]; if(e->type==type && type!=A_VIEWER){ focus(order[i]); return e; } }
     int wi=-1; for(int i=0;i<MAXW;i++) if(!wins[i].used){ wi=i; break; }
@@ -547,7 +552,8 @@ static Win *open_app(int type){
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
     order[nord++]=wi;
     dwin(w); dmark(0,gh-108,gw,108);
-    if(type==A_BROWSER) nav(w,"vortex://inicio",0);
+    if(type==A_BROWSER)nav(w,"vortex://inicio",0);
+    if(type==A_ENCARTA)enc_progress_load(w);
     return w;
 }
 static int ext_is(const FsNode *f,const char *e);
@@ -1548,6 +1554,30 @@ static int enc_body_height(const Win *w){
     int h=w->h-TB-1;
     return k_max(3,(h-265)/18);
 }
+static void enc_progress_load(Win *w){
+    memset(&w->enc_progress,0,sizeof w->enc_progress);
+    FsNode *f=fs_resolve(fs_root(),"/Sistema/saber-progress.dat");
+    if(f&&!f->dir&&f->data)
+        (void)saber_decode((const uint8_t*)f->data,f->size,&w->enc_progress);
+}
+static void enc_progress_save(Win *w){
+    uint8_t data[SABER_PROGRESS_SIZE];
+    saber_encode(&w->enc_progress,data);
+    FsNode *dir=fs_resolve(fs_root(),"/Sistema");
+    if(dir)fs_create(dir,"saber-progress.dat",(const char*)data,sizeof data);
+}
+static void enc_article_open(Win *w,int id){
+    if(id<0||id>=ENC_ARTICLES_N)return;
+    w->enc_topic=id;w->enc_scroll=0;
+    if(id<32){
+        uint32_t mask=1u<<id;
+        if(!(w->enc_progress.articles&mask)){
+            w->enc_progress.articles|=mask;
+            enc_progress_save(w);
+        }
+    }
+    dwin(w);
+}
 static void enc_quiz_answer(Win *w,int choice){
     if(!w->enc_quiz||w->enc_qindex>=ENC_QUIZ_N||
        w->enc_qanswer>=0||choice<0||choice>=4)return;
@@ -1561,6 +1591,16 @@ static void enc_quiz_next(Win *w){
         w->enc_qindex=0;w->enc_qscore=0;w->enc_qanswer=-1;
     }else if(w->enc_qanswer>=0){
         w->enc_qindex++;w->enc_qanswer=-1;
+        if(w->enc_qindex==ENC_QUIZ_N){
+            VortexSaberProgress *p=&w->enc_progress;
+            if(p->completed<1000000u){
+                p->completed++;
+                p->total_correct+=(uint32_t)w->enc_qscore;
+                if((uint32_t)w->enc_qscore>p->best)p->best=(uint32_t)w->enc_qscore;
+                enc_progress_save(w);
+                if(vortexfs_active())(void)vortexfs_save();
+            }
+        }
     }
     dwin(w);
 }
@@ -1587,6 +1627,16 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     }
     rrect(sx+8,sy+342,sw-16,36,12,w->enc_quiz?ACCENT:C_HOVER,250);
     text_ui_bold(sx+24,sy+353,"Practicar",w->enc_quiz?0xffffff:C_TXT);
+    /* Seguimiento real, persistido en VortexFS cuando hay disco configurado. */
+    char stats[54]="Nivel ";cat_int(stats,sizeof stats,saber_level(&w->enc_progress));
+    cat(stats,sizeof stats,"   Leidos ");
+    cat_int(stats,sizeof stats,saber_read_count(w->enc_progress.articles));
+    text_ui(sx+12,sy+386,stats,C_TXT);
+    char attempts[54]="Pruebas ";
+    cat_int(attempts,sizeof attempts,(int)w->enc_progress.completed);
+    cat(attempts,sizeof attempts,"  Mejor ");
+    cat_int(attempts,sizeof attempts,(int)w->enc_progress.best);
+    text_ui(sx+12,sy+407,attempts,C_DIM);
     int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
     rrect(rx,ry,rw,rh,16,C_TILE,255);
     if(w->enc_quiz){
@@ -1601,6 +1651,12 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
             text_big(rx+22,ry+87,"Cuestionario completado",C_TXT);
             text_ui(rx+22,ry+136,"Has terminado todas las preguntas.",C_DIM);
             text_ui(rx+22,ry+164,"Repasa tus articulos y vuelve a jugar.",C_DIM);
+            if(w->enc_progress.best==ENC_QUIZ_N)
+                text_ui_bold(rx+22,ry+205,"Logro: Experto de Vortex Saber",0x26a269);
+            else if(w->enc_progress.completed>=3)
+                text_ui_bold(rx+22,ry+205,"Logro: Estudiante constante",0x26a269);
+            else
+                text_ui_bold(rx+22,ry+205,"Logro: Primer cuestionario",0x26a269);
         }else{
             const EncQuiz *q=&ENC_QUIZ[w->enc_qindex];
             char num[46]="Pregunta ";
@@ -2847,7 +2903,7 @@ static void app_click(Win *w,int lx,int ly){
             int rows=k_max(1,(rh-74)/57);
             if(ly>=top&&ly<top+rows*57&&lx>=230&&lx<cw-12){
                 int row=(ly-top)/57,idx=enc_index(w,w->enc_scroll+row);
-                if(idx>=0){w->enc_topic=idx;w->enc_scroll=0;dwin(w);}
+                if(idx>=0)enc_article_open(w,idx);
                 return;
             }
         }
@@ -3311,7 +3367,7 @@ void gui_key(int c){
             w->enc_topic=-1;w->enc_scroll=0;dwin(w);
         }else if(c=='\n'){
             int id=enc_index(w,0);
-            if(id>=0){w->enc_topic=id;w->enc_scroll=0;dwin(w);}
+            if(id>=0)enc_article_open(w,id);
         }else if(c==KEY_DOWN||c==KEY_UP||c==KEY_PGDN||c==KEY_PGUP){
             int speed=(c==KEY_PGDN||c==KEY_PGUP)?7:2;
             int dir=(c==KEY_DOWN||c==KEY_PGDN)?1:-1;
