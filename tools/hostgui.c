@@ -223,6 +223,30 @@ int main(void){
       closeall();
       puts("VORTEX REDIMENSIONAMIENTO BORDES/ESQUINAS Y LIMITES OK");
     }
+    /* Arrastrar ventanas nativas no debe dejar su barra ni botones de
+     * cerrar fuera de alcance, incluso en una esquina de la pantalla. */
+    {
+      closeall();workspace_set(0);
+      Win *w=open_app(A_NOTES);
+      if(!w){puts("FALLO ventana prueba arrastre");return 1;}
+      int bx=w->x+115,by=w->y+12;
+      gui_mouse_abs(bx,by,0);gui_frame();
+      gui_mouse_abs(bx,by,1);gui_frame();
+      gui_mouse_abs(W-70,H-15,1);gui_frame();
+      gui_mouse_abs(W-70,H-15,0);gui_frame();
+      if(w->x<0||w->x+w->w>W||w->y<BARH||w->y>H-TB-12){
+          puts("FALLO ventana desplazada fuera del escritorio");return 1;
+      }
+      bx=w->x+115;by=w->y+12;
+      gui_mouse_abs(bx,by,0);gui_frame();
+      gui_mouse_abs(bx,by,1);gui_frame();
+      gui_mouse_abs(6,180,1);gui_frame();
+      gui_mouse_abs(6,180,0);gui_frame();
+      if(w->x<0||w->y<BARH||w->x+w->w>W){
+          puts("FALLO ventana oculta al arrastrar hacia borde izquierdo");return 1;
+      }
+      closeall();puts("VORTEX VENTANAS: ARRASTRE EN LIMITES VISIBLES OK");
+    }
     /* GNOME: Alt+F10 maximiza/restaura; Alt+F4 cierra solo la
      * ventana enfocada y no destruye las aplicaciones restantes. */
     {

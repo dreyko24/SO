@@ -3594,7 +3594,15 @@ static void mouse_set(int x,int y,int b){
         return;
     }
     if(drag>=0){
-        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
+        if(b&1){
+            Win *w=&wins[drag];dwin(w);
+            /* Nunca dejar la ventana perdida fuera del monitor. Mantener
+             * toda su anchura visible cuando quepa en la resolución actual
+             * y al menos la barra de título dentro de la pantalla. */
+            w->x=k_max(0,k_min(k_max(0,gw-w->w),mx-dragdx));
+            w->y=k_max(BARH,k_min(k_max(BARH,gh-TB-12),my-dragdy));
+            dwin(w);dock_damage();
+        }
         if(released){ Win *w=&wins[drag]; drag=-1;
             if(win_resizable(w)){
                 int safe=desktop_work_x(),avail=gw-safe;
