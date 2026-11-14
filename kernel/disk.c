@@ -8,12 +8,22 @@
 
 #ifdef HOSTDISK                            /* simulador del host: un "disco" de 4 MB en memoria */
 static uint8_t fake[4*1024*1024]; static int fake_ok=1;
+/* Sólo en el simulador: fallo eléctrico simulado después de N escrituras. */
+static int fake_fail_after=-1;
 int disk_init(void){ return fake_ok?0:-1; }
 uint32_t disk_sectors(void){ return sizeof fake/512; }
 const char *disk_model(void){ return "disco simulado"; }
 const char *disk_kind(void){ return "simulado"; }
-int disk_read(uint32_t lba,void *b,int n){ if((lba+(uint32_t)n)*512>sizeof fake) return -1; memcpy(b,fake+lba*512,(size_t)n*512); return 0; }
-int disk_write(uint32_t lba,const void *b,int n){ if((lba+(uint32_t)n)*512>sizeof fake) return -1; memcpy(fake+lba*512,b,(size_t)n*512); return 0; }
+int disk_read(uint32_t lba,void *b,int n){
+    if(!b||n<=0||(uint64_t)lba+(uint64_t)n>sizeof fake/512u)return -1;
+    memcpy(b,fake+(size_t)lba*512,(size_t)n*512);return 0;
+}
+int disk_write(uint32_t lba,const void *b,int n){
+    if(!b||n<=0||(uint64_t)lba+(uint64_t)n>sizeof fake/512u)return -1;
+    if(fake_fail_after==0)return -1;
+    if(fake_fail_after>0)fake_fail_after--;
+    memcpy(fake+(size_t)lba*512,b,(size_t)n*512);return 0;
+}
 #else
 static inline void o8(uint16_t p,uint8_t v){ __asm__ volatile("outb %0,%1"::"a"(v),"Nd"(p)); }
 static inline uint8_t i8(uint16_t p){ uint8_t v; __asm__ volatile("inb %1,%0":"=a"(v):"Nd"(p)); return v; }
@@ -238,12 +248,22 @@ uint32_t disk_sectors(void){ if(drv==1) return nsect; if(drv==2) return a_nsect>
     if(drv==3){ uint64_t s2=nv_nlb*(nv_lbsz/512); return s2>0xFFFFFFFFull?0xFFFFFFFFu:(uint32_t)s2; } return 0; }
 const char *disk_model(void){ if(drv==1) return model; if(drv==2) return a_model[0]?a_model:"disco SATA"; if(drv==3) return "SSD NVMe"; return "(sin disco)"; }
 const char *disk_kind(void){ return drv==1?"IDE":drv==2?"SATA (AHCI)":drv==3?"NVMe":"ninguno"; }
-int disk_read(uint32_t lba,void *buf,int n){ if(lba+(uint32_t)n>disk_sectors()) return -1; return drv==1?ata_read(lba,buf,n):drv==2?ahci_rw(lba,buf,n,0):drv==3?nvme_rw(lba,buf,n,0):-1; }
-int disk_write(uint32_t lba,const void *buf,int n){ if(lba+(uint32_t)n>disk_sectors()) return -1; return drv==1?ata_write(lba,buf,n):drv==2?ahci_rw(lba,(void*)buf,n,1):drv==3?nvme_rw(lba,(void*)buf,n,1):-1; }
+int disk_read(uint32_t lba,void *buf,int n){
+    if(!buf||n<=0||(uint64_t)lba+(uint64_t)n>disk_sectors())return -1;
+    return drv==1?ata_read(lba,buf,n):drv==2?ahci_rw(lba,buf,n,0):drv==3?nvme_rw(lba,buf,n,0):-1;
+}
+int disk_write(uint32_t lba,const void *buf,int n){
+    if(!buf||n<=0||(uint64_t)lba+(uint64_t)n>disk_sectors())return -1;
+    return drv==1?ata_write(lba,buf,n):drv==2?ahci_rw(lba,(void*)buf,n,1):drv==3?nvme_rw(lba,(void*)buf,n,1):-1;
+}
 #endif
 
-/* ---- KNGFS: sector 0 = firma + tamano + suma; sectores 1.. = arbol serializado ---- */
+/* ---- KNGFS: copia heredada en la primera mitad y copia de recuperacion
+ * en la segunda mitad. Se mantiene la firma KNGFS001 y el arbol original.
+ * La version 2 marca numero de secuencia en bytes reservados de cabecera.
+ * El sector de cabecera se escribe DESPUES del contenido del nuevo slot. */
 static int mounted; static uint32_t saved_gen, next_try;
+static int saved_slot=-1; static uint32_t saved_seq;
 static int bcmp_(const uint8_t *a,const char *b,int n){ for(int i=0;i<n;i++) if(a[i]!=(uint8_t)b[i]) return 1; return 0; }
 static uint32_t sum(const uint8_t *p,uint32_t n){                         /* Adler-32 (modulo cada 5552 bytes: rapido) */
     uint32_t a=1,b=0;
@@ -253,39 +273,140 @@ static uint32_t sum(const uint8_t *p,uint32_t n){                         /* Adl
 static uint32_t last_size;
 static uint32_t kbase, kcap;                                                 /* zona de KNGFS: la particion de tipo 0xDA si existe; si no, el disco entero */
 static uint32_t le32(const uint8_t *p){ return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
+/* El doble slot sólo usa espacio dentro de KNGFS, nunca otra partición. */
+#define VORTEXFS_SLOT_MIN 4096u
+#define VORTEXFS_V2_MAGIC "VX2SNAP!"
+static uint32_t slot_span(void){return kcap>=VORTEXFS_SLOT_MIN?kcap/2u:0;}
+static uint32_t slot_lba(int slot){return kbase+(slot?slot_span():0);}
+static uint32_t slot_capacity(int slot){
+    uint32_t half=slot_span();
+    if(!half)return kcap;
+    return slot?(kcap-half):half;
+}
+static int snapshot_header(const uint8_t *hd,uint32_t maxsectors,int secondary,uint32_t *len,uint32_t *checksum,uint32_t *seq){
+    if(bcmp_(hd,KNGFS_MAGIC,8))return -1;
+    if(secondary&&bcmp_(hd+16,VORTEXFS_V2_MAGIC,8))return -1;
+    uint32_t n=le32(hd+8),cs=le32(hd+12);
+    if(!n||n>KNGFS_MAXB||((uint64_t)n+511u)/512u+1u>maxsectors)return -1;
+    *len=n;*checksum=cs;
+    *seq=bcmp_(hd+16,VORTEXFS_V2_MAGIC,8)?0:le32(hd+24);
+    return 0;
+}
+static int snapshot_read(int slot,uint32_t n,uint32_t cs,uint8_t **out){
+    uint32_t sectors=(n+511u)/512u,base=slot_lba(slot);
+    uint8_t *buf=kmalloc((size_t)sectors*512u);
+    if(!buf)return -4;
+    int r=0;
+    for(uint32_t i=0;i<sectors&&!r;i+=2048u){
+        uint32_t c=sectors-i>2048u?2048u:sectors-i;
+        r=disk_read(base+1u+i,buf+(size_t)i*512u,(int)c);
+    }
+    if(r||sum(buf,n)!=cs){kfree(buf);return -5;}
+    *out=buf;return 0;
+}
+
 static void vortexfs_area(void){
     kbase=0; kcap=disk_sectors();
     uint8_t m[512]; if(disk_read(0,m,1)||m[510]!=0x55||m[511]!=0xAA) return;
-    for(int i=0;i<4;i++){ const uint8_t *e=m+446+i*16; if(e[4]==0xDA){ uint32_t st=le32(e+8), sz=le32(e+12); if(st&&sz>8&&st+sz<=disk_sectors()){ kbase=st; kcap=sz; } return; } }
+    for(int i=0;i<4;i++){ const uint8_t *e=m+446+i*16; if(e[4]==0xDA){ uint32_t st=le32(e+8), sz=le32(e+12); if(st&&sz>8&&(uint64_t)st+(uint64_t)sz<=disk_sectors()){ kbase=st; kcap=sz; } return; } }
 }
 int vortexfs_active(void){ return mounted; }
 uint32_t vortexfs_last_size(void){ return last_size; }
 int vortexfs_save(void){
-    if(!mounted) return -1;
-    int need=fs_serialize(0,0); if(need<0||(uint32_t)need>KNGFS_MAXB) return -2;
-    uint32_t secs=((uint32_t)need+511)/512; if(1+secs>kcap) return -2;
-    uint8_t *buf=kmalloc((size_t)secs*512+512); if(!buf) return -3;           /* sin memoria para armar la copia */
-    int n=fs_serialize(buf+512,(int)(secs*512));
-    if(n<0){ kfree(buf); return -2; }
-    memset(buf,0,512); memcpy(buf,KNGFS_MAGIC,8);
-    uint32_t v[2]={(uint32_t)n,sum(buf+512,(uint32_t)n)}; memcpy(buf+8,v,8);
-    int r=0; for(uint32_t i=0;i<secs&&!r;i+=2048){ uint32_t c=secs-i>2048?2048:secs-i; r=disk_write(kbase+1+i,buf+512+(size_t)i*512,(int)c); }
-    if(!r) r=disk_write(kbase,buf,1);                                            /* la cabecera va al final: si se corta, queda la copia anterior */
-    kfree(buf); if(!r){ saved_gen=fs_gen(); last_size=(uint32_t)n; } return r;
+    if(!mounted)return -1;
+    int need=fs_serialize(0,0);
+    if(need<=0||(uint32_t)need>KNGFS_MAXB)return -2;
+    uint32_t sectors=((uint32_t)need+511u)/512u,half=slot_span();
+    int slot;
+    if(half){
+        /* Al migrar un KNGFS antiguo, conservar la copia original. Una
+         * imagen heredada mayor que media particion se guarda en modo
+         * clasico y no puede prometer recuperacion por duplicado. */
+        if(saved_slot==0&&saved_seq==0&&last_size>(half-1u)*512u)
+            slot=0;
+        else{
+            slot=saved_slot<0?0:1-saved_slot;
+            if(sectors+1u>slot_capacity(slot))return -2;
+        }
+    }else slot=0;
+    if(sectors+1u>(slot==0&&!half?kcap:slot_capacity(slot)))return -2;
+    uint8_t *buf=kmalloc((size_t)sectors*512u+512u);
+    if(!buf)return -3;
+    int n=fs_serialize(buf+512,(int)(sectors*512u));
+    if(n<=0){kfree(buf);return -2;}
+    memset(buf,0,512);
+    memcpy(buf,KNGFS_MAGIC,8);
+    uint32_t v[2]={(uint32_t)n,sum(buf+512,(uint32_t)n)};
+    memcpy(buf+8,v,8);
+    uint32_t sequence=saved_seq+1u;
+    if(half&&!(slot==0&&saved_seq==0&&saved_slot==0&&last_size>(half-1u)*512u)){
+        memcpy(buf+16,VORTEXFS_V2_MAGIC,8);
+        memcpy(buf+24,&sequence,4);
+    }else sequence=0;
+    uint32_t base=slot_lba(slot);
+    int r=0;
+    for(uint32_t i=0;i<sectors&&!r;i+=2048u){
+        uint32_t c=sectors-i>2048u?2048u:sectors-i;
+        r=disk_write(base+1u+i,buf+512+(size_t)i*512u,(int)c);
+    }
+    if(!r)r=disk_write(base,buf,1);
+    kfree(buf);
+    if(!r){saved_slot=slot;saved_seq=sequence;saved_gen=fs_gen();last_size=(uint32_t)n;}
+    return r;
 }
 int vortexfs_mount(void){
-    if(mounted) return 0;
-    if(disk_init()) return -1;
+    if(mounted)return 0;
+    if(disk_init())return -1;
     vortexfs_area();
-    uint8_t hd[512]; if(disk_read(kbase,hd,1)||bcmp_(hd,KNGFS_MAGIC,8)) return -2;
-    uint32_t v[2]; memcpy(v,hd+8,8); if(v[0]==0||v[0]>KNGFS_MAXB) return -3;
-    uint32_t secs=(v[0]+511)/512; if(1+secs>kcap) return -3;
-    uint8_t *buf=kmalloc((size_t)secs*512); if(!buf) return -4;
-    int r=0; for(uint32_t i=0;i<secs&&!r;i+=2048){ uint32_t c=secs-i>2048?2048:secs-i; r=disk_read(kbase+1+i,buf+(size_t)i*512,(int)c); }
-    if(r||sum(buf,v[0])!=v[1]||fs_overlay(buf,(int)v[0])){ kfree(buf); return -5; }
-    kfree(buf); mounted=1; saved_gen=fs_gen(); last_size=v[0]; return 0;
+    uint32_t n[2]={0},cs[2]={0},seq[2]={0};
+    int valid[2]={0,0},best=-1;
+    uint8_t hd[512];
+    if(!disk_read(kbase,hd,1)){
+        uint32_t cap=kcap;
+        if(!snapshot_header(hd,cap,0,&n[0],&cs[0],&seq[0])){
+            valid[0]=1;
+            /* La vieja copia podria invadir la segunda mitad. */
+            uint32_t half=slot_span();
+            if(half&&n[0]<=(half-1u)*512u)valid[0]=2;
+        }
+    }
+    uint32_t half=slot_span();
+    if(half&&(!valid[0]||valid[0]==2)){
+        if(!disk_read(slot_lba(1),hd,1)&&
+           !snapshot_header(hd,slot_capacity(1),1,&n[1],&cs[1],&seq[1]))
+            valid[1]=1;
+    }
+    if(!valid[0]&&!valid[1])return -2;
+    best=valid[1]&&(!valid[0]||seq[1]>seq[0])?1:0;
+    for(int attempt=0;attempt<2;attempt++){
+        int slot=attempt==0?best:1-best;
+        if(!valid[slot])continue;
+        uint8_t *buf=0;
+        if(snapshot_read(slot,n[slot],cs[slot],&buf))continue;
+        int r=fs_overlay(buf,(int)n[slot]);
+        kfree(buf);
+        if(r)continue;
+        mounted=1;saved_slot=slot;saved_seq=seq[slot];
+        saved_gen=fs_gen();last_size=n[slot];
+        return 0;
+    }
+    return -5;
 }
-int vortexfs_format(void){ if(disk_init()) return -1; vortexfs_area(); mounted=1; int r=vortexfs_save(); if(r) mounted=0; return r; }
+int vortexfs_format(void){
+    if(disk_init())return -1;
+    vortexfs_area();
+    /* Formatear es explicito y destructivo; limpiar primero un eventual
+     * encabezado secundario para no resucitar copias de instalaciones viejas. */
+    if(slot_span()){
+        uint8_t zero[512];memset(zero,0,sizeof zero);
+        if(disk_write(slot_lba(1),zero,1))return -2;
+    }
+    saved_slot=-1;saved_seq=0;last_size=0;
+    mounted=1;
+    int r=vortexfs_save();
+    if(r)mounted=0;
+    return r;
+}
 /* ===== instalador: copia al disco la imagen arrancable (MBR + GRUB BIOS/UEFI + FAT32) que GRUB cargo desde el USB,
  *       y crea despues una particion de tipo 0xDA con el resto del disco para los datos (KNGFS) ===== */
 void *(*vortex_mmio_map)(uint64_t phys, uint64_t len);
@@ -308,8 +429,10 @@ int vortex_install(void){
     uint32_t sz=total-pstart; e[8]=(uint8_t)pstart; e[9]=(uint8_t)(pstart>>8); e[10]=(uint8_t)(pstart>>16); e[11]=(uint8_t)(pstart>>24);
     e[12]=(uint8_t)sz; e[13]=(uint8_t)(sz>>8); e[14]=(uint8_t)(sz>>16); e[15]=(uint8_t)(sz>>24);
     memset(tmp,0,512); if(disk_write(pstart,tmp,1)) return -4;              /* sin copia vieja de datos en esa zona */
+    if(sz>=VORTEXFS_SLOT_MIN&&disk_write(pstart+sz/2u,tmp,1))return -4; /* no reusar un checkpoint viejo */
     if(disk_write(0,mbr,1)) return -4;                                       /* el MBR al final: si algo fallo antes, el disco no queda a medias */
-    kbase=pstart; kcap=sz; mounted=1; if(vortexfs_save()) return -5;
+    kbase=pstart; kcap=sz; mounted=1;saved_slot=-1;saved_seq=0;last_size=0;
+    if(vortexfs_save()) return -5;
     return 0;
 }
 void vortexfs_tick(void){                                                       /* guarda solo si hubo cambios: cada 5 s si es poco, cada 3 min si es mucho */

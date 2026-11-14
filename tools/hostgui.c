@@ -262,6 +262,34 @@ int main(void){
     mounted=0;
     if(vortexfs_mount()){ puts("FALLO montar"); return 1; }
     { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); if(!z||z->size!=8||memcmp(z->data,"CAMBIADO",8)||fs_resolve(fs_root(),"/temporal.txt")||fs_resolve(fs_root(),"/Escritorio/b.txt")){ puts("FALLO persistencia"); return 1; } puts("DISCO OK"); }
+    /* VortexFS doble snapshot: provocar corte entre datos y cabecera.
+     * Debe conservar la version previa, nunca exponer la escritura parcial. */
+    {
+      FsNode *docs=fs_resolve(fs_root(),"/Documentos");
+      if(!docs){puts("FALLO snapshot docs");return 1;}
+      FsNode *n=fs_create(docs,"recuperacion.txt","PRIMERO",7);
+      if(!n||vortexfs_save()){puts("FALLO guardar checkpoint");return 1;}
+      int stable_slot=saved_slot;
+      if(!slot_span()||stable_slot<0){puts("FALLO activar doble slot");return 1;}
+      if(fs_write(n,"SEGUNDO",7)){puts("FALLO escribir segundo");return 1;}
+      fake_fail_after=1; /* escribir los datos, cortar antes de cabecera */
+      int failed=vortexfs_save();
+      fake_fail_after=-1;
+      if(!failed||saved_slot!=stable_slot){puts("FALLO corte de energia simulado");return 1;}
+      fs_init();mounted=0;saved_slot=-1;saved_seq=0;last_size=0;
+      if(vortexfs_mount()){puts("FALLO recuperacion tras corte");return 1;}
+      n=fs_resolve(fs_root(),"/Documentos/recuperacion.txt");
+      if(!n||n->size!=7||memcmp(n->data,"PRIMERO",7)){puts("FALLO recuperacion snapshot intacto");return 1;}
+      if(fs_write(n,"TERCERO",7)||vortexfs_save()){puts("FALLO siguiente checkpoint");return 1;}
+      int new_slot=saved_slot;
+      /* Danar la copia mas reciente y verificar fallback al snapshot anterior. */
+      fake[(size_t)slot_lba(new_slot)*512+8]^=0xFF;
+      fs_init();mounted=0;saved_slot=-1;saved_seq=0;last_size=0;
+      if(vortexfs_mount()){puts("FALLO fallback de copia corrupta");return 1;}
+      n=fs_resolve(fs_root(),"/Documentos/recuperacion.txt");
+      if(!n||n->size!=7||memcmp(n->data,"PRIMERO",7)){puts("FALLO rollback snapshot secundario");return 1;}
+      puts("VORTEXFS COPIAS DOBLES: CORTE, CORRUPCION Y RECUPERACION OK");
+    }
     dock(8); shot("18_monitor"); closeall();
     /* escritorio modular: arrastrar icono y widget, abrir con doble clic */
     { click(dobj[4].x+42,dobj[4].y+80);

@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
+      - 'kernel/disk.c'
+      - 'kernel/fs.c'
       - 'kernel/ui_locale.h'
       - 'kernel/media_demo.c'
       - 'kernel/usb_storage.c'
