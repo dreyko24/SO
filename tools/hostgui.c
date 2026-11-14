@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <time.h>
 #include "../kernel/vortex.h"
 int kattach_pid;
 char kshell_cwd[96];
@@ -261,6 +262,27 @@ int main(void){
     if(power_sleep){puts("FALLO reanudar pantalla");return 1;}
     shot("27_reanudado");
     puts("VORTEX ENERGIA Y REPOSO OK");
+    /* Tiempo real de composicion al arrastrar una ventana.
+     * Solo es una medicion comparativa en el host, NO fps de VMware. */
+    closeall();dock(1);
+    { Win *v=&wins[win_top()];
+      int px=v->x+60,py=v->y+12;
+      gui_mouse_abs(px,py,0);gui_frame();gui_mouse_abs(px,py,1);gui_frame();
+      struct timespec t0,t1;
+      uint64_t before=gui_painted_pixels;
+      clock_gettime(CLOCK_MONOTONIC,&t0);
+      for(int j=1;j<=24;j++){
+          gui_mouse_abs(px+j*3,py+j,1);gui_frame();
+      }
+      clock_gettime(CLOCK_MONOTONIC,&t1);
+      gui_mouse_abs(px+72,py+24,0);gui_frame();
+      double ms=(t1.tv_sec-t0.tv_sec)*1000.0+(t1.tv_nsec-t0.tv_nsec)/1000000.0;
+      fprintf(stderr,"[vortex-perf] 24 cuadros arrastrando: %.2f ms total, %.2f ms/cuadro, %llu pixeles/cuadro\n",
+          ms,ms/24.0,
+          (unsigned long long)((gui_painted_pixels-before)/24u));
+      if(ms<=0||ms>60000){puts("FALLO banco de arrastre");return 1;}
+    }
+    closeall();
     /* escritorio lleno */
     dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
