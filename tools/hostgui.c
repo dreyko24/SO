@@ -11,6 +11,13 @@ static uint32_t T=1000;
 uint32_t kticks(void){ return T; }
 int kgetc(void){ return -1; }
 void (*kcon_hook)(char);
+/* Servicios del kernel emulados para probar el mismo codigo grafico en el host. */
+int kattach_pid;
+char kshell_cwd[96]="/";
+void (*kproc_done)(int pid,int code);
+void kserial_puts(const char *str){ (void)str; }
+void kproc_key(int c){ (void)c; }
+void kinput_event(int type,int code,int value){ (void)type; (void)code; (void)value; }
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
@@ -48,6 +55,7 @@ int net_state(void){ return 2; }
 #include "../kernel/disk.c"
 #include "../kernel/html.c"
 #include "../kernel/kbd.c"
+#include "../kernel/zip.c"
 #include "../kernel/gui.c"
 
 #define W 1024
@@ -103,8 +111,15 @@ int main(void){
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("fallo.test\\"); gui_frame(); gui_frame(); gui_frame(); gui_frame(); }
     shot("05f_http_fallo");
     closeall();
-    dock(0); shot("07_acerca");
+    /* Logotipo unico: abre panel, selecciona una app y cierra con Escape. */
+    dock(0); if(!launcher_open){ puts("FALLO abrir lanzador"); return 1; }
+    shot("07_lanzador");
+    { int x,y,w,h; launcher_bounds(&x,&y,&w,&h); click(x+20+LAUNCH_TILEW+30,y+70+20);
+      if(launcher_open||win_top()<0||wins[win_top()].type!=A_FILES){ puts("FALLO abrir Archivos desde lanzador"); return 1; } }
     closeall();
+    dock(0); gui_key(27);
+    if(launcher_open){ puts("FALLO Escape lanzador"); return 1; }
+    puts("LANZADOR OK");
     dock(7); { Win *st=&wins[win_top()]; click(st->x+1+20+44+14,st->y+TB+54); click(st->x+1+20+112,st->y+TB+114+30); } shot("08_ajustes_cambio");
     closeall();
     /* buscador */
@@ -169,6 +184,6 @@ int main(void){
       kbd_set_layout(KBD_US); { char kv[16]; cfg_get("teclado",kv,sizeof kv); kbd_set_layout(layout_from_name(kv)); if(kbd_layout()!=KBD_LATAM){ puts("FALLO leer cfg"); return 1; } }
       gui_panic("Falta de pagina","eip",0x1234abcdULL,0x2,0xdeadbeefULL,1); shot("21_panic"); gui_force_redraw(); puts("TECLADO GUI OK"); }
     /* escritorio lleno */
-    dock(0); dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
+    dock(0); dock(0); dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
 }
