@@ -12,7 +12,12 @@ void (*kproc_done)(int,int);
 void kserial_puts(const char *s){fputs(s,stderr);}
 void kinput_event(int t,int c,int v){(void)t;(void)c;(void)v;}
 void kproc_key(int c){(void)c;}
-void *kmalloc(size_t n){ return malloc(n); }
+static int host_alloc_budget=-1;
+void *kmalloc(size_t n){
+    if(host_alloc_budget==0)return NULL;
+    if(host_alloc_budget>0)host_alloc_budget--;
+    return malloc(n);
+}
 void kfree(void *p){ free(p); }
 static uint32_t T=1000;
 uint32_t kticks(void){ return T; }
@@ -280,6 +285,34 @@ int main(void){
       }
       fs_remove(fs_resolve(fs_root(),"/z"));
       puts("VORTEXFS SERIALIZACION: TRUNCADO, LONGITUD, TRAVERSAL, PROFUNDIDAD OK");
+    }
+    /* La copia de carpetas debe ser todo o nada ante OOM. */
+    {
+      FsNode *r=fs_root(),*orig=fs_mkdir(r,"origen-oom");
+      if(!orig||!fs_create(orig,"primero.txt","uno",3)||
+         !fs_create(orig,"segundo.txt","dos",3)){
+         puts("FALLO crear estructura de prueba");return 1;
+      }
+      for(int allowance=0;allowance<5;allowance++){
+          host_alloc_budget=allowance;
+          FsNode *copy=fs_copy(orig,r,"destino-oom");
+          host_alloc_budget=-1;
+          if(copy||fs_find(r,"destino-oom")){
+              puts("FALLO copia de carpeta incompleta por falta de memoria");return 1;
+          }
+      }
+      host_alloc_budget=1;
+      FsNode *missing=fs_create(r,"archivo-oom","datos",5);
+      host_alloc_budget=-1;
+      if(missing||fs_find(r,"archivo-oom")){
+          puts("FALLO fs_create tras fallo de memoria");return 1;
+      }
+      FsNode *complete=fs_copy(orig,r,"destino-oom");
+      if(!complete||!fs_find(complete,"primero.txt")||!fs_find(complete,"segundo.txt")){
+          puts("FALLO copia completa sin OOM");return 1;
+      }
+      fs_remove(complete);fs_remove(orig);
+      puts("VORTEXFS COPIA ATOMICA CON FALLOS DE ASIGNACION OK");
     }
     /* disco y sistema de archivos: formatear, guardar, copiar, mover, renombrar, recargar */
     dock(3); typestr("disco\\disco formatear si\\cd /Documentos\\write a.txt hola disco\\cp a.txt b.txt\\mv b.txt /Escritorio\\ren a.txt z.txt\\mkdir sub\\cp /Sistema sub\\df\\"); shot("17_disco_terminal");

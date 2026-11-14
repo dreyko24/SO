@@ -47,8 +47,10 @@ static int valid_name(const char *s){
     return 1;
 }
 FsNode *fs_mkdir(FsNode *dir,const char *name){
-    if(!dir||!dir->dir||!valid_name(name)||fs_find(dir,name)) return 0;
-    gen++; return newnode(dir,name,1);
+    if(!dir||!dir->dir||!valid_name(name)||fs_find(dir,name))return 0;
+    FsNode *n=newnode(dir,name,1);
+    if(n)gen++;
+    return n;
 }
 static void drop_data(FsNode *n){
     if(n->shm){ if(fs_shm_hook) fs_shm_hook(n->shm); n->shm=0; }
@@ -56,24 +58,33 @@ static void drop_data(FsNode *n){
     n->data=0; n->size=0; n->cap=0; n->ro=0;
 }
 int fs_write(FsNode *n,const char *data,int len){
-    if(!n||n->dir||len<0) return -1;
-    char *d=kmalloc((size_t)len+1); if(!d) return -1;
+    if(!n||n->dir||len<0||len==0x7fffffff||(len&&!data))return -1;
+    char *d=kmalloc((size_t)len+1);if(!d)return -1;
     memcpy(d,data,(size_t)len); d[len]=0;
     drop_data(n); n->data=d; n->size=len; n->cap=len+1; touch(n); hl_sync(n); gen++; return 0;
 }
 void fs_adopt(FsNode *n,const char *data,int len){ drop_data(n); n->data=(char*)data; n->size=len; n->cap=len; n->ro=1; gen++; }
-static int ensure_cap(FsNode *n,int need){        /* 'need' bytes de contenido (+1 para el cero final); copia al escribir si no es nuestro */
-    if(n->shm){ if(need<=n->cap) return 0; }                   /* en un bloque compartido solo se escribe hasta su tamano */
-    else if(!n->ro && need+1<=n->cap) return 0;
-    int nc=need+1; if(!n->ro&&!n->shm&&n->cap>0&&nc<n->cap*2) nc=(n->cap>(64<<20))?nc+nc/4:n->cap*2; if(nc<64) nc=64;   /* archivos enormes (navegadores): crecer un 25 % y no el doble, para no necesitar dos bloques gigantes a la vez */
+static int ensure_cap(FsNode *n,int need){
+    if(need<0||need>=0x7fffffff)return -1; /* reservar NUL sin overflow */
+    if(n->shm){if(need<=n->cap)return 0;}
+    else if(!n->ro&&need+1<=n->cap)return 0;
+    int nc=need+1;
+    if(!n->ro&&!n->shm&&n->cap>0){
+        /* Cálculo en 64 bits: cap*2 y need+need/4 podían desbordar int. */
+        uint64_t grow=(uint64_t)(unsigned)n->cap*2u;
+        if(n->cap>(64<<20))grow=(uint64_t)(unsigned)nc+(unsigned)nc/4u;
+        if(grow>(uint64_t)0x7fffffff)grow=0x7fffffff;
+        if((uint64_t)(unsigned)nc<grow)nc=(int)grow;
+    }
+    if(nc<64)nc=64;
     char *d=kmalloc((size_t)nc); if(!d) return -1;
     if(n->size) memcpy(d,n->data,(size_t)(n->size<nc?n->size:nc));
     memset(d+n->size,0,(size_t)(nc-n->size));
     int osize=n->size; drop_data(n); n->data=d; n->size=osize; n->cap=nc; return 0;
 }
 int fs_write_at(FsNode *n,int off,const char *src,int len){
-    if(!n||n->dir||off<0||len<0) return -1;
-    int end=off+len; if(end<off) return -1;
+    if(!n||n->dir||off<0||len<0||len>0x7ffffffe-off||(len&&!src))return -1;
+    int end=off+len;
     if(ensure_cap(n,end)) return -1;
     if(off>n->size) memset(n->data+n->size,0,(size_t)(off-n->size));
     if(len) memcpy(n->data+off,src,(size_t)len);
@@ -81,7 +92,7 @@ int fs_write_at(FsNode *n,int off,const char *src,int len){
     touch(n); hl_sync(n); gen++; return 0;
 }
 int fs_resize(FsNode *n,int size){
-    if(!n||n->dir||size<0) return -1;
+    if(!n||n->dir||size<0||size==0x7fffffff)return -1;
     if(size==n->size) return 0;
     if(size<n->size){ if(n->shm||n->ro){ if(n->ro&&!n->shm){ if(ensure_cap(n,n->size)) return -1; } } if(size<n->size) memset(n->data+size,0,(size_t)(n->size-size)); n->size=size; if(!n->shm||size<n->cap) n->data[size]=0; touch(n); hl_sync(n); gen++; return 0; }
     if(ensure_cap(n,size)) return -1;
@@ -94,11 +105,16 @@ FsNode *fs_symlink(FsNode *dir,const char *name,const char *target){
     n->link=t; gen++; return n;
 }
 FsNode *fs_create(FsNode *dir,const char *name,const char *data,int len){
-    if(!dir||!dir->dir||!valid_name(name)) return 0;
+    if(!dir||!dir->dir||!valid_name(name)||len<0||(len&&!data))return 0;
     FsNode *n=fs_find(dir,name);
-    if(n&&n->dir) return 0;
-    if(!n){ n=newnode(dir,name,0); if(!n) return 0; }
-    if(fs_write(n,data,len)) return 0;
+    if(n&&n->dir)return 0;
+    int created=!n;
+    if(created){n=newnode(dir,name,0);if(!n)return 0;}
+    if(fs_write(n,data,len)){
+        /* No dejar un archivo vacío si la asignación de contenido falló. */
+        if(created)fs_remove(n);
+        return 0;
+    }
     return n;
 }
 static void destroy(FsNode *n){ drop_data(n); if(n->link) kfree(n->link); kfree(n); }
@@ -134,9 +150,18 @@ int fs_rename(FsNode *n,const char *name){
 static int is_inside(FsNode *n,FsNode *anc){ for(;n;n=n->parent) if(n==anc) return 1; return 0; }
 static FsNode *copy_rec(FsNode *src,FsNode *dir,const char *name){
     if(src->link) return fs_symlink(dir,name,src->link);
-    if(!src->dir) return fs_create(dir,name,src->data?src->data:"",src->size);
-    FsNode *d=fs_mkdir(dir,name); if(!d) return 0;
-    for(FsNode *c=src->child;c;c=c->next) if(!copy_rec(c,d,c->name)) return 0;
+    if(!src->dir){
+        if(src->size>0&&!src->data)return 0;
+        return fs_create(dir,name,src->data?src->data:"",src->size);
+    }
+    FsNode *d=fs_mkdir(dir,name);if(!d)return 0;
+    for(FsNode *c=src->child;c;c=c->next){
+        if(!copy_rec(c,d,c->name)){
+            /* No exponer carpetas semicompletas si falla la RAM. */
+            fs_remove(d);
+            return 0;
+        }
+    }
     return d;
 }
 FsNode *fs_copy(FsNode *src,FsNode *dir,const char *name){        /* copia un archivo o una carpeta entera */
@@ -179,7 +204,8 @@ static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
             if(!sub&&!keep) k=k0; else *any=1;
             continue; }
         if(!keep) continue;
-        if(nl<1||nl>=FS_NAME||c->size<0||!ser_room(k,2+nl+4+1,max)||
+        if(nl<1||nl>=FS_NAME||c->size<0||c->size>=0x7fffffff||
+           !ser_room(k,2+nl+4+1,max)||
            !ser_room(k+2+nl+4,c->size+1,max))return -1;
         sput1(o,k++,1); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
         sput1(o,k++,c->size); sput1(o,k++,c->size>>8); sput1(o,k++,c->size>>16); sput1(o,k++,c->size>>24);
