@@ -514,12 +514,24 @@ static void browser_google_query(const char *q,char *out,int max){
     k_strcpy(out,"https://www.google.com/search?q=",max);
     urlenc(out,max,q);
 }
+/* Seleccionar un motor real que ya exista, no exigir Chromium como única
+ * opción. El navegador nativo conserva su alcance HTTP/HTML reducido. */
+static int browser_modern_index(void){
+    static const int order[]={4,3,1,0,2}; /* Chromium, Firefox, Chrome, Brave, Opera */
+    for(int i=0;i<(int)(sizeof order/sizeof order[0]);i++)
+        if(papp_installed(order[i]))return order[i];
+    return -1;
+}
+static int browser_modern_available(void){return browser_modern_index()>=0;}
 static int browser_open_modern(const char *url){
-    if(!papp_installed(4))return 0;
+    int which=browser_modern_index();
+    if(which<0)return 0;
     const char *target=browser_safe_target(url)?url:"https://www.google.com/";
-    char cmd[210]="abrir chromium ";
+    char cmd[210]="abrir ";
+    cat(cmd,sizeof cmd,PAPPS[which].cmd);cat(cmd,sizeof cmd," ");
     cat(cmd,sizeof cmd,target);
-    kserial_puts("[vortex-browser] chromium-real-web\n");
+    kserial_puts("[vortex-browser] navegador Linux real: ");
+    kserial_puts(PAPPS[which].cmd);kserial_puts("\n");
     run_quiet(cmd);
     return 1;
 }
@@ -926,7 +938,7 @@ static void browser_go_typed(Win *w){
     int has=0; for(int i=0;w->ebuf[i]&&w->ebuf[i+2];i++) if(w->ebuf[i]==':'&&w->ebuf[i+1]=='/'&&w->ebuf[i+2]=='/') has=1;
     int dot=0, sp=0; for(int i=0;w->ebuf[i];i++){ if(w->ebuf[i]=='.') dot=1; if(w->ebuf[i]==' ') sp=1; }
     u[0]=0;
-    if(papp_installed(4)){
+    if(browser_modern_available()){
         if(has&&browser_safe_target(w->ebuf)){
             if(browser_open_modern(w->ebuf)){w->editing=0;dwin(w);return;}
         }else if((dot||k_startswith(w->ebuf,"localhost"))&&!sp){
@@ -2485,10 +2497,11 @@ static void draw_topbar(void){
     }
     int h=clk_h;
     if(!show24){int am=h>=12;h=h%12;if(!h)h=12;
-        if(h<10)cat(t,16," ");cat_int(t,16,h);cat(t,16,":");
-        if(clk_m<10)cat(t,16,"0");cat_int(t,16,clk_m);cat(t,16,am?" PM":" AM");
-    }else{if(h<10)cat(t,16,"0");cat_int(t,16,h);cat(t,16,":");
-        if(clk_m<10)cat(t,16,"0");cat_int(t,16,clk_m);}
+        if(h<10)cat(t,sizeof t," ");cat_int(t,sizeof t,h);cat(t,sizeof t,":");
+        if(clk_m<10)cat(t,sizeof t,"0");
+        cat_int(t,sizeof t,clk_m);cat(t,sizeof t,am?" PM":" AM");
+    }else{if(h<10)cat(t,sizeof t,"0");cat_int(t,sizeof t,h);cat(t,sizeof t,":");
+        if(clk_m<10)cat(t,sizeof t,"0");cat_int(t,sizeof t,clk_m);}
     text_ui_bold((gw-text_ui_w(t))/2,6,t,C_TXT);
     rrect(gw-208,3,38,BARH-6,8,light_theme?0xe5e2ee:0x302a3a,255);
     rrect(gw-196,8,16,14,3,ACCENT,220);

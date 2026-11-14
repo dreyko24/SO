@@ -126,11 +126,16 @@ static int readsector(u32 lba,u8 *out){
     u8 cdb[10]={0x28,0,0,0,0,0,0,0,1,0};
     cdb[2]=(u8)(lba>>24);cdb[3]=(u8)(lba>>16);cdb[4]=(u8)(lba>>8);cdb[5]=(u8)lba;
     u8 tmp[512];
-    for(int attempt=0;attempt<3;attempt++){
+    /* Algunas VMs entregan NAK temporal durante una lectura múltiple.
+     * Reintentar BOT con recuperación de estado, sin avanzar el archivo
+     * ni copiar un sector incompleto al destino. */
+    for(int attempt=0;attempt<8;attempt++){
         int r=bot(cdb,10,tmp,512);
         if(!r){memcpy(out,tmp,512);return 0;}
-        kprintf("[vortex-usb] reintento READ10 lba=%u error=%d intento=%d\n",lba,r,attempt+1);
+        kprintf("[vortex-usb] reintento READ10 lba=%u error=%d intento=%d\n",
+                lba,r,attempt+1);
         bot_recover();
+        waitms(10+(attempt<4?attempt*15:60));
     }
     return -1;
 }

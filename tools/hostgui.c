@@ -129,7 +129,28 @@ int main(void){
           puts("FALLO Google busqueda de palabras desde navegador");return 1;
       }
       closeall();fs_remove(chromium);
-      puts("VORTEX WEB: CHROMIUM REAL INSTALADO, GOOGLE HTTPS Y BUSQUEDA OK");
+      /* Chromium puede no estar instalado; Firefox ESR debe funcionar
+       * directamente con HTTPS y búsquedas Google, no caer a una maqueta. */
+      FsNode *firefox=bin?fs_create(bin,"firefox-esr","test",4):0;
+      if(!firefox){puts("FALLO crear Firefox ESR para prueba");return 1;}
+      host_last_shell[0]=0;
+      if(!browser_modern_available()||!browser_open_modern("https://www.google.com/")||
+         strcmp(host_last_shell,"abrir firefox-esr https://www.google.com/")){
+          puts("FALLO fallback Firefox HTTPS");return 1;
+      }
+      web=open_app(A_BROWSER);
+      k_strcpy(web->ebuf,"universidades peruanas",sizeof web->ebuf);
+      web->elen=k_strlen(web->ebuf);
+      host_last_shell[0]=0;browser_go_typed(web);
+      if(strcmp(host_last_shell,
+          "abrir firefox-esr https://www.google.com/search?q=universidades+peruanas")){
+          puts("FALLO Firefox Google con búsqueda de texto");return 1;
+      }
+      closeall();fs_remove(firefox);
+      if(browser_modern_available()){
+          puts("FALLO navegador marcado instalado sin ejecutable");return 1;
+      }
+      puts("VORTEX WEB: CHROMIUM Y FIREFOX ESR HTTPS REAL, GOOGLE Y BUSQUEDAS OK");
     }
     /* Multitarea por teclado: ciclo completo, retroceso, y estado
      * intacto al volver a una ventana minimizada. */
