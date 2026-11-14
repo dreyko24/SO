@@ -30,7 +30,7 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
     o32(0xCF8,0x80000000u|((u32)b<<16)|((u32)d<<11)|((u32)f<<8)|((u32)reg&0xfcu));
     o32(0xCFC,val);
 }
-static u16 io,port;static int low,found,ready,ever;
+static u16 io,port;static int low,found,ready,ever,probe_once;
 static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
 static char info[120]="Sin memoria USB FAT32 reconocida";
 typedef struct {volatile u32 link,sts,token,buf,software[4];} TD;
@@ -315,6 +315,7 @@ static void readdir_usb(u32 first,FsNode *dst,int depth){
 static void status(const char *msg){k_strcpy(info,msg,sizeof info);kprintf("[vortex-usb] %s\n",info);}
 int usb_storage_probe(void){
     if(ready)return 1;
+    probe_once=1;
     if(init()){status("USB: no hay controlador UHCI disponible");return 0;}
     if(portreset()){status("UHCI detectado, sin dispositivo conectado");return 0;}
     if(enumerate()){status("USB conectado, pero no es almacenamiento BOT/SCSI compatible");return -1;}
@@ -340,10 +341,12 @@ void usb_storage_poll(void){
     static u32 next_probe;
     u32 now=kticks();
     if(!ready){
-        /* Hotplug en UHCI: volver a explorar sin crear una unidad ficticia.
-         * La ruta aparece unicamente al leer almacenamiento FAT32 real. */
+        /* Evitar congelar la GUI: sin dispositivo en los puertos UHCI no
+         * reiniciar la controladora ni recorrer FAT32 cada cinco segundos. */
+        if(!io&&probe_once)return; /* no aparece PCI UHCI por conectar pendrive */
+        if(io&&!((i16((u16)(io+0x10))|i16((u16)(io+0x12)))&1u))return;
         if((int)(now-next_probe)>=0){
-            next_probe=now+500; /* maximo un intento por 5 segundos */
+            next_probe=now+500;
             (void)usb_storage_probe();
         }
         return;
