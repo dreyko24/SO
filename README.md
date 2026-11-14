@@ -1,5 +1,7 @@
 # Vortex OS — sistema operativo propio, 32 y 64 bits
 
+> **Continuidad del proyecto:** este es el repositorio oficial y `main` es su versión de desarrollo activa. Antes de iniciar un trabajo o retomar otro chat, leer **[AGENTS.md](AGENTS.md)** y **[VORTEX_ESTADO.md](VORTEX_ESTADO.md)**. Todas las ramas históricas se evalúan frente a `main`; no crear otro SO ni sobreescribir avances. Los documentos `TRASPASO_kng_v*.md` se conservaron por historia, no como estado vigente.
+
 Sistema operativo **independiente**: dos kernels propios (`vortex-kernel` de 32 y de 64 bits), interfaz gráfica propia, gestor de archivos,
 terminal, navegador con red, ajustes. **No utiliza el kernel Linux.** Su núcleo es propio; opcionalmente puede ejecutar binarios Linux y un espacio de usuario Debian 12 mediante la capa de compatibilidad de 64 bits.
 
