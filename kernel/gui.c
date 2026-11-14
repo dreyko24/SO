@@ -1581,7 +1581,7 @@ static void draw_window(int wi,int focused){
             text(cx+cw/2-text_w("Espacio para reintentar")/2,oy+SGH*SCELL/2+10,"Espacio para reintentar",C_DIM); }
         break; }
     case A_SETTINGS:{
-        static const char *TABS[5]={"General","Pantalla","Almacenamiento","Sistema","Apariencia"};
+        static const char *TABS[5]={"General","Pantalla","Datos","Sistema","Apariencia"};
         for(int i=0;i<5;i++) button(cx+12+i*100,cy+10,96,28,TABS[i],i==set_tab);
         int oy=cy+50;
         if(set_tab==0){
@@ -1947,8 +1947,8 @@ static void dobj_init(void){
 static void home_header(void){
     if(wall_i<0)return;/* fondo personal: mantener visible la fotografia */
     fill(27,BARH+49,3,24,ACCENT,220);
-    text_big(43,BARH+45,"Escritorio",0xf5f8ff);
-    text_ui(43,BARH+76,"Tus accesos frecuentes",0xa5b5ce);
+    text_big(43,BARH+45,"Escritorio",C_TXT);
+    text_ui(43,BARH+76,"Tus accesos frecuentes",C_DIM);
 }
 static void draw_dobj(const DObj *o){
     if(o->kind==200){
@@ -1968,11 +1968,11 @@ static void draw_dobj(const DObj *o){
         return;
     }
     if(o->kind>=0 && o->kind<8){
-        rrect(o->x-4,o->y-3,o->w+8,o->h+7,15,0x0e1b2e,180);
+        rrect(o->x-4,o->y-3,o->w+8,o->h+7,15,light_theme?0xbacbe3:0x0e1b2e,180);
         rrect(o->x-3,o->y-2,o->w+6,o->h+5,14,0xffffff,11);
         draw_icon(o->kind,o->x+(o->w-TILE)/2,o->y+3);
         int lw=text_ui_w(DOCK_LBL[o->kind]);
-        text_ui(o->x+(o->w-lw)/2,o->y+TILE+14,DOCK_LBL[o->kind],0xf2f6ff);
+        text_ui(o->x+(o->w-lw)/2,o->y+TILE+14,DOCK_LBL[o->kind],C_TXT);
     } else if(o->kind==100){
         rrect(o->x,o->y,o->w,o->h,16,light_theme?0xc9d7ec:0x0c182c,238);
         rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,light_theme?0xe8f1fa:0x21304b,231);
@@ -1981,16 +1981,26 @@ static void draw_dobj(const DObj *o){
         text_ui(o->x+16,o->y+40,"Tu espacio, a un clic",C_DIM);
         rrect(o->x+12,o->y+66,92,28,8,0x3b4772,255);
         rrect(o->x+115,o->y+66,93,28,8,0x594989,255);
-        text_ui_bold(o->x+28,o->y+72,"Archivos",0xffffff);
-        text_ui_bold(o->x+136,o->y+72,"Galeria",0xffffff);
+        /* Etiquetas cortas por contexto y centradas: en quechua no deben
+         * invadir el segundo boton. No afecta las etiquetas del dock. */
+        const char *files=ui_lang==2?"Willaykuna":ui_lang==1?"Files":"Archivos";
+        const char *gallery=ui_lang==2?"Rikuchina":ui_lang==1?"Gallery":"Galeria";
+        text_ui_bold(o->x+12+(92-text_ui_w(files))/2,o->y+72,files,0xffffff);
+        text_ui_bold(o->x+115+(93-text_ui_w(gallery))/2,o->y+72,gallery,0xffffff);
     } else if(o->kind==101){
-        rrect(o->x,o->y,o->w,o->h,16,0x0c182c,238);
-        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,0x21304b,231);
+        rrect(o->x,o->y,o->w,o->h,16,light_theme?0xc9d7ec:0x0c182c,238);
+        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,light_theme?0xe8f1fa:0x21304b,231);
         fill(o->x+14,o->y+13,3,22,0x29cbb0,240);
         text_ui_bold(o->x+26,o->y+14,"Sistema",C_TXT);
         char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text_ui(o->x+14,o->y+34,b,C_TXT);
-        b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text_ui(o->x+14,o->y+54,b,C_TXT);
-        b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text_ui(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
+        b[0]=0;cat(b,48,ui_lang==1?"Uptime: ":ui_lang==2?"Llamk'asqa: ":"Activo: ");
+        cat_int(b,48,(int)(kticks()/6000));
+        cat(b,48,ui_lang==2?" min": " min");text_ui(o->x+14,o->y+54,b,C_TXT);
+        b[0]=0;
+        cat(b,48,ui_lang==1?(net_state()>=2?"Network: connected":"Network: offline"):
+            ui_lang==2?(net_state()>=2?"Llika: tinkisqa":"Llika: mana tinkisqachu"):
+            (net_state()>=2?"Red: conectada":"Red: sin conexion"));
+        text_ui(o->x+14,o->y+74,b,net_state()>=2?(light_theme?0x087d4b:0x7ee787):C_DIM);
     }
 }
 static int dobj_hit(int px,int py){ for(int i=NDO-1;i>=0;i--) if(dobj[i].kind>=0 && px>=dobj[i].x&&px<dobj[i].x+dobj[i].w&&py>=dobj[i].y&&py<dobj[i].y+dobj[i].h) return i; return -1; }

@@ -6,6 +6,7 @@
 typedef struct {const char *es,*en,*qu;} VortexUiText;
 static const VortexUiText vortex_ui_strings[]={
     {"General","General","Llapan"},
+    {"Datos","Storage","Waqaychay"},
     {"Pantalla","Display","Rikuchiq"},
     {"Almacenamiento","Storage","Waqaychana"},
     {"Sistema","System","Llamk'ana"},
