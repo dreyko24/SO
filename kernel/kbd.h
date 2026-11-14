@@ -14,6 +14,8 @@ enum { KBD_US=0, KBD_LATAM=1, KBD_ES=2 };
 #define KBD_FULLSCREEN 0x506
 #define KBD_NEW_WINDOW 0x507
 #define KBD_CLOSE_WINDOW 0x508
+#define KBD_ALT_CLOSE 0x509
+#define KBD_ALT_MAX 0x50A
 void        kbd_set_layout(int l);
 int         kbd_layout(void);
 const char *kbd_layout_name(int l);

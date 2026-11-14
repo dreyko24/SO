@@ -66,6 +66,8 @@ int kbd_feed(uint8_t b){
     if(sc==0x1D){ ctrl=!rel; return 0; }                              /* Ctrl izquierdo */
     if(sc==0x38){ int was=alt; alt=!rel; return was&&rel?KBD_SWITCH_END:0; }
     if(rel) return 0;
+    if(alt&&sc==0x3e)return KBD_ALT_CLOSE; /* Alt+F4: cerrar ventana */
+    if(alt&&sc==0x44)return KBD_ALT_MAX; /* Alt+F10: maximizar/restaurar */
     if(sc==0x57)return KBD_FULLSCREEN; /* F11: pantalla completa de la ventana */
     if(ctrl&&shift&&sc==0x31)return KBD_NEW_WINDOW; /* Ctrl+Mayus+N */
     if(ctrl&&shift&&sc==0x11)return KBD_CLOSE_WINDOW; /* Ctrl+Mayus+W */

@@ -58,6 +58,10 @@ int main(void){
     chk(press(0x11),KBD_CLOSE_WINDOW,"Ctrl+Mayus+W cierra ventana");
     chk(kbd_feed(0xaa),0,"Mayus up");
     chk(kbd_feed(0x9d),0,"Ctrl up");
+    chk(kbd_feed(0x38),0,"Alt para atajos F");
+    chk(press(0x3e),KBD_ALT_CLOSE,"Alt+F4 cierra ventana");
+    chk(press(0x44),KBD_ALT_MAX,"Alt+F10 max/restaura");
+    chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt soltado tras F4/F10");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

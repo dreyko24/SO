@@ -216,6 +216,30 @@ int main(void){
       closeall();
       puts("VORTEX REDIMENSIONAMIENTO BORDES/ESQUINAS Y LIMITES OK");
     }
+    /* GNOME: Alt+F10 maximiza/restaura; Alt+F4 cierra solo la
+     * ventana enfocada y no destruye las aplicaciones restantes. */
+    {
+      closeall();workspace_set(0);
+      Win *files=open_app(A_FILES);
+      if(!files){puts("FALLO crear Archivos para Alt+F10");return 1;}
+      gui_key(KBD_ALT_MAX);
+      if(!files->maxed||files->x!=desktop_work_x()||
+         files->w!=W-desktop_work_x()){
+          puts("FALLO Alt+F10 maximizar sin tapar dock");return 1;
+      }
+      gui_key(KBD_ALT_MAX);
+      if(files->maxed){puts("FALLO Alt+F10 restaurar");return 1;}
+      Win *notes=open_app(A_NOTES);
+      if(!notes||win_top()!=(int)(notes-wins)){
+          puts("FALLO foco antes Alt+F4");return 1;
+      }
+      gui_key(KBD_ALT_CLOSE);
+      if(notes->used||!files->used||win_top()!=(int)(files-wins)){
+          puts("FALLO Alt+F4 cierra solo la ventana superior");return 1;
+      }
+      closeall();
+      puts("VORTEX ATAJOS ALT+F4 / ALT+F10 OK");
+    }
     /* Pantalla completa real sin barra ni dock; F11 restaura la geometria
      * original incluso si antes existia una ventana maximizada. */
     {

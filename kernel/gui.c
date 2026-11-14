@@ -3704,8 +3704,12 @@ void gui_key(int c){
         }
         return;
     }
-    if(c==KBD_CLOSE_WINDOW){
+    if(c==KBD_CLOSE_WINDOW||c==KBD_ALT_CLOSE){
         int top=win_top();if(top>=0)win_close(top);
+        return;
+    }
+    if(c==KBD_ALT_MAX){
+        int top=win_top();if(top>=0)win_toggle_max(&wins[top]);
         return;
     }
     if(c==KBD_WORKSPACE_PREV){workspace_set(active_workspace-1);return;}
