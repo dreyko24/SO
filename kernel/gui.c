@@ -14,6 +14,7 @@
 #include "audio.h"
 #include "video.h"
 #include "media_demo.h"
+#include "ui_locale.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO };
 #define SGW 20
@@ -86,6 +87,7 @@ static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static VImage custom_wall;
 static int appmenu_open,appmenu_cat,power_menu_open,power_sleep;
+static int ui_lang,language_menu_open,light_theme; /* idioma independiente del teclado */
 static char app_search[42]; static int app_search_len;
 static uint64_t gui_painted_pixels; /* estadistica de composicion para pruebas host */
 extern const unsigned char vortex_demo_png_start[],vortex_demo_png_end[];
@@ -102,6 +104,21 @@ static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c
 #define C_DIM 0xaab9d0
 #define C_BTN 0x26334e
 
+/* Localizacion de todos los rótulos que pasan por las primitivas UI.
+ * El texto libre del usuario, rutas y resultados de programas no se modifican. */
+#define text(x,y,str,col) text((x),(y),vortex_ui_translate((str),ui_lang),(col))
+#define text_bold(x,y,str,col) text_bold((x),(y),vortex_ui_translate((str),ui_lang),(col))
+#define text_big(x,y,str,col) text_big((x),(y),vortex_ui_translate((str),ui_lang),(col))
+#define text_ui(x,y,str,col) text_ui((x),(y),vortex_ui_translate((str),ui_lang),(col))
+#define text_ui_bold(x,y,str,col) text_ui_bold((x),(y),vortex_ui_translate((str),ui_lang),(col))
+#define text_w(str) text_w(vortex_ui_translate((str),ui_lang))
+#define text_ui_w(str) text_ui_w(vortex_ui_translate((str),ui_lang))
+static const char *language_code(int l){return l==1?"en":l==2?"qu":"es";}
+static void set_language(int l){
+    if(l<0||l>2)return;
+    ui_lang=l;cfg_set("idioma",language_code(l));dirty=1;
+    language_menu_open=0;
+}
 void gui_force_redraw(void){ dirty=1; }
 
 /* ---------------- utilidades de texto ---------------- */
@@ -1763,7 +1780,7 @@ static int app_match(const char *hay,const char *needle){
     return 0;
 }
 static int appmenu_index(int nth){
-    for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search)){
+    for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&(app_match(APPMENU[i].label,app_search)||app_match(vortex_ui_translate(APPMENU[i].label,ui_lang),app_search))){
         if(!nth)return i;nth--;
     }
     return -1;
@@ -2518,6 +2535,11 @@ void gui_key(int c){
 /* despues de cargar el sistema base: se lee lo guardado en el disco (encima) y se aplican los ajustes guardados */
 void gui_storage_ready(void){
     (void)vortexfs_mount(); fs_track=1;
+    { char loc[16];if(cfg_get("idioma",loc,sizeof loc)){
+        if(!k_strcmp(loc,"en"))ui_lang=1;
+        else if(!k_strcmp(loc,"qu"))ui_lang=2;
+        else ui_lang=0;
+      } }
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
     { char p[160]; if(cfg_get("fondo",p,sizeof p)&&p[0]){

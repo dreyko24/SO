@@ -1,0 +1,111 @@
+/* Vortex OS GUI translations. Spanish is the source language.
+ * Quechua is an initial Southern Quechua (Peru) localization, not a claim of
+ * standardized terminology for every dialect. File paths are never translated. */
+#ifndef VORTEX_UI_LOCALE_H
+#define VORTEX_UI_LOCALE_H
+typedef struct {const char *es,*en,*qu;} VortexUiText;
+static const VortexUiText vortex_ui_strings[]={
+    {"General","General","Llapan"},
+    {"Pantalla","Display","Rikuchiq"},
+    {"Almacenamiento","Storage","Waqaychana"},
+    {"Sistema","System","Llamk'ana"},
+    {"Apariencia","Appearance","Rikch'ay"},
+    {"Claro","Light","K'anchay"},
+    {"Oscuro","Dark","Tuta"},
+    {"Idioma","Language","Rimay"},
+    {"Idioma del sistema","System language","Llamk'anaq rimaynin"},
+    {"Apariencia del sistema","System appearance","Llamk'anaq rikch'aynin"},
+    {"El tema y el idioma se aplican al instante y se guardan.","Theme and language take effect immediately and are saved.","Rikch'aypas rimaypas kunanlla tikrakun, waqaychakuntaq."},
+    {"El teclado se configura por separado en General.","Keyboard layout is configured separately in General.","Tecladotaqa General nisqapi allichanki."},
+    {"Aplicaciones","Applications","Ruraykuna"},
+    {"Navegador","Browser","Maskaq"},
+    {"Archivos","Files","Willaykipukuna"},
+    {"Terminal","Terminal","Terminal"},
+    {"Notas","Notes","Qillqakuna"},
+    {"Calculadora","Calculator","Yupaq"},
+    {"Ajustes","Settings","Allichaykuna"},
+    {"Monitor","Monitor","Qawana"},
+    {"Monitor del sistema","System monitor","Llamk'ana qawana"},
+    {"Acerca de","About","Kaymanta"},
+    {"Acerca de Vortex OS","About Vortex OS","Vortex OS-manta"},
+    {"Galeria","Gallery","Rikuchina"},
+    {"Musica","Music","Taki"},
+    {"Videos","Videos","Qawachiykuna"},
+    {"Video","Video","Qawachiy"},
+    {"Multimedia","Multimedia","Multimedia"},
+    {"Internet","Internet","Internet"},
+    {"Oficina","Office","Oficina"},
+    {"Utilidades","Utilities","Yanapakuykuna"},
+    {"Juegos","Games","Pukllaykuna"},
+    {"Todas","All","Llapan"},
+    {"Apagar","Shut down","Wañuchiy"},
+    {"Suspender","Sleep display","Samachiy"},
+    {"Reiniciar","Restart","Wakmanta qallariy"},
+    {"Energia","Power","Kallpa"},
+    {"Acceso rapido","Quick access","Utqay yaykuy"},
+    {"Tu espacio, a un clic","Your space, one click away","Huk ñit'iyllawan yaykuy"},
+    {"Tus accesos frecuentes","Your shortcuts","Utqay yaykuyniykikuna"},
+    {"Color de acento","Accent color","Akllasqa llimp'i"},
+    {"Fondo de pantalla","Wallpaper","Rikuchiqpa qipan"},
+    {"Hora","Time","Pacha"},
+    {"Teclado","Keyboard","Teclado"},
+    {"Reloj de 24 horas: si","24-hour clock: yes","24 pacha reloj: ari"},
+    {"Reloj de 24 horas: no","24-hour clock: no","24 pacha reloj: mana"},
+    {"Escritorio","Desktop","Llamk'ana pata"},
+    {"Buscar aplicaciones...","Search apps...","Ruraykunata maskay..."},
+    {"Sin resultados. Prueba otra busqueda.","No results. Try another search.","Mana tarisqachu. Hukta maskay."},
+    {"Nombre","Name","Suti"},
+    {"Tipo","Type","Laya"},
+    {"Tamano","Size","Hatun kay"},
+    {"Actualizar","Refresh","Musuqchay"},
+    {"Nueva","New","Musuq"},
+    {"Guardar","Save","Waqaychay"},
+    {"Guardar ahora","Save now","Kunan waqaychay"},
+    {"Vaciar Papelera","Empty trash","Qupata ch'usaqchay"},
+    {"Reproductor de audio WAV","WAV audio player","WAV taki pukllachiq"},
+    {"Sin archivo","No file","Mana willaykipu"},
+    {"Progreso: ","Progress: ","Ñawpaqman: "},
+    {"Reproducir","Play","Pukllachiy"},
+    {"Pausar","Pause","Sayachiy"},
+    {"Pausa","Pause","Sayay"},
+    {"Pausado","Paused","Sayasqa"},
+    {"Reanudar","Resume","Qatipay"},
+    {"Detener","Stop","Sayachiy"},
+    {"WAV PCM: salida AC'97 o SB16 (ISA).","WAV PCM: AC'97 or SB16 (ISA) output.","WAV PCM: AC'97 utaq SB16 (ISA) uyarina."},
+    {"Diagnostico USB","USB diagnostics","USB qawariy"},
+    {"Buscar USB conectado","Scan for connected USB","USB tinkisqata maskay"},
+    {"Abrir dispositivo","Open device","Dispositivota kichay"},
+    {"Solo lectura. No se escribe ni formatea el USB.","Read-only. USB is never written or formatted.","Ñawinchaylla. USB mana qillqakunchu."},
+    {"Imagenes","Images","Rikch'aykuna"},
+    {"Haz clic en una imagen para abrirla.","Click an image to open it.","Rikch'ayta ñit'iy kichanapaq."},
+    {"Archivos (viven en la memoria RAM)","Files (stored in RAM)","Willaykipukuna (RAM ukhupi)"},
+    {"Disco","Disk","Disco"},
+    {"Red","Network","Llika"},
+    {"Memoria","Memory","Yuyay"},
+    {"Fin del juego","Game over","Pukllay tukukun"},
+    {"Espacio para reintentar","Space to retry","Espaciota ñit'iy wakmanta"},
+    {"Usar de fondo","Set as wallpaper","Qipaman churay"},
+    {"Fondo personalizado activo","Custom wallpaper active","Akllasqa qipa llamk'achkan"},
+    {"LibreOffice - Oficina","LibreOffice - Office","LibreOffice - Oficina"},
+    {"Programas de Linux","Linux programs","Linux ruraykuna"},
+    {"Programas Debian ejecutados por el kernel propio.","Debian programs run by the native kernel.","Debian ruraykuna kikin kernelwan llamk'an."},
+    {"Resolucion actual: ","Current resolution: ","Kunan rikch'ay: "},
+    {"Video incompatible o archivo danado.","Unsupported video or damaged file.","Video mana tupanchu utaq waqlisqa."},
+    {"Selecciona Kingston y 'Conectar al invitado'.","Select Kingston and 'Connect to guest'.","Kingstonta akllay, invitadoman tinkichiy."},
+    {"Abre AVI RGB sin compresion.","Opens uncompressed RGB AVI.","AVI RGB mana ñit'isqata kichan."},
+    {"Imagen no compatible o danada.","Unsupported or damaged image.","Rikch'ay mana tupanchu utaq waqlisqa."},
+    {"Portapapeles: copiado","Clipboard: copied","Kopiasqa"},
+};
+static int vortex_ui_same(const char *a,const char *b){
+    if(!a||!b)return 0;
+    while(*a&&*b&&*a==*b){a++;b++;}
+    return !*a&&!*b;
+}
+static const char *vortex_ui_translate(const char *source,int locale){
+    if(!source||locale<1||locale>2)return source;
+    for(unsigned i=0;i<sizeof vortex_ui_strings/sizeof vortex_ui_strings[0];i++)
+        if(vortex_ui_same(vortex_ui_strings[i].es,source))
+            return locale==1?vortex_ui_strings[i].en:vortex_ui_strings[i].qu;
+    return source;
+}
+#endif
