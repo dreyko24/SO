@@ -3,6 +3,7 @@
  * Sin bibliotecas externas ni codigo del kernel Linux.
  */
 #include "audio.h"
+#include "audio_sb16.h"
 #include "vortex.h"
 #ifdef HOSTGUI
 static int playing, paused;
@@ -35,7 +36,7 @@ static inline void o16(u16 p,u16 v){__asm__ volatile("outw %0,%1"::"a"(v),"Nd"(p
 static inline void o32(u16 p,u32 v){__asm__ volatile("outl %0,%1"::"a"(v),"Nd"(p));}
 static inline u8 i8(u16 p){u8 v;__asm__ volatile("inb %1,%0":"=a"(v):"Nd"(p));return v;}
 static inline u16 i16(u16 p){u16 v;__asm__ volatile("inw %1,%0":"=a"(v):"Nd"(p));return v;}
-static u16 mixio,busio; static int tried,found,playing,paused,queued,fillidx,lastciv,ending;
+static u16 mixio,busio; static int tried,found,backend,playing,paused,queued,fillidx,lastciv,ending;
 #define NSLOT 32
 #define SLOT_BYTES 4096
 typedef struct {u32 ptr;u16 len;u16 flags;} Bdl;
@@ -58,6 +59,11 @@ int audio_hardware(void){
         for(int f=0;f<nf;f++){
             u32 id=pci_rd(b,d,f,0);
             if((id&65535u)==65535u)continue;
+            /* La interfaz de AC'97 Intel usa BAR0/1. ES1371 de VMware
+             * tiene registros distintos y nunca debe inicializarse como AC'97. */
+            u32 vendor=id&65535u,dev=id>>16;
+            if(vendor!=0x8086u||(dev!=0x2415u&&dev!=0x2445u&&
+               dev!=0x2485u&&dev!=0x24c5u&&dev!=0x266eu))continue;
             u32 cls=pci_rd(b,d,f,8);
             if((cls>>16)!=0x0401u)continue;
             u32 bar0=pci_rd(b,d,f,0x10),bar1=pci_rd(b,d,f,0x14);
@@ -71,14 +77,21 @@ int audio_hardware(void){
             o16(mixio+0x18,0); /* PCM out */
             if(i16(mixio+0x28)&1)o16(mixio+0x2a,i16(mixio+0x2a)|1);
             o16(mixio+0x2c,48000);
-            found=1;err="Listo";kprintf("[vortex-audio] AC97 detectado\n");
+            found=1;backend=1;err="Listo";kprintf("[vortex-audio] AC97 detectado\n");
             return 1;
         }
+    }
+    /* Alternativa para VMware: configuracion sound.virtualDev = "sb16".
+     * Nunca se simula que ES1371/HDA es un controlador AC'97. */
+    if(sb16_probe()){
+        found=1;backend=2;err="SB16 disponible";
+        return 1;
     }
     return 0;
 }
 void audio_stop(void){
-    if(found){o8(busio+0x1b,0);o8(busio+0x1b,2);o8(busio+0x1b,0);o16(busio+0x16,0x001c);}
+    if(backend==2){sb16_stop();hold=0;src=0;playing=paused=queued=fillidx=lastciv=ending=0;frames=size=srcidx=frac=0;return;}
+    if(backend==1&&found){o8(busio+0x1b,0);o8(busio+0x1b,2);o8(busio+0x1b,0);o16(busio+0x16,0x001c);}
     if(hold)fs_node_unref(hold);
     hold=0;src=0;playing=paused=queued=fillidx=lastciv=ending=0;frames=size=srcidx=frac=0;
 }
@@ -125,7 +138,12 @@ static int refill(int idx){
     return 1;
 }
 int audio_play(FsNode *file){
-    audio_stop();if(!audio_hardware()){err="No hay tarjeta AC'97 compatible";return -2;}
+    audio_stop();if(!audio_hardware()){err="Sin AC'97 ni SB16. VMware: usa sound.virtualDev = sb16";return -2;}
+    if(backend==2){
+        int r=sb16_play(file);
+        if(r){err=sb16_error();return r;}
+        playing=1;paused=0;err="Reproduciendo WAV por SB16";return 0;
+    }
     if(parse(file)){err="Formato no compatible: requiere WAV PCM 8/16-bit";return -1;}
     fs_node_ref(file);hold=file;
     for(int i=0;i<NSLOT;i++){if(!refill(i))break;queued++;fillidx=(i+1)&31;}
@@ -140,6 +158,7 @@ int audio_play(FsNode *file){
     return 0;
 }
 void audio_tick(void){
+    if(backend==2){sb16_tick();playing=sb16_active();paused=sb16_paused();return;}
     if(!playing||paused||!found)return;
     int civ=i8(busio+0x14)&31;
     int walked=0;
@@ -160,13 +179,15 @@ int audio_active(void){return playing;}
 int audio_paused(void){return paused;}
 void audio_pause(int p){
     if(!playing)return;
+    if(backend==2){sb16_pause(p);paused=sb16_paused();return;}
     paused=!!p;u8 v=i8(busio+0x1b);o8(busio+0x1b,paused?(v&~1u):(v|1u));
 }
 int audio_progress(void){
+    if(backend==2)return sb16_progress();
     if(!frames)return 0;
     /* Solo divisiones de 32 bits: los kernels freestanding no enlazan libgcc. */
     u32 pct=frames>=100u?srcidx/(frames/100u):(srcidx*100u)/frames;
     return pct>100u?100:(int)pct;
 }
-const char *audio_error(void){return err;}
+const char *audio_error(void){return backend==2?sb16_error():err;}
 #endif
