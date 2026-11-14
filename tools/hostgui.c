@@ -21,6 +21,9 @@ void kshell_exec(char *l){
 void kreboot(void){ puts("[reboot]"); }
 void khalt(void){ puts("[halt]"); }
 int krtc(int *h,int *m){ *h=15; *m=45; return 0; }   /* 15:45 UTC -> 10:45 en UTC-5 */
+uint64_t krtc_epoch(void){ return 1794650400ull; } /* RTC simulado */
+uint64_t net_utc_epoch(void){ return krtc_epoch(); }
+int net_time_synced(void){ return 0; }
 uint32_t kram_kb(void){ return 262144; }
 /* ---- red simulada para la interfaz: http_get "descarga" tras unos cuadros ---- */
 #include "../kernel/net.h"
