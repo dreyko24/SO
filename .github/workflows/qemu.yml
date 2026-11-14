@@ -29,12 +29,20 @@ jobs:
           python3 tools/mkrootfs.py rootfs.cpio
           ( sleep 4; echo "programas"; sleep 1; echo "ejecutar /bin/hola"; sleep 3; echo "ejecutar /bin/hola-pie a b"; sleep 4; echo "ejecutar /bin/hola-static x"; sleep 4; echo "ejecutar /bin/hola-dyn y z"; sleep 6; echo "ejecutar /bin/multi-static"; sleep 10; echo "ejecutar /bin/multi-pie"; sleep 10; echo "ejecutar /bin/multi-dyn"; sleep 14; echo "procesos"; sleep 1; echo "uptime"; sleep 2 ) | timeout 100 qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf -initrd rootfs.cpio -display none -serial stdio -m 512M > proc64.log 2>&1 || true
           echo "=== proc64 ==="; cat proc64.log
-          grep -q "termino con codigo 42" proc64.log && echo "PRUEBA hola (sin libc): OK" || echo "PRUEBA hola: FALLO"
-          for t in pie static dyn; do n=$(grep -c "malloc 1 MB ok" proc64.log); done; echo "glibc 'malloc ok' veces: $n (esperado 3)"
-          grep -q "argv\[1\]=a" proc64.log && echo "PRUEBA static-pie: OK" || echo "PRUEBA static-pie: FALLO"
-          grep -q "argv\[1\]=x" proc64.log && echo "PRUEBA static no-PIE (direccion baja 0x400000): OK" || echo "PRUEBA static no-PIE: FALLO"
-          grep -q "argv\[1\]=y" proc64.log && echo "PRUEBA dinamico (ld.so + libc.so.6): OK" || echo "PRUEBA dinamico: FALLO"
-          echo "multi 'TODO OK' veces: $(grep -c 'TODO OK' proc64.log) (esperado 3: estatico, static-pie, dinamico)"
+          grep -q "termino con codigo 42" proc64.log || { echo "FALLO: programa sin libc"; exit 1; }
+          echo "PRUEBA hola (sin libc): OK"
+          n=$(grep -c "malloc 1 MB ok" proc64.log || true)
+          echo "glibc malloc OK: $n (esperado 3)"
+          test "$n" -eq 3 || { echo "FALLO: memoria en programas glibc"; exit 1; }
+          grep -q "argv\[1\]=a" proc64.log || { echo "FALLO: static PIE"; exit 1; }
+          echo "PRUEBA static-pie: OK"
+          grep -q "argv\[1\]=x" proc64.log || { echo "FALLO: static no-PIE"; exit 1; }
+          echo "PRUEBA static no-PIE: OK"
+          grep -q "argv\[1\]=y" proc64.log || { echo "FALLO: ELF dinamico"; exit 1; }
+          echo "PRUEBA dinamico: OK"
+          n=$(grep -c "TODO OK" proc64.log || true)
+          echo "multi: $n (esperado 3)"
+          test "$n" -eq 3 || { echo "FALLO: variantes multi ELF"; exit 1; }
       - name: Red, senales y eventos en programas de usuario (64 bits)
         run: |
           python3 tools/mkrootfs.py rootfs.cpio
@@ -43,28 +51,34 @@ jobs:
           ( sleep 8; echo "red"; sleep 1; echo "ejecutar /bin/nettest 18080 18081"; sleep 75; echo "procesos"; sleep 2 ) | timeout 140 qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf -initrd rootfs.cpio -display none -serial stdio -m 512M -netdev user,id=n0 -device e1000,netdev=n0 > red64.log 2>&1 || true
           echo "=== red64 ==="; cat red64.log
           echo "=== servidor ==="; cat servidor.log
-          grep -q "nettest resultado.*TODO OK" red64.log && echo "PRUEBA red+senales+eventos: OK" || echo "PRUEBA red+senales+eventos: FALLO"
+          grep -q "nettest resultado.*TODO OK" red64.log || { echo "FALLO: red/senales/eventos"; exit 1; }
+          echo "PRUEBA red+senales+eventos: OK"
       - name: Memoria y archivos en programas de usuario (64 bits)
         run: |
           python3 tools/mkrootfs.py rootfs.cpio
           ( sleep 8; echo "ejecutar /bin/memtest"; sleep 60; echo "procesos"; sleep 2 ) | timeout 110 qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf -initrd rootfs.cpio -display none -serial stdio -m 512M > mem64.log 2>&1 || true
           echo "=== mem64 ==="; cat mem64.log
-          grep -q "memtest resultado.*TODO OK" mem64.log && echo "PRUEBA memoria+archivos: OK" || echo "PRUEBA memoria+archivos: FALLO"
+          grep -q "memtest resultado.*TODO OK" mem64.log || { echo "FALLO: memoria y archivos"; exit 1; }
+          echo "PRUEBA memoria+archivos: OK"
       - name: Mucha memoria (6 GB de RAM, parte por encima de 4 GB)
         run: |
           ( sleep 8; echo "mem"; sleep 1; echo "probar-ram"; sleep 25; echo "ejecutar /bin/memtest"; sleep 60; echo "mem"; echo "procesos"; sleep 2 ) | timeout 130 qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf -initrd rootfs.cpio -display none -serial stdio -m 6G > mem6g.log 2>&1 || true
           echo "=== mem6g ==="; cat mem6g.log
-          grep -q "memtest resultado.*TODO OK" mem6g.log && echo "PRUEBA 6 GB: OK" || echo "PRUEBA 6 GB: FALLO"
+          grep -q "memtest resultado.*TODO OK" mem6g.log || { echo "FALLO: memoria 6 GB"; exit 1; }
+          echo "PRUEBA 6 GB: OK"
           python3 - <<'PY'
           import re
           t=open('mem6g.log',errors='replace').read()
           m=re.search(r'heap (\d+) KB',t)
           kb=int(m.group(1)) if m else 0
           print('heap KB:',kb)
-          print('PRUEBA heap grande: OK' if kb>5000000 else 'PRUEBA heap grande: FALLO')
+          if kb<=5000000: raise SystemExit('FALLO: heap 6 GB demasiado pequeno')
+          print('PRUEBA heap grande: OK')
           m=re.search(r'probar-ram: .*\((\d+) MB\).*-> (\w+)',t)
           print('probar-ram:',m.groups() if m else None)
-          print('PRUEBA RAM por encima de 4 GB: OK' if m and m.group(2)=='OK' and int(m.group(1))>4200 else 'PRUEBA RAM por encima de 4 GB: FALLO')
+          if not m or m.group(2)!='OK' or int(m.group(1))<=4200:
+              raise SystemExit('FALLO: RAM por encima de 4 GB')
+          print('PRUEBA RAM por encima de 4 GB: OK')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
