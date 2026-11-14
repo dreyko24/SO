@@ -480,7 +480,7 @@ static const PApp PAPPS[]={
     {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
     {"Opera","Navegador web","opera","instalar opera","/usr/bin/opera",0xef4444},
     {"Firefox","Navegador web","firefox-esr","instalar firefox","/usr/bin/firefox-esr",0xf59e0b},
-    {"Chromium","Navegador web","chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
+    {"Chromium","Navegador web","vortex-chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
     {"LibreOffice","Textos, hojas y presentaciones","libreoffice","instalar libreoffice","/usr/bin/libreoffice",0x22c55e},
     {"OpenOffice","Textos, hojas y presentaciones","openoffice","instalar openoffice","/opt/openoffice4/program/soffice",0x38bdf8},
     {"Terminal X","Terminal con ventana de X","xterm","instalar xterm","/usr/bin/xterm",0x8a8fa8},
