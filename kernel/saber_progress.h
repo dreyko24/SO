@@ -30,7 +30,7 @@ static void saber_encode(const VortexSaberProgress *p,uint8_t out[SABER_PROGRESS
     saber_put32(out+24,saber_hash(out,24));
 }
 static int saber_decode(const uint8_t *in,int len,VortexSaberProgress *out){
-    if(!in||!out||in[0]!='V'||in[1]!='S'||in[2]!='P')return -1;
+    if(!in||!out||len<4||in[0]!='V'||in[1]!='S'||in[2]!='P')return -1;
     int legacy=len==SABER_PROGRESS_OLD_SIZE&&in[3]=='1';
     int modern=len==SABER_PROGRESS_SIZE&&in[3]=='2';
     if(!legacy&&!modern)return -1;
@@ -42,6 +42,25 @@ static int saber_decode(const uint8_t *in,int len,VortexSaberProgress *out){
        games>1000000u||(attempts==0&&(best||total)))return -1;
     out->completed=attempts;out->best=best;out->total_correct=total;
     out->articles=saber_u32(in+16);out->games_won=games;return 0;
+}
+/* Compatibilidad con las 4/6 materias de la interfaz Vortex anterior.
+ * Sus mejores puntuaciones se importan sin borrar el archivo original. */
+static int saber_import_legacy_text(const uint8_t *data,int len,VortexSaberProgress *out){
+    if(!data||!out||(len!=6&&len!=8)||data[len-1]!='\n')return -1;
+    int subjects=len-2,earned=0,completed=0,best=0;
+    for(int i=0;i<subjects;i++){
+        int score=(int)data[i]-'0';
+        if(score<0||score>3)return -1;
+        if(score){earned+=score;completed++;if(score>best)best=score;}
+    }
+    int game=(int)data[subjects]-'0';
+    if(game<0||game>4)return -1;
+    out->completed=(uint32_t)completed;
+    out->total_correct=(uint32_t)earned;
+    out->best=(uint32_t)best;
+    out->articles=0; /* no inventar lecturas de los 31 articulos nuevos */
+    out->games_won=game?1u:0u;
+    return 0;
 }
 static int saber_read_count(uint32_t mask){
     int count=0;while(mask){count+=(int)(mask&1u);mask>>=1;}return count;
