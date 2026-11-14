@@ -4,6 +4,7 @@ on:
     branches:
       - vortex/integracion-total-20261114
       - vortex/ventanas-dinamicas-20261114
+      - vortex/redibujado-visible-20261114
       - main
   pull_request:
   workflow_dispatch:
