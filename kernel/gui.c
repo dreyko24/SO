@@ -836,7 +836,7 @@ static const char *page_src(Win *w,int *len){
         rawbuf[0]=0;
         if(w->loading){ cat(rawbuf,sizeof rawbuf,"<title>Cargando...</title><h1>Cargando...</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><p>Esperando respuesta del servidor.</p>"); }
         else { cat(rawbuf,sizeof rawbuf,"<title>Error</title><h1>No se pudo abrir la pagina</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->err[0]?w->err:"Error desconocido");
-               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>HTTPS, JavaScript y CSS modernos requieren Chromium (64 bits).</p><p>Usa <b>Instalar web</b> para instalar el navegador real de Debian, o configura el proxy HTTP.</p><p><a href=\"vortex://inicio\">Ir al inicio</a></p>"); }
+               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>HTTPS, JavaScript y CSS modernos requieren un navegador Linux instalado (64 bits).</p><p>Usa <b>Instalar web</b> para instalar el navegador real de Debian, o configura el proxy HTTP.</p><p><a href=\"vortex://inicio\">Ir al inicio</a></p>"); }
         *len=k_strlen(rawbuf); return rawbuf;
     }
     if(k_startswith(w->url,"file://")){
@@ -2311,7 +2311,7 @@ static void draw_window(int wi,int focused){
     case A_BROWSER:{
         button(cx+8,cy+6,32,24,"<",0);
         rrect(cx+48,cy+6,cw-188,24,10,C_TILE,255);
-        button(cx+cw-128,cy+6,120,24,papp_installed(4)?"Web completa":"Instalar web",0);
+        button(cx+cw-128,cy+6,120,24,browser_modern_available()?"Web completa":"Instalar web",0);
         char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
         if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
         text(cx+58,cy+10,shown,w->editing?C_TXT:C_DIM);
