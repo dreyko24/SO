@@ -1294,9 +1294,9 @@ static void draw_window(int wi,int focused){
     case A_VIEWER:{
         fill(cx,cy,cw,ch,0x10111b,255);
         if(w->picture.pixels){
-            int dw=w->picture.w,dh=w->picture.h,aw=cw-24,ah=ch-56;
-            if(dw>aw){dh=dh*aw/dw;dw=aw;}
-            if(dh>ah){dw=dw*ah/dh;dh=ah;}
+            /* Ajustar imagen a la zona disponible, ampliando tambien fotos pequenas. */
+            int aw=cw-24,ah=ch-56,dw=aw,dh=w->picture.h*aw/w->picture.w;
+            if(dh>ah){dh=ah;dw=w->picture.w*ah/w->picture.h;}
             if(dw<1)dw=1;if(dh<1)dh=1;
             int dx=cx+(cw-dw)/2,dy=cy+10+(ah-dh)/2;
             for(int y=0;y<dh;y++){int sy=y*w->picture.h/dh;const uint32_t *src=w->picture.pixels+sy*w->picture.w;
@@ -1339,9 +1339,10 @@ static void draw_window(int wi,int focused){
     case A_VIDEO:{
         fill(cx,cy,cw,ch,0x090d16,255);
         if(w->movie.frames>0){
-            int dw=w->movie.w,dh=w->movie.h,aw=cw-24,ah=ch-73;
-            if(dw>aw){dh=dh*aw/dw;dw=aw;}
-            if(dh>ah){dw=dw*ah/dh;dh=ah;}
+            /* Escalado manteniendo aspecto: los videos de resolucion baja
+             * se muestran grandes, no como miniaturas en el centro. */
+            int aw=cw-24,ah=ch-73,dw=aw,dh=w->movie.h*aw/w->movie.w;
+            if(dh>ah){dh=ah;dw=w->movie.w*ah/w->movie.h;}
             if(dw<1)dw=1;if(dh<1)dh=1;
             int px=cx+(cw-dw)/2,py=cy+8+(ah-dh)/2;
             for(int y=0;y<dh;y++){int sy=y*w->movie.h/dh;
