@@ -2027,13 +2027,17 @@ static void draw_window(int wi,int focused){
         break; }
     }
     clip_reset();
-    if(win_free_resize(w)&&!w->maxed){
-        /* Asa de tres diagonales en la esquina inferior derecha. */
-        for(int i=0;i<3;i++)
-            line(x+w->w-7-i*4,y+w->h-4,x+w->w-4,y+w->h-7-i*4,1,C_DIM,200);
+    if(!w->fullscreen){
+        if(win_free_resize(w)&&!w->maxed){
+            for(int i=0;i<3;i++)
+                line(x+w->w-7-i*4,y+w->h-4,x+w->w-4,y+w->h-7-i*4,1,C_DIM,200);
+        }
+        int tx=x+14;
+        if(w->type==A_ABOUT){vortex_logo(x+12,y+9,18,255);tx=x+38;}
+        clip_set(x+1,y+1,w->w-110,TB-1);
+        text_ui_bold(tx,y+7,w->title,focused?C_TXT:C_DIM);
+        clip_reset();
     }
-    { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-110,TB-1); text_ui_bold(tx,y+7,w->title,focused?C_TXT:C_DIM); clip_reset(); }
 }
 
 /* Ventanas minimizadas recuperables incluso sin icono en el dock. */
@@ -2958,7 +2962,9 @@ static void on_press(void){
             if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
             drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return;
         }
-        app_click(w,mx-(w->x+1),my-(w->y+TB));
+        int cx,cy,cw,ch;crect(w,&cx,&cy,&cw,&ch);
+        (void)cw;(void)ch;
+        app_click(w,mx-cx,my-cy);
         return;
     }
     { int di=dobj_hit(mx,my); if(di>=0){ ddrag=di; ddx=mx-dobj[di].x; ddy=my-dobj[di].y; dmoved=0; if(dobj[di].kind==200&&dsel!=di){ dsel=di; dirty=1; } }

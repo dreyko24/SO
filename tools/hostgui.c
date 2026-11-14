@@ -427,7 +427,9 @@ int main(void){
        } shot("15_maximizada");
       T+=100; ty=b->y+TB/2; click(tx,ty); T+=3; click(tx,ty); if(b->maxed){ puts("FALLO restaurar"); return 1; }
       T+=100; gui_mouse_abs(b->x+300,b->y+10,0); gui_frame(); gui_mouse_abs(b->x+300,b->y+10,1); gui_frame(); gui_mouse_abs(2,300,1); gui_frame(); gui_mouse_abs(2,300,0); gui_frame();
-      if(!b->maxed||b->w!=W/2||b->x!=0){ puts("FALLO ajustar izquierda"); return 1; } shot("16_ajustada"); }
+      if(!b->maxed||b->w!=(W-desktop_work_x())/2||b->x!=desktop_work_x()){
+          puts("FALLO ajustar izquierda sin invadir dock");return 1;
+       } shot("16_ajustada"); }
     closeall();
     /* teclado: distribuciones, tildes en terminal/notas/navegador, persistencia y selector en Ajustes */
     { dock(3); typestr("teclado latam\\");
