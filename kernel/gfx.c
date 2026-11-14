@@ -9,32 +9,48 @@ void gfx_set_bpp(int b){ fbpp=b; }
 static int cx0, cy0, cx1, cy1;
 static int bx0, by0, bx1, by1;                              /* recorte base (rectangulo sucio) */
 
-int gfx_resize(uint32_t *f,int w,int h,int pitch_bytes){             /* nueva resolucion: otro backbuffer */
-    uint32_t *n=kmalloc((size_t)w*h*4); if(!n) return -1;
-    if(bb) kfree(bb);
-    bb=n; front=f; gw=w; gh=h; fpitch=pitch_bytes/4; fpitchb=pitch_bytes; memset(bb,0,(size_t)w*h*4); clip_base(0,0,w,h); return 0;
+/* Evitar overflow, pitch insuficiente y asignaciones desmesuradas
+ * al aceptar resoluciones que anuncia el firmware o la tarjeta virtual. */
+static int gfx_valid_mode(const uint32_t *f,int w,int h,int pitch_bytes){
+    if(!f||w<=0||h<=0||w>8192||h>4320||pitch_bytes<=0)return 0;
+    if(fbpp!=24&&fbpp!=32)return 0;
+    if((size_t)w>(size_t)-1/(size_t)h/4u)return 0;
+    if((size_t)pitch_bytes<(size_t)w*(size_t)(fbpp/8))return 0;
+    if(fbpp==32&&(pitch_bytes&3))return 0;
+    return 1;
 }
-int gfx_init(uint32_t *f, int w, int h, int pitch_bytes){
-    front=f; gw=w; gh=h; fpitch=pitch_bytes/4; fpitchb=pitch_bytes;
-    bb=kmalloc((size_t)w*h*4); if(!bb) return -1;
-    memset(bb,0,(size_t)w*h*4); clip_base(0,0,w,h); return 0;
+int gfx_resize(uint32_t *f,int w,int h,int pitch_bytes){
+    if(!gfx_valid_mode(f,w,h,pitch_bytes))return -1;
+    size_t bytes=(size_t)w*(size_t)h*4u;
+    uint32_t *n=kmalloc(bytes);if(!n)return -1;
+    /* Un fallo de validacion/asignacion deja intacta la pantalla anterior. */
+    if(bb)kfree(bb);
+    bb=n;front=f;gw=w;gh=h;fpitch=pitch_bytes/4;fpitchb=pitch_bytes;
+    memset(bb,0,bytes);clip_base(0,0,w,h);return 0;
+}
+int gfx_init(uint32_t *f,int w,int h,int pitch_bytes){
+    if(!gfx_valid_mode(f,w,h,pitch_bytes))return -1;
+    size_t bytes=(size_t)w*(size_t)h*4u;
+    uint32_t *n=kmalloc(bytes);if(!n)return -1;
+    bb=n;front=f;gw=w;gh=h;fpitch=pitch_bytes/4;fpitchb=pitch_bytes;
+    memset(bb,0,bytes);clip_base(0,0,w,h);return 0;
 }
 void gfx_present_rect(int x,int y,int w,int h){
-    /* La animacion/suspension puede invalidar la posicion previa del
-     * cursor. Un rectangulo completamente fuera de pantalla no se copia. */
-    if(w<=0||h<=0||x>=gw||y>=gh||x+w<=0||y+h<=0)return;
-    if(x<0){ w+=x; x=0; }
-    if(y<0){ h+=y; y=0; }
-    if(x+w>gw) w=gw-x;
-    if(y+h>gh) h=gh-y;
-    if(w<=0||h<=0)return;
+    if(!bb||!front||w<=0||h<=0)return;
+    /* Sumas en 64 bits para no desbordar con coordenadas corruptas. */
+    int64_t rx=(int64_t)x+w,ry=(int64_t)y+h;
+    if(rx<=0||ry<=0||x>=gw||y>=gh)return;
+    int x0=k_max(0,x),y0=k_max(0,y);
+    int x1=rx>=gw?gw:(int)rx,y1=ry>=gh?gh:(int)ry;
+    if(x1<=x0||y1<=y0)return;
+    x=x0;y=y0;w=x1-x0;h=y1-y0;
     if(fbpp==24){
         for(int j=0;j<h;j++){ uint8_t *d=(uint8_t*)front+(size_t)(y+j)*fpitchb+(size_t)x*3; const uint32_t *s2=bb+(y+j)*gw+x;
             for(int i=0;i<w;i++){ uint32_t c=s2[i]; d[0]=(uint8_t)c; d[1]=(uint8_t)(c>>8); d[2]=(uint8_t)(c>>16); d+=3; } }
         return; }
     for(int j=0;j<h;j++) memcpy(front+(y+j)*fpitch+x, bb+(y+j)*gw+x, (size_t)w*4);
 }
-void gfx_front_px(int x,int y,uint32_t c){ if(x<0||x>=gw||y<0||y>=gh) return;
+void gfx_front_px(int x,int y,uint32_t c){ if(!front||x<0||x>=gw||y<0||y>=gh) return;
     if(fbpp==24){ uint8_t *d=(uint8_t*)front+(size_t)y*fpitchb+(size_t)x*3; d[0]=(uint8_t)c; d[1]=(uint8_t)(c>>8); d[2]=(uint8_t)(c>>16); return; }
     front[y*fpitch+x]=c; }
 void gfx_present(void){ gfx_present_rect(0,0,gw,gh); }
