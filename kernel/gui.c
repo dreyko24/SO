@@ -3379,6 +3379,17 @@ static void on_press(void){
     { int di=dobj_hit(mx,my); if(di>=0){ ddrag=di; ddx=mx-dobj[di].x; ddy=my-dobj[di].y; dmoved=0; if(dobj[di].kind==200&&dsel!=di){ dsel=di; dirty=1; } }
       else if(dsel>=0){ dsel=-1; dirty=1; } }
 }
+/* Ubuntu Dock: clic central = abrir una nueva instancia, no reutilizar
+ * la ventana existente. El foco y el contenido previo permanecen intactos. */
+static void on_mpress(void){
+    int idx=dock_hit(mx,my);
+    if(idx<1||idx>=NDOCK)return;
+    if(appmenu_open){appmenu_open=0;launcher_damage();}
+    open_new=1;
+    (void)open_app(DOCK_APP[idx]);
+    open_new=0;
+    dock_damage();
+}
 static void on_rpress(void){                                         /* boton derecho: menu contextual */
     if(appmenu_open){appmenu_open=0;launcher_damage();}
     if(power_menu_open){power_menu_open=0;power_damage();}
@@ -3405,7 +3416,9 @@ static void on_rpress(void){                                         /* boton de
 }
 static void mouse_set(int x,int y,int b){
     x=k_max(0,k_min(gw-1,x)); y=k_max(0,k_min(gh-1,y));
-    int pressed=(b&1)&&!(mb&1), released=!(b&1)&&(mb&1), rpressed=(b&2)&&!(mb&2); int omb=mb;
+    int pressed=(b&1)&&!(mb&1), released=!(b&1)&&(mb&1);
+    int rpressed=(b&2)&&!(mb&2), mpressed=(b&4)&&!(mb&4);
+    int omb=mb;
     if(x!=mx||y!=my) cursor_dirty=1;
     mx=x; my=y; mb=b;
     if(power_sleep){if(pressed){power_sleep=0;dirty=1;}return;}
@@ -3462,8 +3475,9 @@ static void mouse_set(int x,int y,int b){
      * enviando decenas de caracteres por serie en compilaciones normales. */
     if(pressed||rpressed){ char d[48]="[raton] "; cat_int(d,48,mx); cat(d,48,","); cat_int(d,48,my); cat(d,48,pressed?" izq\n":" der\n"); kserial_puts(d); }
 #endif
-    if(pressed) on_press();
-    if(rpressed) on_rpress();
+    if(pressed)on_press();
+    if(rpressed)on_rpress();
+    if(mpressed)on_mpress();
 }
 void gui_rawkey(int byte){                                       /* teclas crudas para X11, salvo el atajo global Alt+Tab */
     static int e0;
@@ -3575,6 +3589,23 @@ void gui_key(int c){
     }
     if(c==KBD_FULLSCREEN){
         int top=win_top();if(top>=0)win_toggle_fullscreen(&wins[top]);
+        return;
+    }
+    if(c==KBD_NEW_WINDOW){
+        int top=win_top();
+        if(top>=0){
+            int type=wins[top].type;
+            open_new=1;Win *created=open_app(type);open_new=0;
+            if(created&&type==A_FILES){
+                created->dir=wins[top].dir; /* dos ventanas independientes de la misma carpeta */
+                created->scroll=0;
+            }
+            dirty=1;
+        }
+        return;
+    }
+    if(c==KBD_CLOSE_WINDOW){
+        int top=win_top();if(top>=0)win_close(top);
         return;
     }
     if(c==KBD_WORKSPACE_PREV){workspace_set(active_workspace-1);return;}

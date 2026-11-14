@@ -248,6 +248,46 @@ int main(void){
       }
       closeall();puts("VORTEX CALENDARIO: EVENTOS, VORTEXFS Y FECHA PERU OK");
     }
+    /* Multiventana: abrir una segunda instancia con botón central
+     * sobre el dock, minimizarla y cerrar SOLO esa ventana.
+     * Ctrl+Shift+N y Ctrl+Shift+W deben compartir semántica. */
+    {
+      closeall();workspace_set(0);
+      Win *a=open_app(A_FILES);int ai=(int)(a-wins);
+      FsNode *docs=fs_resolve(fs_root(),"/Documentos");
+      a->dir=docs;
+      int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+      int x=bx+bw/2,y=by+12+2*DASH_STEP+TILE/2;
+      gui_mouse_abs(x,y,0);gui_frame();
+      gui_mouse_abs(x,y,4);gui_frame();
+      gui_mouse_abs(x,y,0);gui_frame();
+      if(nord!=2||win_top()==ai||!a->used){
+          puts("FALLO clic central nueva ventana Archivos");return 1;
+      }
+      Win *b=&wins[win_top()];
+      if(b->type!=A_FILES||b->dir!=fs_root()||a->dir!=docs){
+          puts("FALLO instancias de Archivos independientes");return 1;
+      }
+      shot("48_archivos_dos_ventanas");
+      win_minimize(b);
+      if(!b->minimized||!a->used||win_top()!=ai){
+          puts("FALLO minimizar instancia independiente");return 1;
+      }
+      gui_key(KBD_NEW_WINDOW);
+      if(nord!=3||win_top()==ai||wins[win_top()].dir!=docs){
+          puts("FALLO Ctrl+Mayus+N copia carpeta actual");return 1;
+      }
+      gui_key(KBD_CLOSE_WINDOW);
+      if(nord!=2||!a->used||!b->used||!b->minimized){
+          puts("FALLO Ctrl+Mayus+W solo cierra ventana activa");return 1;
+      }
+      focus((int)(b-wins));gui_key(KBD_CLOSE_WINDOW);
+      if(nord!=1||win_top()!=ai){
+          puts("FALLO restaurar/cerrar instancia minimizada");return 1;
+      }
+      closeall();
+      puts("VORTEX MULTIVENTANA: CLIC CENTRAL, MINIMIZAR, CTRL+MAYUS+N/W OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];

@@ -52,6 +52,12 @@ int main(void){
     chk(kbd_feed(0x9d),0,"Ctrl soltado tras espacio");
     chk(press(0x57),KBD_FULLSCREEN,"F11 pantalla completa");
     chk(kbd_feed(0xd7),0,"soltar F11");
+    chk(kbd_feed(0x1d),0,"Ctrl down");
+    chk(kbd_feed(0x2a),0,"Mayus down");
+    chk(press(0x31),KBD_NEW_WINDOW,"Ctrl+Mayus+N nueva ventana");
+    chk(press(0x11),KBD_CLOSE_WINDOW,"Ctrl+Mayus+W cierra ventana");
+    chk(kbd_feed(0xaa),0,"Mayus up");
+    chk(kbd_feed(0x9d),0,"Ctrl up");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

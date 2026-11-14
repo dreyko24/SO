@@ -67,6 +67,8 @@ int kbd_feed(uint8_t b){
     if(sc==0x38){ int was=alt; alt=!rel; return was&&rel?KBD_SWITCH_END:0; }
     if(rel) return 0;
     if(sc==0x57)return KBD_FULLSCREEN; /* F11: pantalla completa de la ventana */
+    if(ctrl&&shift&&sc==0x31)return KBD_NEW_WINDOW; /* Ctrl+Mayus+N */
+    if(ctrl&&shift&&sc==0x11)return KBD_CLOSE_WINDOW; /* Ctrl+Mayus+W */
     if(sc==0x0F&&alt) return shift?KBD_SWITCH_PREV:KBD_SWITCH_NEXT; /* Alt+Tab / Mayus+Alt+Tab */
     if(sc==0x3A){ caps=!caps; return 0; }
     int c=lookup(sc); if(!c) return 0;
