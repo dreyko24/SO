@@ -57,6 +57,42 @@ void blit32(int x,int y,const uint32_t *src,int stride,int w,int h){
     if(x1<=dx||y1<=dy) return;
     for(int j=dy;j<y1;j++) memcpy(&bb[j*gw+dx],&src[(sy+(j-dy))*stride+sx],(size_t)(x1-dx)*4);
 }
+/* Blit escalado por nearest neighbour con clip directo. Menos llamadas y
+ * conversiones de pixeles que dibujar cada cuadro via px_blend(). */
+void blit_scaled32(int x,int y,int w,int h,const uint32_t *src,int sw,int sh){
+    if(!src||w<=0||h<=0||sw<=0||sh<=0)return;
+    int x0=k_max(x,cx0),x1=k_min(x+w,cx1);
+    int y0=k_max(y,cy0),y1=k_min(y+h,cy1);
+    if(x1<=x0||y1<=y0)return;
+    for(int yy=y0;yy<y1;yy++){
+        int sy=(int)(((uint64_t)(yy-y)*sh)/(uint32_t)h);if(sy>=sh)sy=sh-1;
+        const uint32_t *r=src+(size_t)sy*sw;
+        uint32_t *d=bb+(size_t)yy*gw;
+        for(int xx=x0;xx<x1;xx++){
+            int sx=(int)(((uint64_t)(xx-x)*sw)/(uint32_t)w);if(sx>=sw)sx=sw-1;
+            d[xx]=r[sx];
+        }
+    }
+}
+void blit_bgr_scaled(int x,int y,int w,int h,const uint8_t *src,int sw,int sh,int bits,int topdown){
+    if(!src||w<=0||h<=0||sw<=0||sh<=0||(bits!=24&&bits!=32))return;
+    int x0=k_max(x,cx0),x1=k_min(x+w,cx1);
+    int y0=k_max(y,cy0),y1=k_min(y+h,cy1);
+    if(x1<=x0||y1<=y0)return;
+    unsigned bytepp=(unsigned)bits/8u;
+    size_t stride=((size_t)sw*bytepp+3u)&~3u;
+    for(int yy=y0;yy<y1;yy++){
+        int sy=(int)(((uint64_t)(yy-y)*sh)/(uint32_t)h);if(sy>=sh)sy=sh-1;
+        if(!topdown)sy=sh-1-sy;
+        const uint8_t *r=src+(size_t)sy*stride;
+        uint32_t *d=bb+(size_t)yy*gw;
+        for(int xx=x0;xx<x1;xx++){
+            int sx=(int)(((uint64_t)(xx-x)*sw)/(uint32_t)w);if(sx>=sw)sx=sw-1;
+            const uint8_t *p=r+(size_t)sx*bytepp;
+            d[xx]=((uint32_t)p[2]<<16)|((uint32_t)p[1]<<8)|p[0];
+        }
+    }
+}
 void fill(int x,int y,int w,int h,uint32_t c,int a){
     int x1=k_min(x+w,cx1), y1=k_min(y+h,cy1); x=k_max(x,cx0); y=k_max(y,cy0);
     if(a<=0) return;
