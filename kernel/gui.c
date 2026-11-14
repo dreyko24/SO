@@ -9,6 +9,7 @@
 #include "disk.h"
 #include "zip.h"
 #include "timeutil.h"
+#include "browser_launch.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_SABER };
 #define DOCK_SIDE (gh<620?148:88) /* zona que se reserva a la barra lateral al maximizar */
@@ -2002,32 +2003,8 @@ static void settings_click(int lx,int ly,int cw,int ch){
         else if(in_rect(lx,ly,142,ch-44,110,28)) khalt();
     }
 }
-/* Construye un comando seguro para Chromium conservando enlaces y busquedas.
- * Devuelve -1 si el URL no cabe o contiene caracteres de shell no permitidos. */
 static int browser_chromium_command(const char *url,char *out,int max){
-    char target[128];
-    if(k_startswith(url,"http://")||k_startswith(url,"https://")){
-        if(k_strlen(url)>120) return -1;
-        k_strcpy(target,url,sizeof target);
-    } else if(k_startswith(url,"kng://buscar?q=")){
-        const char *q=url+15;
-        if(k_strlen(q)>85) return -1;
-        k_strcpy(target,"https://www.google.com/search?q=",sizeof target);
-        cat(target,sizeof target,q);
-    } else k_strcpy(target,"https://www.google.com/",sizeof target);
-    int n=k_strlen(target);
-    if(n<=0||n>120) return -1;
-    for(int i=0;i<n;i++){
-        unsigned char c=(unsigned char)target[i];
-        if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||
-             (c>='0'&&c<='9')||c=='.'||c=='/'||c==':'||
-             c=='?'||c=='&'||c=='='||c=='%'||c=='#'||
-             c=='_'||c=='-'||c=='+'||c=='~'||c=='@')) return -1;
-    }
-    if(max<n+23) return -1;
-    k_strcpy(out,"abrir vortex-chromium ",max);
-    cat(out,max,target);
-    return 0;
+    return vortex_browser_command(url,out,max);
 }
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
