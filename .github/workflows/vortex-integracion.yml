@@ -21,5 +21,9 @@ jobs:
         run: |
           gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbdtest
           /tmp/vortex-kbdtest
+      - name: Fecha y zona horaria America/Lima
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror tools/time_test.c -o /tmp/vortex-timetest
+          /tmp/vortex-timetest
       - name: Red simulada y pila de protocolos
         run: python3 tools/nettest.py
