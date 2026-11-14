@@ -2,6 +2,13 @@ name: instalacion
 # Construye la ISO como en WSL, arranca el instalador con un disco vacio, instala, y despues arranca SOLO desde el disco (sin USB/CD)
 # con BIOS y con UEFI, comprobando que el escritorio arranca y que lo guardado sigue ahi.
 on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+    paths:
+      - '.github/workflows/instalar.yml'
+      - 'tools/mkdisk.sh'
+      - 'tools/ci/instalar1.txt'
+      - 'tools/ci/instalar2.txt'
   workflow_dispatch:
     inputs:
       disco: { description: "sata | nvme | ide", default: "sata" }
@@ -14,7 +21,15 @@ jobs:
       - name: Herramientas
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf gcc gcc-multilib binutils python3 libc6-dev grub-pc-bin grub-efi-amd64-bin xorriso mtools dosfstools fdisk cpio
       - name: Construir la ISO (con instalador)
-        run: bash tools/build-iso.sh 2>&1 | tail -15; ls -la out/ build/iso/boot/; head -12 build/iso/boot/grub/grub.cfg
+        run: |
+          set -euo pipefail
+          VORTEX_INSTALADOR=1 bash tools/build-iso.sh 2>&1 | tee installer-build.log | tail -30
+          test -s build/iso/boot/disco.img.gz
+          test -s out/VortexOS.iso
+          grep -Fq 'INSTALAR Vortex OS en el disco duro de esta PC' build/iso/boot/grub/grub.cfg
+          test "$(grep -c '^menuentry ' build/iso/boot/grub/grub.cfg)" -eq 3
+          ( cd out && sha256sum -c VortexOS.iso.sha256 )
+          head -18 build/iso/boot/grub/grub.cfg
       - name: Instalar y arrancar desde el disco
         run: |
           qemu-img create -f raw disco.img 2G
@@ -33,9 +48,17 @@ jobs:
           CODE=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
           VORTEX_INICIO='Iniciando escritorio' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 600 python3 tools/ci_drive.py tools/ci/instalar2.txt i3.log -- qemu-system-x86_64 $M -drive if=pflash,format=raw,readonly=on,file=$CODE -drive if=pflash,format=raw,file=vars.fd || true
           for f in i1 i2 i3; do echo "----- $f"; grep -a -E "Disco:|LISTO|No se pudo|Instalando|framebuffer|Iniciando|hola desde|guardado|NVMe|SATA|IDE" $f.log | head -10; done
-          grep -aq "LISTO" i1.log && echo "PRUEBA instalacion: OK" || echo "PRUEBA instalacion: FALLO"
-          grep -aq "Iniciando escritorio" i2.log && grep -aq "hola desde el disco" i2.log && echo "PRUEBA arranque BIOS desde el disco + datos: OK" || echo "PRUEBA arranque BIOS desde el disco + datos: FALLO"
-          grep -aq "Iniciando escritorio" i3.log && grep -aq "hola desde el disco" i3.log && echo "PRUEBA arranque UEFI desde el disco + datos: OK" || echo "PRUEBA arranque UEFI desde el disco + datos: FALLO"
+          # Una prueba que imprime FALLO debe hacer fallar el workflow.
+          grep -aq "LISTO" i1.log || { echo "FALLO: instalador no termino"; exit 1; }
+          echo "PRUEBA instalacion: OK"
+          grep -aq "Iniciando escritorio" i2.log &&
+            grep -aq "hola desde el disco" i2.log ||
+            { echo "FALLO: arranque BIOS o datos persistentes"; exit 1; }
+          echo "PRUEBA arranque BIOS desde el disco + datos: OK"
+          grep -aq "Iniciando escritorio" i3.log &&
+            grep -aq "hola desde el disco" i3.log ||
+            { echo "FALLO: arranque UEFI o datos persistentes"; exit 1; }
+          echo "PRUEBA arranque UEFI desde el disco + datos: OK"
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: instalacion, path: "i*.log" }
