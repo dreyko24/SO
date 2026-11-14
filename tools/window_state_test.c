@@ -42,6 +42,15 @@ int main(void){
     CHECK(win_top()==note_id&&notes->used&&!wins[duplicate].used,
           "cerrar una instancia conserva la otra");
     CHECK(files->used,"otras aplicaciones continuan abiertas");
+    char launch[160];
+    CHECK(!browser_chromium_command("https://www.google.com/maps",launch,sizeof launch) &&
+          !strcmp(launch,"abrir chromium https://www.google.com/maps"),
+          "abrir Chromium con URL https original");
+    CHECK(!browser_chromium_command("kng://buscar?q=historia+del+peru",launch,sizeof launch) &&
+          !strcmp(launch,"abrir chromium https://www.google.com/search?q=historia+del+peru"),
+          "conservar una busqueda de Google");
+    CHECK(browser_chromium_command("https://example.com/;reboot",launch,sizeof launch)<0,
+          "bloquear caracteres de control de comandos en URL");
     /* Una actualizacion de Vortex Saber no debe borrar las notas historicas. */
     FsNode *doc=fs_resolve(fs_root(),"/Documentos");
     CHECK(doc&&doc->dir,"Documentos disponible para progreso educativo");
