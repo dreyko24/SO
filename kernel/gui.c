@@ -42,6 +42,8 @@ typedef struct {
     VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
     int enc_category,enc_topic,enc_scroll,enc_search_len;
     int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
+    int enc_game,enc_game_first,enc_game_pending,enc_game_matches,enc_game_turns;
+    unsigned enc_game_revealed;
     VortexSaberProgress enc_progress;
     char enc_search[48];
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
@@ -1578,6 +1580,43 @@ static void enc_article_open(Win *w,int id){
     }
     dwin(w);
 }
+static const char *const ENC_MEMORY_TEXT[8]={
+    "Sol","Andes","ADN","Sistema","Montanas","Estrella","Computadora","Herencia"
+};
+static int enc_memory_pair(int id){
+    static const unsigned char pairs[8]={0,2,1,3,2,0,3,1};
+    return id>=0&&id<8?pairs[id]:-1;
+}
+static void enc_memory_start(Win *w){
+    w->enc_game=1;w->enc_quiz=0;
+    w->enc_game_revealed=0;w->enc_game_first=-1;
+    w->enc_game_pending=-1;w->enc_game_matches=0;w->enc_game_turns=0;
+    w->enc_scroll=0;dwin(w);
+}
+static void enc_memory_flip(Win *w,int id){
+    if(!w->enc_game||id<0||id>=8||w->enc_game_matches==4||
+       (w->enc_game_revealed&(1u<<id)))return;
+    if(w->enc_game_pending>=0){
+        w->enc_game_first=-1;w->enc_game_pending=-1;
+    }
+    if(w->enc_game_first<0)w->enc_game_first=id;
+    else if(w->enc_game_first!=id){
+        w->enc_game_turns++;
+        if(enc_memory_pair(w->enc_game_first)==enc_memory_pair(id)){
+            w->enc_game_revealed|=1u<<id;
+            w->enc_game_revealed|=1u<<w->enc_game_first;
+            w->enc_game_matches++;w->enc_game_first=-1;
+            if(w->enc_game_matches==4){
+                if(w->enc_progress.games_won<1000000u){
+                    w->enc_progress.games_won++;
+                    enc_progress_save(w);
+                    if(vortexfs_active())(void)vortexfs_save();
+                }
+            }
+        }else w->enc_game_pending=id;
+    }
+    dwin(w);
+}
 static void enc_quiz_answer(Win *w,int choice){
     if(!w->enc_quiz||w->enc_qindex>=ENC_QUIZ_N||
        w->enc_qanswer>=0||choice<0||choice>=4)return;
@@ -1625,21 +1664,49 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
         if(i==w->enc_category)rrect(sx+8,iy,sw-16,34,11,ACCENT,238);
         text_ui_bold(sx+20,iy+9,ENC_CATEGORIES[i],i==w->enc_category?0xffffff:C_TXT);
     }
-    rrect(sx+8,sy+342,sw-16,36,12,w->enc_quiz?ACCENT:C_HOVER,250);
-    text_ui_bold(sx+24,sy+353,"Practicar",w->enc_quiz?0xffffff:C_TXT);
-    /* Seguimiento real, persistido en VortexFS cuando hay disco configurado. */
+    rrect(sx+8,sy+342,sw-16,33,12,w->enc_quiz?ACCENT:C_HOVER,250);
+    text_ui_bold(sx+24,sy+351,"Practicar",w->enc_quiz?0xffffff:C_TXT);
+    rrect(sx+8,sy+380,sw-16,33,12,w->enc_game?ACCENT:C_HOVER,250);
+    text_ui_bold(sx+24,sy+389,"Memoria educativa",w->enc_game?0xffffff:C_TXT);
     char stats[54]="Nivel ";cat_int(stats,sizeof stats,saber_level(&w->enc_progress));
-    cat(stats,sizeof stats,"   Leidos ");
+    cat(stats,sizeof stats,"  Leidos ");
     cat_int(stats,sizeof stats,saber_read_count(w->enc_progress.articles));
-    text_ui(sx+12,sy+386,stats,C_TXT);
-    char attempts[54]="Pruebas ";
-    cat_int(attempts,sizeof attempts,(int)w->enc_progress.completed);
-    cat(attempts,sizeof attempts,"  Mejor ");
-    cat_int(attempts,sizeof attempts,(int)w->enc_progress.best);
-    text_ui(sx+12,sy+407,attempts,C_DIM);
+    text_ui(sx+12,sy+421,stats,C_TXT);
     int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
     rrect(rx,ry,rw,rh,16,C_TILE,255);
-    if(w->enc_quiz){
+    if(w->enc_game){
+        text_ui_bold(rx+20,ry+16,"Memoria de conceptos",C_TXT);
+        char score[60]="Parejas: ";
+        cat_int(score,sizeof score,w->enc_game_matches);
+        cat(score,sizeof score," / 4  Intentos: ");
+        cat_int(score,sizeof score,w->enc_game_turns);
+        text_ui(rx+20,ry+43,score,C_DIM);
+        fill(rx+20,ry+71,rw-40,2,ACCENT,165);
+        int cardw=(rw-55)/4;
+        for(int id=0;id<8;id++){
+            int ix=id%4,iy=id/4;
+            int px=rx+17+ix*(cardw+7),py=ry+91+iy*108;
+            int up=(int)((w->enc_game_revealed>>id)&1u)||
+                   w->enc_game_first==id||w->enc_game_pending==id;
+            uint32_t bc=(w->enc_game_revealed&(1u<<id))?0x237d59:
+                        up?ACCENT:C_PANEL;
+            rrect(px,py,cardw,96,13,bc,255);
+            if(up){
+                text_ui(px+8,py+30,ENC_MEMORY_TEXT[id],0xffffff);
+            }else{
+                char number[5]={(char)('1'+id),0,0,0,0};
+                text_big(px+cardw/2-8,py+29,number,C_TXT);
+            }
+        }
+        if(w->enc_game_matches==4)
+            text_ui_bold(rx+20,ry+319,"Logro: Memoria completada",0x26a269);
+        else if(w->enc_game_pending>=0)
+            text_ui(rx+20,ry+319,"No coinciden. Elige otra tarjeta.",C_DIM);
+        else
+            text_ui(rx+20,ry+319,"Relaciona cada concepto con su significado.",C_DIM);
+        rrect(rx+rw-168,ry+rh-47,150,32,11,C_BTN,255);
+        text_ui_bold(rx+rw-152,ry+rh-38,"Reiniciar juego",C_TXT);
+    }else if(w->enc_quiz){
         text_ui_bold(rx+20,ry+16,"Aprende jugando",C_TXT);
         char result[40]="Aciertos: ";
         cat_int(result,sizeof result,w->enc_qscore);
@@ -2861,12 +2928,30 @@ static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     switch(w->type){
     case A_ENCARTA:{
-        if(in_rect(lx,ly,20,94+342,175,36)){
-            w->enc_quiz=1;w->enc_qindex=0;w->enc_qanswer=-1;
+        if(in_rect(lx,ly,20,94+342,175,33)){
+            w->enc_quiz=1;w->enc_game=0;w->enc_qindex=0;w->enc_qanswer=-1;
             w->enc_qscore=0;w->enc_scroll=0;dwin(w);return;
         }
+        if(in_rect(lx,ly,20,94+380,175,33)){
+            enc_memory_start(w);return;
+        }
         if(in_rect(lx,ly,238,22,cw-260,34)){
-            w->enc_quiz=0;w->enc_topic=-1;dwin(w);return;
+            w->enc_quiz=0;w->enc_game=0;w->enc_topic=-1;dwin(w);return;
+        }
+        if(w->enc_game){
+            int ry=94,rh=ch-104,rw=cw-230,rx=218;
+            if(in_rect(lx,ly,rx+rw-168,ry+rh-47,150,32)){
+                enc_memory_start(w);return;
+            }
+            int cardw=(rw-55)/4;
+            for(int i=0;i<8;i++){
+                int ix=i%4,iy=i/4;
+                if(in_rect(lx,ly,rx+17+ix*(cardw+7),
+                   ry+91+iy*108,cardw,96)){
+                    enc_memory_flip(w,i);return;
+                }
+            }
+            return;
         }
         if(w->enc_quiz){
             int ry=94,rh=ch-104,rw=cw-230,rx=218;
@@ -2883,7 +2968,7 @@ static void app_click(Win *w,int lx,int ly){
         for(int i=0;i<ENC_CATEGORIES_N;i++)
             if(in_rect(lx,ly,20,137+i*40,175,34)){
                 w->enc_category=i;w->enc_topic=-1;w->enc_scroll=0;
-                w->enc_quiz=0;
+                w->enc_quiz=0;w->enc_game=0;
                 dwin(w);return;
             }
         if(w->enc_topic>=0){
@@ -3225,7 +3310,7 @@ void gui_mouse_wheel(int steps){
             increment=2;break;
         }
         case A_ENCARTA:
-            if(w->enc_quiz)return;
+            if(w->enc_quiz||w->enc_game)return;
             if(w->enc_topic<0){
                 int h=w->h-TB-1,visible=k_max(1,(h-178)/57);
                 maximum=k_max(0,enc_count(w)-visible);increment=2;
@@ -3352,6 +3437,12 @@ void gui_key(int c){
         dirty=1;
         break; }
     case A_ENCARTA:
+        if(w->enc_game){
+            if(c==27)w->enc_game=0;
+            else if(c>='1'&&c<='8')enc_memory_flip(w,c-'1');
+            else if(c=='\n')enc_memory_start(w);
+            dwin(w);break;
+        }
         if(w->enc_quiz){
             if(c==27)w->enc_quiz=0;
             else if(c>='1'&&c<='4')enc_quiz_answer(w,c-'1');

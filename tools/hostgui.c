@@ -649,10 +649,22 @@ int main(void){
       }
       gui_key(27);
       if(e->enc_quiz){puts("FALLO salir del cuestionario");return 1;}
+      click(e->x+1+54,e->y+TB+94+380+15);
+      if(!e->enc_game||e->enc_game_matches){puts("FALLO iniciar juego de memoria");return 1;}
+      const int pairs[8]={0,5,1,4,2,7,3,6};
+      for(int m=0;m<8;m+=2){
+          enc_memory_flip(e,pairs[m]);enc_memory_flip(e,pairs[m+1]);
+      }
+      if(e->enc_game_matches!=4||e->enc_game_turns!=4||
+         e->enc_progress.games_won!=1){
+          puts("FALLO juego de memoria y logro persistente");return 1;
+      }
+      shot("46_saber_memoria_logro");
       closeall();
       e=open_app(A_ENCARTA);
       if(!e||e->enc_progress.best!=ENC_QUIZ_N||
-         e->enc_progress.completed!=1||!(e->enc_progress.articles&1u)){
+         e->enc_progress.completed!=1||e->enc_progress.games_won!=1||
+         !(e->enc_progress.articles&1u)){
           puts("FALLO restaurar progreso tras cerrar Vortex Saber");return 1;
       }
       closeall();
