@@ -35,7 +35,7 @@ typedef struct {
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
     int rx, ry, rw, rh, maxed, snap, minimized; /* snap: 0 completa, 1 izquierda, 2 derecha */
     int fullscreen, fx0, fy0, fw0, fh0; /* pantalla completa real, geometria anterior */
-    int apps_tab; uint32_t tclick;                                   /* maximizar / ajustar */
+    int apps_tab; int saber_topic, saber_q, saber_answer, saber_hits, saber_streak; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -226,6 +226,108 @@ int  gui_screen_size(int *w,int *h){ if(!gw) return -1; *w=gw; *h=gh; return 0; 
 static Win *term_target;
 /* ---------------- Programas de Linux: lanzador de los programas reales instalados con 'instalar' ---------------- */
 typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; } PApp;
+
+/* Vortex Saber: contenidos y evaluaciones reales, sin consultas ni servicios simulados. */
+#define NSABER 4
+#define SABER_NQ 3
+typedef struct {
+    const char *nombre, *lectura[3], *pregunta[SABER_NQ];
+    const char *opcion[SABER_NQ][3], *explicacion[SABER_NQ];
+    unsigned char correcta[SABER_NQ]; uint32_t color;
+} SaberLeccion;
+static const SaberLeccion SABER[NSABER]={
+    { "Matematicas",
+      {"Las fracciones expresan partes iguales de un todo.",
+       "El area es la superficie; el perimetro es el contorno.",
+       "Un porcentaje representa partes de cada cien."},
+      {"¿Cuanto vale tres cuartos en decimal?",
+       "¿Cual es el area de un rectangulo de 3 x 4?",
+       "¿Cuanto es el 20 por ciento de 150?"},
+      {{"0.75","0.34","1.25"},{"7","12","14"},{"20","30","75"}},
+      {"3 dividido entre 4 es 0.75.",
+       "Area = base x altura = 3 x 4 = 12.",
+       "20/100 x 150 = 30."}, {0,1,1}, 0x60a5fa },
+    { "Ciencias",
+      {"El agua cambia de estado segun temperatura y presion.",
+       "Las plantas usan luz, agua y CO2 en la fotosintesis.",
+       "Una hipotesis se contrasta con observaciones y experimentos."},
+      {"¿A cuantos grados hierve el agua al nivel del mar?",
+       "¿Que energia usan las plantas en la fotosintesis?",
+       "¿Que ayuda a comprobar una hipotesis?"},
+      {{"50 C","100 C","200 C"},{"Luz solar","Sonido","Electricidad"},
+       {"Experimentos","Adivinar","Memorizar sin pruebas"}},
+      {"A presion atmosferica estandar, hierve cerca de 100 C.",
+       "La luz aporta la energia del proceso.",
+       "Un experimento aporta evidencia verificable."}, {1,0,0}, 0x22c55e },
+    { "Historia del Peru",
+      {"El Peru proclamo su independencia el 28 de julio de 1821.",
+       "Machu Picchu es un conjunto arquitectonico de los incas.",
+       "Las lineas de Nazca son geoglifos de la costa sur peruana."},
+      {"¿En que anio se proclamo la independencia del Peru?",
+       "¿Que civilizacion construyo Machu Picchu?",
+       "¿Donde se encuentran las lineas de Nazca?"},
+      {{"1821","1881","1921"},{"Romana","Inca","Griega"},
+       {"Costa sur del Peru","Sierra norte","Amazonia"}},
+      {"La proclamacion ocurrio en Lima en 1821.",
+       "Fue construido durante el periodo incaico.",
+       "Los geoglifos se encuentran en la region Ica."}, {0,1,0}, 0xf59e0b },
+    { "Tecnologia",
+      {"La RAM mantiene datos de trabajo mientras hay energia.",
+       "HTTPS protege la comunicacion con cifrado TLS.",
+       "Un algoritmo es una secuencia de instrucciones para resolver algo."},
+      {"¿Que sucede con la RAM si se corta la energia?",
+       "¿Que tecnologia protege normalmente HTTPS?",
+       "¿Que es un algoritmo?"},
+      {{"Conserva todo","Pierde su contenido","Se vuelve disco"},
+       {"TLS","FTP","Texto plano"},
+       {"Una secuencia de pasos","Un monitor","Un cable"}},
+      {"La RAM convencional es volatil.",
+       "HTTPS establece conexiones protegidas mediante TLS.",
+       "Los algoritmos describen pasos definidos."}, {1,0,0}, 0xa78bfa }
+};
+static const int APPS_LOCAL[]={A_SABER,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_ABOUT};
+static const char *APPS_LOCAL_NOMBRES[]={"Vortex Saber","Navegador simple","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Acerca de"};
+static int saber_best[NSABER], saber_loaded;
+static void saber_load(void){
+    if(saber_loaded) return;
+    saber_loaded=1;
+    for(int i=0;i<NSABER;i++) saber_best[i]=0;
+    FsNode *f=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
+    if(!f||f->dir||!f->data) return;
+    for(int i=0;i<NSABER&&i<f->size;i++){
+        char c=f->data[i]; if(c>='0'&&c<='3') saber_best[i]=c-'0';
+    }
+}
+static void saber_save(void){
+    FsNode *r=fs_root(), *d=fs_find(r,"Documentos");
+    if(!d) d=fs_mkdir(r,"Documentos");
+    if(!d||!d->dir) return;
+    char buf[NSABER+2];
+    for(int i=0;i<NSABER;i++) buf[i]=(char)('0'+saber_best[i]);
+    buf[NSABER]='\n'; buf[NSABER+1]=0;
+    (void)fs_create(d,"Vortex-Saber-progreso.txt",buf,NSABER+1);
+}
+static void saber_start(Win *w,int topic){
+    if(topic<0||topic>=NSABER) return;
+    saber_load(); w->saber_topic=topic; w->saber_q=0;
+    w->saber_answer=-1; w->saber_hits=0; w->saber_streak=0; dirty=1;
+}
+static void saber_answer(Win *w,int choice){
+    if(w->saber_topic<0||w->saber_q>=SABER_NQ||w->saber_answer>=0||choice<0||choice>2) return;
+    w->saber_answer=choice;
+    if(choice==SABER[w->saber_topic].correcta[w->saber_q]){ w->saber_hits++; w->saber_streak++; }
+    else w->saber_streak=0;
+    dirty=1;
+}
+static void saber_next(Win *w){
+    if(w->saber_topic<0||w->saber_answer<0||w->saber_q>=SABER_NQ) return;
+    w->saber_q++; w->saber_answer=-1;
+    if(w->saber_q==SABER_NQ && w->saber_hits>saber_best[w->saber_topic]){
+        saber_best[w->saber_topic]=w->saber_hits; saber_save();
+    }
+    dirty=1;
+}
+
 static const PApp PAPPS[]={
     {"Brave","Navegador web","brave","instalar brave","/usr/bin/brave-browser",0xf97316},
     {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
@@ -260,7 +362,7 @@ static Win *open_app(int type){
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Aplicaciones"); break;
-    case A_SABER:    w->w=670; w->h=530; set_title(w,"Vortex Saber"); break;
+    case A_SABER:    w->w=670; w->h=530; set_title(w,"Vortex Saber"); w->saber_topic=-1; w->saber_answer=-1; saber_load(); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
@@ -1897,6 +1999,7 @@ void gui_storage_ready(void){
     (void)kngfs_mount(); fs_track=1;
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
+    saber_loaded=0; saber_load();
     build_wall(); dsk_sync(); dirty=1;
 }
 int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
