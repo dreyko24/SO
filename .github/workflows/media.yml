@@ -1,7 +1,7 @@
 name: vortex-reproductores
 on:
   push:
-    branches: [cambio-nombre-vortex-os]
+    branches: [main, cambio-nombre-vortex-os, vortex/integracion-total-20261114]
   workflow_dispatch:
 concurrency:
   group: vortex-media-${{ github.ref }}
