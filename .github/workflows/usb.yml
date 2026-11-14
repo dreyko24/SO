@@ -48,10 +48,22 @@ jobs:
           grep -Fq "[vortex-wallpaper] updated" usb-gui.log || { echo "FALLO: no se aplico la foto de USB como fondo"; exit 1; }
           test -s capturas/04-archivos-usb.png
           test -s capturas/06-fondo-desde-usb.png
+      - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
+        run: |
+          python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
+      - name: Arranque USB UHCI y lectura exFAT de archivo real
+        run: |
+          python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon-exfat.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -usb -drive if=none,id=stick,format=raw,file=pendrive-exfat.img -device usb-storage,bus=usb-bus.0,drive=stick > exfat-gui.log 2>&1
+          tail -75 exfat-gui.log
+          grep -Fq "USB exFAT real leido" exfat-gui.log || { echo "FALLO: no monto exFAT"; exit 1; }
+          grep -Fq "archivo VORTEX.PNG (1965 bytes) importado exFAT" exfat-gui.log || { echo "FALLO: no importo PNG exFAT"; exit 1; }
+          grep -Fq "[vortex-image] decoded" exfat-gui.log || { echo "FALLO: no abrio PNG exFAT"; exit 1; }
+          grep -Fq "[vortex-wallpaper] updated" exfat-gui.log || { echo "FALLO: no aplico fondo exFAT"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: vortex-usb
           path: |
             usb-gui.log
+            exfat-gui.log
             capturas/*.png
