@@ -78,6 +78,29 @@ Para iniciar la ISO sin tocar discos reales, desde el repositorio:
   bus USB UHCI, vídeo VGA estándar y reloj base UTC. Selecciona 64 bits
   gráfico en GRUB. No formatees un disco real para probar.
 
+**Probar USB de almacenamiento sin conectar un pendrive real:** ambos lanzadores
+aceptan un **segundo argumento opcional** con la ruta de un archivo `.img` FAT32.
+Ejemplo Windows: `Probar-VortexOS.cmd "out\\VortexOS.iso" "pendrive.img"`.
+Ejemplo Linux: `bash tools/probar-vortex.sh out/VortexOS.iso pendrive.img`.
+El archivo IMG se presenta al kernel Vortex como USB Mass Storage UHCI **de solo
+lectura**. No se conecta el USB físico del equipo y la prueba no demuestra soporte
+para controladores xHCI/USB 3. Si no se aporta un archivo IMG, el bus USB
+aparece vacío. Para crear una imagen de pruebas en Linux, con `dosfstools` y
+`mtools` instalados:
+
+```bash
+truncate -s 128M pendrive.img
+mkfs.vfat -F 32 -n VORTEXUSB pendrive.img
+mcopy -i pendrive.img docs/vortex-logo.png ::/VORTEX.PNG
+bash tools/probar-vortex.sh out/VortexOS.iso pendrive.img
+```
+
+En Vortex OS, abre **Multimedia → USB** y revisa la unidad detectada en
+`/Dispositivos/Unidad-USB`. Se importa una instantánea de lectura, no un
+montaje dinámico. Para un dispositivo USB físico se requiere transferencia al
+invitado desde el hipervisor y hardware UHCI compatible; esa funcionalidad sigue
+limitada y no está validada en todos los equipos.
+
 Pruebas reproducibles de componentes: `bash tools/verificar-vortex.sh`.
 Hora: terminal `fecha` o `hora`, y `hora sincronizar`; si NTP no responde
 se usa el RTC y la interfaz indica su origen. La sincronización NTP no sustituye
