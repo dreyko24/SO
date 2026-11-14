@@ -1803,8 +1803,18 @@ static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
-    if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
+    if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; } /* Ctrl+T: terminal */
     int top=win_top();
+    if(c==0x501){ /* F10: instancia independiente de la aplicacion activa */
+        if(top>=0){ int app=wins[top].type; open_new=1; open_app(app); open_new=0; }
+        return;
+    }
+    if(top>=0){
+        if(c==0x500){ win_toggle_fullscreen(&wins[top]); return; } /* F11 */
+        if(c==0x417){ win_close(top); return; } /* Ctrl+W */
+        if(c==0x40D){ win_minimize(&wins[top]); return; } /* Ctrl+M */
+        if(c==27&&wins[top].fullscreen){ win_toggle_fullscreen(&wins[top]); return; }
+    }
     if(top<0){                                                      /* sin ventanas: las teclas son para el icono elegido del escritorio */
         if(dsel>=0&&dobj[dsel].kind==200){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj[dsel].name):0;
             if(f){ if(c=='\n') dsk_open(dsel); else if(c==0x7F) fm_do(M_DELETE,0,dk,f); else if(c==0x412) dren_start(dsel);
