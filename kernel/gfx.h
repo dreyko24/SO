@@ -26,6 +26,9 @@ void ellipse_ring(int cx, int cy, int rx, int ry, uint32_t c);
 int  text(int x, int y, const char *s, uint32_t c);              /* 8x16, UTF-8 -> Latin-1; devuelve x final */
 int  text_bold(int x, int y, const char *s, uint32_t c);
 int  text_big(int x, int y, const char *s, uint32_t c);          /* 12x24 */
-int  text_w(const char *s);                                      /* ancho en pixeles (8 px por caracter) */
+int  text_w(const char *s);
+int  text_ui_w(const char *s);                       /* anchura variable (titulos, launcher, dock) */
+int  text_ui(int x,int y,const char *s,uint32_t c);  /* DejaVu con avances proporcionales */
+int  text_ui_bold(int x,int y,const char *s,uint32_t c);                                      /* ancho en pixeles (8 px por caracter) */
 void crown(int x, int y, int w, uint32_t body, uint32_t bar, int a);   /* logo de la corona; alto = w*2/3 */
 #endif
