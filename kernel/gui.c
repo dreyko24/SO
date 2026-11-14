@@ -98,11 +98,11 @@ static int clk_h=12, clk_m=0; static uint32_t clk_next;
 static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
 #define ACCENT ACC[acc_i]
 /* Vortex Flow: superficies limpias con jerarquia visual y menos veladuras. */
-#define C_BG 0x121b2c
-#define C_BORDER 0x34415b
-#define C_TXT 0xeaf2ff
-#define C_DIM 0xaab9d0
-#define C_BTN 0x26334e
+#define C_BG (light_theme?0xf4f7fc:0x121b2c)
+#define C_BORDER (light_theme?0xb3c4db:0x34415b)
+#define C_TXT (light_theme?0x18243b:0xeaf2ff)
+#define C_DIM (light_theme?0x4d6079:0xaab9d0)
+#define C_BTN (light_theme?0xdbe5f3:0x26334e)
 
 /* Localizacion de todos los rótulos que pasan por las primitivas UI.
  * El texto libre del usuario, rutas y resultados de programas no se modifican. */
@@ -235,7 +235,8 @@ static uint32_t wall_px(int v,int x,int y,int W,int H){
     else { f=fx_of(0x1c0b18); fx_mix(&f,0x2a1020,k_min(4096,(nx+ny)*2)); fx_glow(&f,nx,ny,900,980,800,0xc8582a,220); fx_glow(&f,nx,ny,120,120,700,0x962878,200); }
     int d=BAYER[(y&3)*4+(x&3)]*16+8, o[3];
     for(int i=0;i<3;i++){ o[i]=(f.c[i]+d)>>8; if(o[i]>255) o[i]=255; if(o[i]<0) o[i]=0; }
-    return ((uint32_t)o[0]<<16)|((uint32_t)o[1]<<8)|(uint32_t)o[2];
+    uint32_t pixel=((uint32_t)o[0]<<16)|((uint32_t)o[1]<<8)|(uint32_t)o[2];
+    return light_theme?mix(pixel,0xf8fbff,216):pixel;
 }
 #define THW 96
 #define THH 60
@@ -919,7 +920,7 @@ static void snake_tick(uint32_t t){
 static void button(int x,int y,int w,int h,const char *label,int primary){
     rrect(x,y,w,h,6,0xffffff,primary?40:20); rrect(x+1,y+1,w-2,h-2,5,primary?ACCENT:C_BTN,255);
     clip_set(x+1,y+1,w-2,h/2); rrect(x+1,y+1,w-2,h-2,5,0xffffff,14); clip_reset();
-    text(x+(w-text_w(label))/2,y+(h-16)/2,label,0xffffff);
+    text(x+(w-text_w(label))/2,y+(h-16)/2,label,primary?0xffffff:C_TXT);
 }
 static void draw_folder(int x,int y){ rrect(x,y+2,10,6,2,0xe0a62d,255); rrect(x,y+5,22,14,3,0xf5b83d,255); }
 static void draw_doc(int x,int y){ rrect(x+2,y+1,16,20,2,0xe8eaf4,255); fill(x+5,y+8,10,1,0x8a8fa8,255); fill(x+5,y+12,10,1,0x8a8fa8,255); fill(x+5,y+16,7,1,0x8a8fa8,255); }
@@ -1293,7 +1294,7 @@ static void draw_window(int wi,int focused){
     rrect(x,y,w->w,w->h,12,focused?mix(C_BORDER,ACCENT,45):C_BORDER,255);
     rrect(x+1,y+1,w->w-2,w->h-2,11,C_BG,255);
     clip_set(x+1,y+1,w->w-2,TB-1);
-    rrect(x+1,y+1,w->w-2,TB+10,11,focused?0x24324a:0x19253a,255);
+    rrect(x+1,y+1,w->w-2,TB+10,11,light_theme?(focused?0xd6e3f5:0xe5edf9):(focused?0x24324a:0x19253a),255);
     /* Acento sutil en lugar del anticuado borde morado completo. */
     fill(x+16,y+3,54,2,focused?ACCENT:0x475674,focused?230:85);
     clip_reset();
@@ -1574,8 +1575,8 @@ static void draw_window(int wi,int focused){
             text(cx+cw/2-text_w("Espacio para reintentar")/2,oy+SGH*SCELL/2+10,"Espacio para reintentar",C_DIM); }
         break; }
     case A_SETTINGS:{
-        static const char *TABS[4]={"General","Pantalla","Almacenamiento","Sistema"};
-        for(int i=0;i<4;i++) button(cx+12+i*124,cy+10,118,28,TABS[i],i==set_tab);
+        static const char *TABS[5]={"General","Pantalla","Almacenamiento","Sistema","Apariencia"};
+        for(int i=0;i<5;i++) button(cx+12+i*100,cy+10,96,28,TABS[i],i==set_tab);
         int oy=cy+50;
         if(set_tab==0){
             text_bold(cx+20,oy+14,"Color de acento",C_TXT);
@@ -1628,7 +1629,7 @@ static void draw_window(int wi,int focused){
                     button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
             } else { text(cx+20,dy+24,"No se encontro un disco duro (IDE o SATA).",C_DIM); text(cx+20,dy+44,"Sin disco, lo que hagas se pierde al apagar.",0xffb86b); }
             button(cx+cw-170,dy+104,150,28,"Vaciar Papelera",0);
-        } else {
+        } else if(set_tab==3){
             char b[96];
             text_bold(cx+20,oy+10,"Sistema",C_TXT);
             b[0]=0; cat(b,96,"Kernel: vortex-kernel " VORTEX_VERSION " (" VORTEX_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
@@ -1638,12 +1639,22 @@ static void draw_window(int wi,int focused){
             { char nb[90]; net_info(nb,sizeof nb); text(cx+20,oy+126,nb,C_DIM); }
             b[0]=0; cat(b,96,"Disco: "); if(disk_init()==0){ cat(b,96,disk_kind()); cat(b,96,", "); cat(b,96,vortexfs_active()?"guardando datos":"sin usar"); } else cat(b,96,"ninguno"); text(cx+20,oy+148,b,C_DIM);
             button(cx+20,cy+ch-44,110,28,"Reiniciar",0); button(cx+142,cy+ch-44,110,28,"Apagar",0);
+        } else {
+            text_bold(cx+20,oy+16,"Apariencia del sistema",C_TXT);
+            text(cx+20,oy+45,"El tema y el idioma se aplican al instante y se guardan.",C_DIM);
+            button(cx+20,oy+88,210,34,"Claro",light_theme);
+            button(cx+245,oy+88,210,34,"Oscuro",!light_theme);
+            text_bold(cx+20,oy+170,"Idioma del sistema",C_TXT);
+            button(cx+20,oy+208,140,36,"Español",ui_lang==0);
+            button(cx+174,oy+208,140,36,"English",ui_lang==1);
+            button(cx+328,oy+208,140,36,"Quechua",ui_lang==2);
+            text(cx+20,oy+270,"El teclado se configura por separado en General.",C_DIM);
         }
         break; }
     }
     clip_reset();
     { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-110,TB-1); text_ui_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+      clip_set(x+1,y+1,w->w-110,TB-1); text_ui_bold(tx,y+7,w->title,focused?C_TXT:C_DIM); clip_reset(); }
 }
 
 /* Ventanas minimizadas recuperables incluso sin icono en el dock. */
@@ -1660,25 +1671,27 @@ static int minimized_at(int px,int py){
 }
 /* ---------------- barra superior y dock ---------------- */
 static void draw_topbar(void){
-    fill(0,0,gw,BARH,0x0b1221,248);
+    fill(0,0,gw,BARH,light_theme?0xe9eff8:0x0b1221,248);
     fill(0,BARH-1,gw,1,0x7086b3,50);
     fill(16,7,3,14,ACCENT,255);
-    text_ui_bold(27,6,"Vortex OS",0xf4f7ff);
+    text_ui_bold(27,6,"Vortex OS",C_TXT);
     { int n=0;
       for(int k=0;k<nord;k++){Win *w=&wins[order[k]];
         if(!w->minimized)continue;
         int x=120+n*105;if(x+101>=gw/2-48)break;
-        rrect(x,3,101,BARH-6,5,0x34445f,255);
+        rrect(x,3,101,BARH-6,5,light_theme?0xcbdaf0:0x34445f,255);
         char label[14];k_strcpy(label,w->title,sizeof label);
-        text(x+6,6,label,0xffffff);n++;
+        text(x+6,6,label,C_TXT);n++;
       }
     }
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
-    text_ui_bold((gw-text_ui_w(t))/2,6,t,0xffffff);
+    text_ui_bold((gw-text_ui_w(t))/2,6,t,C_TXT);
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
-    { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
+    { const char *lc=language_code(ui_lang); char up[3]={(char)(lc[0]-32),(char)(lc[1]-32),0}; 
+      rrect(gw-110,3,56,BARH-6,5,language_menu_open?ACCENT:(light_theme?0xd5e1f1:0x19253a),255);
+      text_ui_bold(gw-94,6,up,language_menu_open?0xffffff:C_TXT); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
 }
 #define NDOCK 9
 #define TILE 52
@@ -1686,8 +1699,8 @@ static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)
 static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
 static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
-    rrect(x,y,TILE,TILE,13,0x23314d,255);
-    rrect(x+1,y+1,TILE-2,TILE-2,12,0x2b3b59,230);
+    rrect(x,y,TILE,TILE,13,light_theme?0xb6c9e5:0x23314d,255);
+    rrect(x+1,y+1,TILE-2,TILE-2,12,light_theme?0xe8f0fa:0x2b3b59,230);
     fill(x+13,y+2,TILE-26,1,0xffffff,27);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
@@ -1719,8 +1732,8 @@ static void draw_icon(int i,int x,int y){
 static void draw_dock(void){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
     fill(bx+15,by+bh-2,bw-30,5,0x030918,55);
-    rrect(bx,by,bw,bh,18,0x101a2c,255);
-    rrect(bx+1,by+1,bw-2,bh-2,17,0x1b2941,255);
+    rrect(bx,by,bw,bh,18,light_theme?0xc0cce1:0x101a2c,255);
+    rrect(bx+1,by+1,bw-2,bh-2,17,light_theme?0xdce8f6:0x1b2941,255);
     fill(bx+20,by+2,bw-40,1,0xffffff,22);
     for(int i=0;i<NDOCK;i++){
         int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
@@ -1838,25 +1851,25 @@ static void appmenu_draw(void){
     fill(x-5,y+17,5,h-21,0x050817,70);
     fill(x+w,y+17,5,h-21,0x050817,70);
     fill(x+12,y+h,w-24,6,0x050817,70);
-    rrect(x,y,w,h,18,0x1b2842,255);
+    rrect(x,y,w,h,18,light_theme?0xe9f1fd:0x1b2842,255);
     fill(x+26,y+62,w-52,1,0xffffff,24);
     rrect(x+13,y+14,40,40,11,0xe7e0fa,255);
     vortex_logo(x+18,y+20,31,255);
-    text_big(x+64,y+17,"Aplicaciones",0xffffff);
+    text_big(x+64,y+17,"Aplicaciones",C_TXT);
     text(x+w-164,y+27,"Vortex OS",0xb7bdf0);
     fill(x+156,y+69,w-174,1,0xffffff,26);
-    rrect(x+9,y+66,143,h-78,12,0x101b30,255);
-    rrect(x+164,y+67,w-187,35,11,0x0e172a,255);
-    rrect(x+166,y+69,w-191,31,10,0x273851,255);
+    rrect(x+9,y+66,143,h-78,12,light_theme?0xd4e1f3:0x101b30,255);
+    rrect(x+164,y+67,w-187,35,11,light_theme?0xc7d7eb:0x0e172a,255);
+    rrect(x+166,y+69,w-191,31,10,light_theme?0xf7faff:0x273851,255);
     circle(x+184,y+84,6,0xc6d4ed,220);
     line(x+188,y+89,x+193,y+94,2,0xc6d4ed,220);
-    if(app_search_len)text_ui(x+202,y+76,app_search,0xf0f4ff);
-    else text_ui(x+202,y+76,"Buscar aplicaciones...",0x99aac6);
+    if(app_search_len)text_ui(x+202,y+76,app_search,C_TXT);
+    else text_ui(x+202,y+76,"Buscar aplicaciones...",C_DIM);
     text_ui(x+w-86,y+110,"Enter / Esc",0x8698b2);
     for(int i=0;i<APPMENU_CATS;i++){
         int row=y+76+i*42;
         if(i==appmenu_cat)rrect(x+16,row,130,37,8,0x6358b4,230);
-        text_ui_bold(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:0xb5c1d9);
+        text_ui_bold(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:C_TXT);
     }
     int left=x+156,top=y+122,cw=(w-177)/4,rh=(h-134)/4;
     int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search))count++;
@@ -1865,12 +1878,28 @@ static void appmenu_draw(void){
         int idx=appmenu_index(n);if(idx<0)break;
         int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
         if(cy+rh>y+h)break;
-        rrect(cx+3,cy+3,cw-8,rh-6,10,0x263652,255);
+        rrect(cx+3,cy+3,cw-8,rh-6,10,light_theme?0xd1def1:0x263652,255);
         int iconx=cx+(cw-TILE)/2,icony=cy+5;
         appmenu_tile_icon(&APPMENU[idx],iconx,icony);
         int tx=cx+(cw-text_ui_w(APPMENU[idx].label))/2;
         if(tx<cx+4)tx=cx+4;
-        text_ui(tx,cy+rh-22,APPMENU[idx].label,0xeaf0ff);
+        text_ui(tx,cy+rh-22,APPMENU[idx].label,C_TXT);
+    }
+}
+static int language_menu_hit(int px,int py){
+    int x=gw-180,y=BARH+6;
+    if(px<x||px>=x+170||py<y+31||py>=y+127)return -1;
+    return (py-(y+31))/32;
+}
+static void language_menu_draw(void){
+    if(!language_menu_open)return;
+    int x=gw-180,y=BARH+6;
+    rrect(x,y,170,136,11,light_theme?0xe8f0fb:0x1a2138,255);
+    text_bold(x+13,y+9,"Idioma",C_TXT);
+    static const char *const names[3]={"Español","English","Quechua"};
+    for(int i=0;i<3;i++){
+        if(i==ui_lang)rrect(x+7,y+31+i*32,156,30,6,ACCENT,120);
+        text_ui(x+16,y+37+i*32,names[i],C_TXT);
     }
 }
 static int power_menu_hit(int mx0,int my0){
@@ -1881,8 +1910,8 @@ static void power_menu_draw(void){
     if(!power_menu_open)return;
     int x=gw-230,y=BARH+6;
     rrect(x+3,y+4,218,188,12,0x000000,80);
-    rrect(x,y,218,188,12,0x1a2138,255);
-    text_bold(x+19,y+12,"Energia",0xffffff);
+    rrect(x,y,218,188,12,light_theme?0xe8f0fb:0x1a2138,255);
+    text_bold(x+19,y+12,"Energia",C_TXT);
     static const char *const power_labels[]={"Apagar","Suspender","Reiniciar"};
     for(int i=0;i<3;i++){
         int cy=y+38+i*48;
@@ -1891,7 +1920,7 @@ static void power_menu_draw(void){
         if(i==0)circle(x+33,cy+21,7,0xffffff,240);
         else if(i==1)fill(x+31,cy+14,4,14,0xffffff,255);
         else {line(x+27,cy+24,x+39,cy+17,2,0xffffff,255);line(x+38,cy+17,x+37,cy+26,2,0xffffff,255);}
-        text_ui_bold(x+57,cy+13,power_labels[i],0xeaf0ff);
+        text_ui_bold(x+57,cy+13,power_labels[i],C_TXT);
     }
 }
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
@@ -1939,11 +1968,11 @@ static void draw_dobj(const DObj *o){
         int lw=text_ui_w(DOCK_LBL[o->kind]);
         text_ui(o->x+(o->w-lw)/2,o->y+TILE+14,DOCK_LBL[o->kind],0xf2f6ff);
     } else if(o->kind==100){
-        rrect(o->x,o->y,o->w,o->h,16,0x0c182c,238);
-        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,0x21304b,231);
+        rrect(o->x,o->y,o->w,o->h,16,light_theme?0xc9d7ec:0x0c182c,238);
+        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,light_theme?0xe8f1fa:0x21304b,231);
         fill(o->x+14,o->y+13,3,22,ACCENT,240);
-        text_ui_bold(o->x+26,o->y+14,"Acceso rapido",0xf7f9ff);
-        text_ui(o->x+16,o->y+40,"Tu espacio, a un clic",0xb6c5dd);
+        text_ui_bold(o->x+26,o->y+14,"Acceso rapido",C_TXT);
+        text_ui(o->x+16,o->y+40,"Tu espacio, a un clic",C_DIM);
         rrect(o->x+12,o->y+66,92,28,8,0x3b4772,255);
         rrect(o->x+115,o->y+66,93,28,8,0x594989,255);
         text_ui_bold(o->x+28,o->y+72,"Archivos",0xffffff);
@@ -1952,7 +1981,7 @@ static void draw_dobj(const DObj *o){
         rrect(o->x,o->y,o->w,o->h,16,0x0c182c,238);
         rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,0x21304b,231);
         fill(o->x+14,o->y+13,3,22,0x29cbb0,240);
-        text_ui_bold(o->x+26,o->y+14,"Sistema",0xffffff);
+        text_ui_bold(o->x+26,o->y+14,"Sistema",C_TXT);
         char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text_ui(o->x+14,o->y+34,b,C_TXT);
         b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text_ui(o->x+14,o->y+54,b,C_TXT);
         b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text_ui(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
@@ -2052,7 +2081,7 @@ static void render_region(int x0,int y0,int x1,int y1){
         }
         if(!hidden)draw_window(order[k],k==nord-1);
     }
-    draw_topbar();draw_dock();appmenu_draw();power_menu_draw();
+    draw_topbar();draw_dock();appmenu_draw();power_menu_draw();language_menu_draw();
     if(fd_on){
         char g[FS_NAME+4];k_strcpy(g,fd_name,sizeof g);g[26]=0;
         int tw=text_w(g)+44;
@@ -2156,7 +2185,7 @@ static void files_click(Win *w,int lx,int ly,int cw,int ch){
     fd_cand=1; fd_on=0; fd_sx=mx; fd_sy=my; fd_win=wi; fs_path(f,fd_path,sizeof fd_path); k_strcpy(fd_name,f->name,sizeof fd_name);
 }
 static void settings_click(int lx,int ly,int cw,int ch){
-    for(int i=0;i<4;i++) if(in_rect(lx,ly,12+i*124,10,118,28)){ set_tab=i; fmt_confirm=0; dirty=1; return; }
+    for(int i=0;i<5;i++) if(in_rect(lx,ly,12+i*100,10,96,28)){ set_tab=i; fmt_confirm=0; dirty=1; return; }
     int y=ly-50;
     if(set_tab==0){
         for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
@@ -2178,9 +2207,15 @@ static void settings_click(int lx,int ly,int cw,int ch){
             dirty=1; return; }
         if(in_rect(lx,y,cw-170,dy+104,150,28)){ FsNode *tr=trash_dir(); if(tr) while(tr->child) fs_remove(tr->child); dirty=1; return; }
         if(fmt_confirm){ fmt_confirm=0; dirty=1; }
-    } else {
+    } else if(set_tab==3){
         if(in_rect(lx,ly,20,ch-44,110,28)) kreboot();
         else if(in_rect(lx,ly,142,ch-44,110,28)) khalt();
+    } else {
+        if(in_rect(lx,y,20,88,210,34)){light_theme=1;cfg_set("tema","claro");build_wall();dirty=1;}
+        else if(in_rect(lx,y,245,88,210,34)){light_theme=0;cfg_set("tema","oscuro");build_wall();dirty=1;}
+        else if(in_rect(lx,y,20,208,140,36))set_language(0);
+        else if(in_rect(lx,y,174,208,140,36))set_language(1);
+        else if(in_rect(lx,y,328,208,140,36))set_language(2);
     }
 }
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
@@ -2276,6 +2311,11 @@ static void appmenu_launch(int idx){
     }
 }
 static void on_press(void){
+    if(language_menu_open){
+        int choice=language_menu_hit(mx,my);language_menu_open=0;dirty=1;
+        if(choice>=0&&choice<3)set_language(choice);
+        return;
+    }
     if(power_menu_open){
         int choice=power_menu_hit(mx,my);
         power_menu_open=0;power_damage();
@@ -2308,7 +2348,12 @@ static void on_press(void){
             kserial_puts("[vortex-apps] menu abierto\n");
         }else open_app(DOCK_APP[d]);return; }
     if(d==-2) return;
-    if(my<BARH){int mi=minimized_at(mx,my);if(mi>=0){focus(mi);return;}if(mx>gw-48){
+    if(my<BARH){int mi=minimized_at(mx,my);if(mi>=0){focus(mi);return;}
+        if(mx>=gw-110&&mx<gw-50){
+            language_menu_open=!language_menu_open;
+            if(power_menu_open){power_menu_open=0;power_damage();}
+            dirty=1;return;
+        }if(mx>gw-48){
             power_menu_open=!power_menu_open;power_damage();
             if(appmenu_open){appmenu_open=0;launcher_damage();}
         }return;}
@@ -2335,6 +2380,7 @@ static void on_press(void){
 static void on_rpress(void){                                         /* boton derecho: menu contextual */
     if(appmenu_open){appmenu_open=0;launcher_damage();}
     if(power_menu_open){power_menu_open=0;power_damage();}
+    if(language_menu_open){language_menu_open=0;dirty=1;}
     if(mu_open){ mu_open=0; dirty=1; }
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
@@ -2429,6 +2475,7 @@ void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(power_sleep){power_sleep=0;dirty=1;return;}
     if(power_menu_open&&c==27){power_menu_open=0;power_damage();return;}
+    if(language_menu_open&&c==27){language_menu_open=0;dirty=1;return;}
     if(appmenu_open){
         if(c==27){appmenu_open=0;launcher_damage();return;}
         if(c=='\b'||c==0x7f){if(app_search_len)app_search[--app_search_len]=0;launcher_damage();return;}
@@ -2535,6 +2582,7 @@ void gui_key(int c){
 /* despues de cargar el sistema base: se lee lo guardado en el disco (encima) y se aplican los ajustes guardados */
 void gui_storage_ready(void){
     (void)vortexfs_mount(); fs_track=1;
+    { char theme[16];if(cfg_get("tema",theme,sizeof theme))light_theme=!k_strcmp(theme,"claro"); }
     { char loc[16];if(cfg_get("idioma",loc,sizeof loc)){
         if(!k_strcmp(loc,"en"))ui_lang=1;
         else if(!k_strcmp(loc,"qu"))ui_lang=2;
