@@ -1658,8 +1658,15 @@ static int enc_body_height(const Win *w){
 static void enc_progress_load(Win *w){
     memset(&w->enc_progress,0,sizeof w->enc_progress);
     FsNode *f=fs_resolve(fs_root(),"/Sistema/saber-progress.dat");
-    if(f&&!f->dir&&f->data)
-        (void)saber_decode((const uint8_t*)f->data,f->size,&w->enc_progress);
+    if(f&&!f->dir&&f->data &&
+       saber_decode((const uint8_t*)f->data,f->size,&w->enc_progress)==0)return;
+    /* El formato antiguo era un TXT con las 4/6 mejores puntuaciones
+     * y el record de parejas. Migrar una sola vez, no borrar el original. */
+    FsNode *legacy=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
+    if(legacy&&!legacy->dir&&legacy->data &&
+       saber_import_legacy_text((const uint8_t*)legacy->data,legacy->size,
+                                &w->enc_progress)==0)
+        enc_progress_save(w);
 }
 static void enc_progress_save(Win *w){
     uint8_t data[SABER_PROGRESS_SIZE];
