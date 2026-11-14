@@ -1,0 +1,34 @@
+name: vortex-autoguardado
+# Conserva cada avance con un tag recuperable aunque la rama cambie o se borre.
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Obtener commit exacto
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Guardar checkpoint Git inmutable por SHA
+        env:
+          VORTEX_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="vortex-checkpoint-${VORTEX_SHA}"
+          if git ls-remote --tags origin "refs/tags/$tag" | grep -Fq "refs/tags/$tag"; then
+            echo "Checkpoint ya guardado: $tag"
+            exit 0
+          fi
+          git config user.name "vortex-ci"
+          git config user.email "vortex-ci@users.noreply.github.com"
+          git tag -a "$tag" -m "Vortex OS checkpoint automatico $VORTEX_SHA" "$VORTEX_SHA"
+          git push origin "refs/tags/$tag"
+          echo "CHECKPOINT OK: $tag"
