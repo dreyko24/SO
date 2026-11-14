@@ -30,6 +30,8 @@ jobs:
           sh -n tools/rootfs-es/usr/local/bin/vortex-chromium
           sh -n tools/rootfs-es/usr/local/bin/abrir-x
           sh -n tools/mkdebian.sh
+          bash -n tools/verificar-vortex.sh
+          bash -n tools/probar-vortex.sh
       - name: Gestor real de ventanas, dock y pantalla completa
         run: |
           gcc -std=gnu11 -O1 -g -w -fsanitize=address,undefined -fno-omit-frame-pointer tools/window_state_test.c kernel/zip.c -o /tmp/vortex-window-test
