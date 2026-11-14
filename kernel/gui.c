@@ -2018,13 +2018,24 @@ static void app_click(Win *w,int lx,int ly){
         }
         break;
     case A_SABER:
-        if(w->saber_topic<0){
+        if(w->saber_topic==-1){
+            if(in_rect(lx,ly,20,376,200,34)){ saber_game_start(w); break; }
             int pw=(cw-56)/2;
             for(int i=0;i<NSABER;i++){
                 int xx=18+(i%2)*(pw+20), yy=104+(i/2)*138;
                 if(in_rect(lx,ly,xx,yy,pw,122)){ saber_start(w,i); break; }
             }
         } else if(in_rect(lx,ly,16,10,96,27)){ w->saber_topic=-1; dirty=1; }
+        else if(w->saber_topic==-2){
+            if(in_rect(lx,ly,20,444,160,32)){ saber_game_start(w); break; }
+            if(in_rect(lx,ly,198,444,175,32)){ w->saber_topic=-1; dirty=1; break; }
+            int colw=(cw-56)/2;
+            for(int j=0;j<SABER_PAIRS;j++){
+                int yy=112+j*66;
+                if(in_rect(lx,ly,18,yy,colw,54)){ saber_game_select(w,0,j); break; }
+                if(in_rect(lx,ly,18+colw+20,yy,colw,54)){ saber_game_select(w,1,j); break; }
+            }
+        }
         else if(w->saber_q>=SABER_NQ){
             if(in_rect(lx,ly,30,328,225,40)){ w->saber_topic=-1; dirty=1; }
             else if(in_rect(lx,ly,270,328,175,40)) saber_start(w,w->saber_topic);
@@ -2222,7 +2233,13 @@ void gui_key(int c){
     case A_SNAKE: snake_key(w,c); break;
     case A_SABER:
         if(c==27){ w->saber_topic=-1; dirty=1; }
-        else if(w->saber_topic<0&&c>='1'&&c<='4') saber_start(w,c-'1');
+        else if(w->saber_topic==-1&&c=='g') saber_game_start(w);
+        else if(w->saber_topic==-2){
+            if(c>='1'&&c<='4') saber_game_select(w,0,c-'1');
+            else if(c>='5'&&c<='8') saber_game_select(w,1,c-'5');
+            else if(c=='r'||c=='R') saber_game_start(w);
+        }
+        else if(w->saber_topic==-1&&c>='1'&&c<='4') saber_start(w,c-'1');
         else if(w->saber_topic>=0&&w->saber_q<SABER_NQ){
             if(c>='1'&&c<='3') saber_answer(w,c-'1');
             else if(c=='\n') saber_next(w);
