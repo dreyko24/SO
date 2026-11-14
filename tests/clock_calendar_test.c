@@ -3,6 +3,9 @@
 #include "../kernel/clock_calendar.h"
 static void check(int year,int month,int day,int hour,int tz,
                   int ey,int em,int ed,int eh){
+    assert(vortex_weekday(2026,11,14)==5);
+    assert(vortex_weekday(2024,2,29)==3);
+    assert(vortex_weekday(2026,11,31)<0);
     VortexCalendar c={0};
     assert(!vortex_calendar_shift(year,month,day,hour,42,tz,&c));
     assert(c.year==ey&&c.month==em&&c.day==ed&&c.hour==eh&&c.minute==42);

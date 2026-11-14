@@ -218,6 +218,36 @@ int main(void){
       closeall();
       puts("VORTEX FULLSCREEN F11 / DOCK RESERVADO Y RESTAURACION OK");
     }
+    {
+      closeall();workspace_set(0);
+      Win *w=open_app(A_CALENDAR);
+      if(!w||w->cal_year!=2026||w->cal_month!=11||w->cal_day!=14){
+          puts("FALLO fecha inicial calendario");return 1;
+      }
+      int px=w->x+1,py=w->y+TB;
+      click(px+34,py+421);typestr("Reunion de proyecto");gui_key('\n');
+      FsNode *event=fs_resolve(fs_root(),"/Documentos/Calendario/2026-11-14.txt");
+      if(!event||event->size!=19||memcmp(event->data,"Reunion de proyecto",19)){
+          puts("FALLO guardar evento calendario");return 1;
+      }
+      shot("47_calendario_evento");
+      closeall();w=open_app(A_CALENDAR);
+      if(!w||strcmp(w->cal_text,"Reunion de proyecto")){
+          puts("FALLO recargar evento calendario");return 1;
+      }
+      click(W-188,14);
+      if(win_top()<0||wins[win_top()].type!=A_CALENDAR){
+          puts("FALLO boton calendario barra superior");return 1;
+      }
+      click(w->x+1+w->w-2-42,w->y+TB+31);
+      if(w->cal_month!=12){puts("FALLO mes siguiente calendario");return 1;}
+      calendar_shift_month(w,-1);
+      click(w->x+1+175,w->y+TB+468);
+      if(fs_resolve(fs_root(),"/Documentos/Calendario/2026-11-14.txt")){
+          puts("FALLO borrar evento calendario");return 1;
+      }
+      closeall();puts("VORTEX CALENDARIO: EVENTOS, VORTEXFS Y FECHA PERU OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];

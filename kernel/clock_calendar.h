@@ -35,4 +35,10 @@ static int vortex_calendar_shift(int year,int month,int day,int hour,int minute,
     out->hour=hour;out->minute=minute;
     return 0;
 }
+static int vortex_weekday(int y,int m,int d){
+    static const unsigned char t[12]={0,3,2,5,0,3,5,1,4,6,2,4};
+    if(y<1970||y>9999||m<1||m>12||d<1||d>vortex_month_days(y,m))return -1;
+    if(m<3)y--;
+    return (y+y/4-y/100+y/400+t[m-1]+d+6)%7; /* lunes=0 */
+}
 #endif

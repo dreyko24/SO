@@ -19,7 +19,7 @@
 #include "saber_progress.h"
 #include "clock_calendar.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA, A_CALENDAR };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -45,6 +45,8 @@ typedef struct {
     int enc_game,enc_game_first,enc_game_pending,enc_game_matches,enc_game_turns;
     unsigned enc_game_revealed;
     VortexSaberProgress enc_progress;
+    int cal_year,cal_month,cal_day,cal_edit,cal_len;
+    char cal_text[100];
     char enc_search[48];
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
@@ -519,6 +521,9 @@ static int browser_open_modern(const char *url){
     run_quiet(cmd);
     return 1;
 }
+static void calendar_load(Win *w);
+static void calendar_save(Win *w,int remove);
+static void calendar_shift_month(Win *w,int delta);
 static void enc_progress_load(Win *w);
 static void enc_progress_save(Win *w);
 static void enc_article_open(Win *w,int id);
@@ -545,6 +550,15 @@ static Win *open_app(int type){
     case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
     case A_ENCARTA:  w->w=770; w->h=575; w->enc_topic=-1;w->enc_qanswer=-1;
                      set_title(w,"Vortex Saber - Enciclopedia");break;
+    case A_CALENDAR: w->w=720;w->h=560;set_title(w,"Calendario");
+                     w->cal_year=clk_y;w->cal_month=clk_mon;w->cal_day=clk_d;
+                     if(w->cal_year<1970){
+                         int yy,mm,dd,hh,mi;VortexCalendar dt;
+                         if(!krtc_full(&yy,&mm,&dd,&hh,&mi)&&
+                            !vortex_calendar_shift(yy,mm,dd,hh,mi,tz,&dt)){
+                             w->cal_year=dt.year;w->cal_month=dt.month;w->cal_day=dt.day;
+                         }else{w->cal_year=2026;w->cal_month=1;w->cal_day=1;}
+                     }break;
     case A_AUDIO:    w->w=520; w->h=275; set_title(w,"Vortex Musica"); break;
     case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
@@ -557,6 +571,7 @@ static Win *open_app(int type){
     dwin(w); dock_damage();
     if(type==A_BROWSER)nav(w,"vortex://inicio",0);
     if(type==A_ENCARTA)enc_progress_load(w);
+    if(type==A_CALENDAR)calendar_load(w);
     return w;
 }
 static int ext_is(const FsNode *f,const char *e);
@@ -1359,6 +1374,7 @@ static void win_min_dimensions(const Win *w,int *minw,int *minh){
     case A_AUDIO:mw=520;mh=275;break;
     case A_OFFICE:mw=540;mh=TB+1+500;break;
     case A_ENCARTA:mw=600;mh=480;break;
+    case A_CALENDAR:mw=615;mh=530;break;
     case A_VIDEO:mw=480;mh=340;break;
     case A_MEDIA:mw=430;mh=320;break;
     case A_FILES:mw=420;mh=290;break;
@@ -1857,6 +1873,87 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
         text_ui_bold(rx+rw-131,ry+rh-36,"Siguiente",C_TXT);
     }
 }
+/* Calendario local: un archivo de texto por fecha en Documentos/Calendario. */
+static const char *const CMON[]={"Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"};
+static void cal_name(int y,int m,int d,char *s,int max){
+    s[0]=0;cat_int(s,max,y);cat(s,max,"-");if(m<10)cat(s,max,"0");
+    cat_int(s,max,m);cat(s,max,"-");if(d<10)cat(s,max,"0");
+    cat_int(s,max,d);cat(s,max,".txt");
+}
+static FsNode *cal_dir(int create){
+    FsNode *d=fs_resolve(fs_root(),"/Documentos");
+    if(!d||!d->dir)return 0;
+    FsNode *f=fs_find(d,"Calendario");
+    if(!f&&create)f=fs_mkdir(d,"Calendario");
+    return f&&f->dir?f:0;
+}
+static FsNode *cal_event(int y,int m,int d){
+    FsNode *dir=cal_dir(0);if(!dir)return 0;
+    char name[32];cal_name(y,m,d,name,sizeof name);
+    FsNode *f=fs_find(dir,name);return f&&!f->dir?f:0;
+}
+static void calendar_load(Win *w){
+    w->cal_edit=0;w->cal_len=0;w->cal_text[0]=0;
+    FsNode *f=cal_event(w->cal_year,w->cal_month,w->cal_day);
+    if(f&&f->data&&f->size>0){
+        int n=k_min(f->size,(int)sizeof(w->cal_text)-1);
+        memcpy(w->cal_text,f->data,(size_t)n);w->cal_text[n]=0;w->cal_len=n;
+    }
+}
+static void calendar_save(Win *w,int remove){
+    FsNode *dir=cal_dir(!remove);if(!dir)return;
+    char name[32];cal_name(w->cal_year,w->cal_month,w->cal_day,name,sizeof name);
+    FsNode *f=fs_find(dir,name);
+    if(remove){if(f)fs_remove(f);w->cal_text[0]=0;w->cal_len=0;}
+    else if(w->cal_len>0&& !fs_create(dir,name,w->cal_text,w->cal_len))return;
+    w->cal_edit=0;
+    if(vortexfs_active())(void)vortexfs_save();
+    dirty=1;
+}
+static void calendar_shift_month(Win *w,int delta){
+    int m=w->cal_month+delta;
+    if(m<1){if(w->cal_year<=1970)return;w->cal_year--;m=12;}
+    else if(m>12){if(w->cal_year>=9999)return;w->cal_year++;m=1;}
+    w->cal_month=m;int max=vortex_month_days(w->cal_year,m);
+    if(w->cal_day>max)w->cal_day=max;
+    calendar_load(w);dwin(w);
+}
+static void calendar_render(Win *w,int x,int y,int width,int height){
+    rrect(x+11,y+9,width-22,height-17,17,C_PANEL,255);
+    button(x+20,y+16,35,31,"<",0);
+    button(x+width-58,y+16,35,31,">",0);
+    button(x+width-158,y+16,86,31,"Hoy",0);
+    char month[50]="";cat(month,sizeof month,CMON[w->cal_month-1]);
+    cat(month,sizeof month," ");cat_int(month,sizeof month,w->cal_year);
+    text_big(x+(width-text_w_big(month))/2,y+20,month,C_TXT);
+    static const char *days[]={"Lun","Mar","Mie","Jue","Vie","Sab","Dom"};
+    int dx=x+22,cell=(width-44)/7,first=vortex_weekday(w->cal_year,w->cal_month,1);
+    for(int j=0;j<7;j++)text_ui_bold(dx+j*cell+12,y+75,days[j],C_DIM);
+    int limit=vortex_month_days(w->cal_year,w->cal_month);
+    for(int i=0;i<42;i++){
+        int d=i-first+1;if(d<1||d>limit)continue;
+        int px=dx+(i%7)*cell,py=y+106+(i/7)*44;
+        int today=w->cal_year==clk_y&&w->cal_month==clk_mon&&d==clk_d;
+        rrect(px+2,py+2,cell-5,40,9,d==w->cal_day?ACCENT:today?C_HOVER:C_TILE,255);
+        char num[7]="";cat_int(num,sizeof num,d);
+        text_ui_bold(px+11,py+7,num,d==w->cal_day?0xffffff:C_TXT);
+        if(cal_event(w->cal_year,w->cal_month,d))
+            circle(px+cell-14,py+31,3,d==w->cal_day?0xffffff:ACCENT,255);
+    }
+    char date[60]="";cat_int(date,sizeof date,w->cal_day);
+    cat(date,sizeof date," de ");cat(date,sizeof date,CMON[w->cal_month-1]);
+    text_ui_bold(x+22,y+381,date,C_TXT);
+    rrect(x+22,y+409,width-44,36,10,C_TILE,255);
+    text_ui(x+34,y+418,w->cal_len?w->cal_text:"Escribe un evento para esta fecha...",
+            w->cal_len?C_TXT:C_DIM);
+    if(w->cal_edit&&((kticks()/50)&1))
+        fill(x+34+text_ui_w(w->cal_text),y+416,2,18,ACCENT,255);
+    button(x+22,y+454,118,31,"Guardar",1);
+    button(x+151,y+454,118,31,"Eliminar",0);
+    text_ui(x+285,y+461,vortexfs_active()?"Guardado en VortexFS":
+        "En RAM: configura un disco para conservar",C_DIM);
+}
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
     if(!w->fullscreen){
@@ -1922,6 +2019,8 @@ static void draw_window(int wi,int focused){
     case A_ENCARTA:
         enc_render(w,cx,cy,cw,ch);
         break;
+    case A_CALENDAR:
+        calendar_render(w,cx,cy,cw,ch);break;
     case A_FILES:{
         { char t[40]="Archivos - "; cat(t,40,w->dir==fs_root()?"/":w->dir->name); k_strcpy(w->title,t,40); }
         for(int i=0;i<8;i++){ int bw, bx=ftb_x(i,&bw); int off=((i==2||i==3||i==5||i==6||i==7)&&!w->sel)||(i==4&&!clip_path[0]);
@@ -2334,6 +2433,11 @@ static void draw_topbar(void){
     }else{if(h<10)cat(t,16,"0");cat_int(t,16,h);cat(t,16,":");
         if(clk_m<10)cat(t,16,"0");cat_int(t,16,clk_m);}
     text_ui_bold((gw-text_ui_w(t))/2,6,t,C_TXT);
+    rrect(gw-208,3,38,BARH-6,8,light_theme?0xe5e2ee:0x302a3a,255);
+    rrect(gw-196,8,16,14,3,ACCENT,220);
+    fill(gw-196,12,16,2,0xffffff,210);
+    if(clk_y>=1970&&cal_event(clk_y,clk_mon,clk_d))
+        circle(gw-177,6,4,0xf6bd40,255);
     int st=net_state(),nx=gw-150;
     for(int b=0;b<4;b++)
         fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,
@@ -2458,7 +2562,8 @@ static const AppMenuEntry APPMENU[]={
     {"Monitor",A_MONITOR,0,MC_SISTEMA,8},
     {"Snake",A_SNAKE,0,MC_JUEGOS,6},
     {"Acerca de",A_ABOUT,0,MC_SISTEMA,15},
-    {"Enciclopedia",A_ENCARTA,0,MC_EDUCACION,16}
+    {"Enciclopedia",A_ENCARTA,0,MC_EDUCACION,16},
+    {"Calendario",A_CALENDAR,0,MC_UTIL,17}
 };
 #define APPMENU_N ((int)(sizeof APPMENU/sizeof(APPMENU[0])))
 #define APPMENU_CATS ((int)(sizeof APP_CATS/sizeof APP_CATS[0]))
@@ -2537,6 +2642,12 @@ static void appmenu_tile_icon(const AppMenuEntry *e,int x,int y){
         rrect(x+12,y+8,28,37,5,0x4bc6a9,255);
         for(int j=0;j<4;j++)fill(x+17,y+18+j*6,17,2,0xe8fff8,255);
         break;
+    case 17: /* calendario */
+        rrect(x+8,y+10,36,33,6,0xf2f1f8,255);
+        rrect(x+8,y+10,36,12,6,ACCENT,255);
+        fill(x+15,y+6,4,10,0x9a8eb8,255);
+        fill(x+32,y+6,4,10,0x9a8eb8,255);
+        text_ui_bold(x+19,y+24,"14",0x2c2637);break;
     case 16: /* Vortex Saber: libro ilustrado original */
         rrect(x+7,y+9,38,34,7,0xe95420,255);
         rrect(x+10,y+11,15,29,3,0xffe5ca,255);
@@ -3008,6 +3119,26 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
 static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     switch(w->type){
+    case A_CALENDAR:{
+        if(in_rect(lx,ly,20,16,35,31)){calendar_shift_month(w,-1);return;}
+        if(in_rect(lx,ly,cw-58,16,35,31)){calendar_shift_month(w,1);return;}
+        if(in_rect(lx,ly,cw-158,16,86,31)){
+            if(clk_y>=1970){w->cal_year=clk_y;w->cal_month=clk_mon;w->cal_day=clk_d;
+                calendar_load(w);dwin(w);}return;
+        }
+        int cell=(cw-44)/7,dx=22,dy=106;
+        if(lx>=dx&&lx<dx+7*cell&&ly>=dy&&ly<dy+6*44){
+            int first=vortex_weekday(w->cal_year,w->cal_month,1);
+            int d=((ly-dy)/44)*7+(lx-dx)/cell-first+1;
+            if(d>0&&d<=vortex_month_days(w->cal_year,w->cal_month)){
+                w->cal_day=d;calendar_load(w);dwin(w);}
+            return;
+        }
+        if(in_rect(lx,ly,22,409,cw-44,36)){w->cal_edit=1;dwin(w);return;}
+        if(in_rect(lx,ly,22,454,118,31)){calendar_save(w,0);return;}
+        if(in_rect(lx,ly,151,454,118,31)){calendar_save(w,1);return;}
+        break;
+    }
     case A_ENCARTA:{
         if(in_rect(lx,ly,20,94+342,175,33)){
             w->enc_quiz=1;w->enc_game=0;w->enc_qindex=0;w->enc_qanswer=-1;
@@ -3201,6 +3332,7 @@ static void on_press(void){
         }
         for(int i=0;i<WORKSPACES;i++)
             if(in_rect(mx,my,235+i*29,4,25,BARH-8)){workspace_set(i);return;}
+        if(in_rect(mx,my,gw-208,3,38,BARH-6)){open_app(A_CALENDAR);return;}
         int mi=minimized_at(mx,my);if(mi>=0){focus(mi);return;}
         if(mx>=gw-110&&mx<gw-50){
             language_menu_open=!language_menu_open;
@@ -3516,6 +3648,17 @@ void gui_key(int c){
         if(idx>=0){ if(idx<w->scroll) w->scroll=idx; if(idx>=w->scroll+rows) w->scroll=idx-rows+1; }
         dirty=1;
         break; }
+    case A_CALENDAR:
+        if(w->cal_edit){
+            if(c==27){calendar_load(w);dwin(w);}
+            else if(c=='\n')calendar_save(w,0);
+            else if(c=='\b'||c==0x7f){if(w->cal_len)w->cal_text[--w->cal_len]=0;dwin(w);}
+            else if(c>=32&&c<=126&&w->cal_len<(int)sizeof(w->cal_text)-1){
+                w->cal_text[w->cal_len++]=(char)c;w->cal_text[w->cal_len]=0;dwin(w);}
+        }else if(c==KEY_PGDN)calendar_shift_month(w,1);
+        else if(c==KEY_PGUP)calendar_shift_month(w,-1);
+        else if(c=='\n'){w->cal_edit=1;dwin(w);}
+        break;
     case A_ENCARTA:
         if(w->enc_game){
             if(c==27)w->enc_game=0;
