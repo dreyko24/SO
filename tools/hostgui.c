@@ -146,6 +146,13 @@ int main(void){
           "abrir firefox-esr https://www.google.com/search?q=universidades+peruanas")){
           puts("FALLO Firefox Google con búsqueda de texto");return 1;
       }
+      /* El boton de navegador moderno debe aceptar Firefox instalado.
+       * No debe intentar reinstalar Chromium cuando Firefox ya funciona. */
+      host_last_shell[0]=0;
+      browser_click(web,web->w-2-96,12,web->w-2,web->h-TB-1);
+      if(strcmp(host_last_shell,"abrir firefox-esr https://www.google.com/")){
+          puts("FALLO boton web ignora Firefox instalado");return 1;
+      }
       closeall();fs_remove(firefox);
       if(browser_modern_available()){
           puts("FALLO navegador marcado instalado sin ejecutable");return 1;

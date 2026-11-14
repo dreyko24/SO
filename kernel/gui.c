@@ -3247,8 +3247,8 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
     if(in_rect(lx,ly,cw-128,6,120,24)){
-        if(!papp_installed(4)){
-            run_in_terminal("instalar chromium");
+        if(!browser_modern_available()){
+            run_in_terminal("instalar firefox");
         }else{
             const char *url=browser_safe_target(w->url)?
                 w->url:"https://www.google.com/";
