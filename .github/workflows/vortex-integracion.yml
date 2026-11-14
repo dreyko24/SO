@@ -25,5 +25,9 @@ jobs:
         run: |
           gcc -std=c11 -Wall -Wextra -Werror tools/time_test.c -o /tmp/vortex-timetest
           /tmp/vortex-timetest
+      - name: Validacion de respuestas NTP, correlacion y rollover 2036
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror tools/ntp_test.c -o /tmp/vortex-ntp-test
+          /tmp/vortex-ntp-test
       - name: Red simulada y pila de protocolos
         run: python3 tools/nettest.py
