@@ -33,5 +33,9 @@ jobs:
         run: |
           gcc -std=c11 -O2 -Wall -Wextra -Werror tools/ntp_test.c -o /tmp/vortex-ntp-test
           /tmp/vortex-ntp-test
+      - name: Integracion NTP en la pila de red (UDP, reloj monotono, RTC)
+        run: |
+          gcc -std=gnu11 -O2 -Wall -Wextra tools/ntp_stack_test.c -o /tmp/vortex-ntp-stack-test
+          /tmp/vortex-ntp-stack-test
       - name: Red simulada y pila de protocolos
         run: python3 tools/nettest.py
