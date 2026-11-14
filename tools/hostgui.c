@@ -503,7 +503,12 @@ int main(void){
       int oldscroll=e->enc_scroll;
       gui_mouse_abs(e->x+1+300,e->y+TB+240,0);
       gui_mouse_wheel(-1);
-      if(e->enc_scroll<=oldscroll){puts("FALLO rueda en enciclopedia");return 1;}
+      if(e->enc_scroll<=oldscroll){
+          fprintf(stderr,"RUEDA DEBUG: scroll=%d old=%d topic=%d count=%d active=%d ownspace=%d mouse=(%d,%d) window=(%d,%d,%d,%d) appmenu=%d top=%d nord=%d\n",
+                  e->enc_scroll,oldscroll,e->enc_topic,enc_count(e),active_workspace,e->workspace,
+                  mx,my,e->x,e->y,e->w,e->h,appmenu_open,win_top(),nord);
+          puts("FALLO rueda en enciclopedia");return 1;
+      }
       shot("41_vortex_saber_geografia");
       closeall();
       puts("VORTEX SABER: INDICE, ARTICULOS, BUSQUEDA, CATEGORIAS Y SCROLL OK");
