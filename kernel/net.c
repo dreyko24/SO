@@ -3,6 +3,8 @@
  * Codigo propio escrito a partir de las especificaciones (RFC 791/792/793/826/1035/2131, manuales de Intel y Realtek).
  * Memoria DMA: arreglos estaticos en la imagen del kernel (identidad: direccion virtual = fisica, por debajo de 4 GB). */
 #include "net.h"
+#include "ntp.h"
+#include "timeutil.h"
 
 typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32;
 
@@ -447,6 +449,62 @@ static void dns_tick(void){
     dns_send();
 }
 
+/* ---------- SNTP: UTC fiable sin modificar destructivamente el CMOS ----------
+ * NTP no es autenticado: la respuesta se valida por origen, puerto y eco del nonce.
+ * Los navegadores/usuarios no deben tratar esta hora como evidencia criptografica.
+ * Mantener RTC como respaldo si no se dispone de DNS o UDP/123.
+ */
+#define NTP_PORT 49423
+static struct {
+    u32 server, sent, next, synced_at;
+    u8 nonce[8];
+    uint64_t epoch;
+    int phase, tries, valid;
+} ntp;
+static void ntp_send(void){
+    u8 packet[48]; memset(packet,0,sizeof packet);
+    packet[0]=0x23; /* version 4, modo cliente */
+    u32 seed=kticks()*1664525u+1013904223u+(u32)ntp.server;
+    wr32(packet+40,seed); wr32(packet+44,seed^0xA5B4C3D2u);
+    memcpy(ntp.nonce,packet+40,8);
+    if(udp_out(ntp.server,NTP_PORT,123,packet,48)<0){ ntp.phase=0; ntp.next=kticks()+30000; return; }
+    ntp.sent=kticks(); ntp.phase=2;
+}
+static void ntp_in(u32 source,u16 source_port,const u8 *payload,int n){
+    if(ntp.phase!=2||source!=ntp.server||source_port!=123) return;
+    uint64_t epoch=0;
+    if(vortex_ntp_reply(payload,n,ntp.nonce,&epoch)) return;
+    ntp.epoch=epoch; ntp.synced_at=kticks(); ntp.valid=1;
+    ntp.phase=0; ntp.next=kticks()+2160000u; /* volver a sincronizar en 6h */
+}
+static void ntp_tick(void){
+#ifdef HOSTNET
+    /* Las pruebas de pila de red simulada no tienen servidor NTP externo. */
+    return;
+#else
+    if(net_st!=2) return;
+    u32 now=kticks();
+    if(!ntp.phase){
+        if((int)(now-ntp.next)<0) return;
+        ntp.phase=1; ntp.tries=0;
+    }
+    if(ntp.phase==1){
+        u32 ip=0;
+        int r=dns_resolve("pool.ntp.org",&ip);
+        if(r<0){ ntp.phase=0; ntp.next=now+30000u; }
+        else if(r>0){ ntp.server=ip; ntp_send(); }
+    } else if(ntp.phase==2 && (int)(now-ntp.sent)>=300){
+        if(++ntp.tries>=3){ ntp.phase=0; ntp.next=now+30000u; }
+        else ntp_send();
+    }
+#endif
+}
+uint64_t net_utc_epoch(void){
+    if(!ntp.valid) return krtc_epoch();
+    return ntp.epoch+(uint64_t)((u32)(kticks()-ntp.synced_at)/100u);
+}
+int net_time_synced(void){ return ntp.valid; }
+
 /* ---------- ICMP / ping ---------- */
 static struct { int act; u32 ip; char name[64]; int sent, recvd; u32 t_send, next; u16 seq; int got; } pg;
 static void icmp_in(u32 src,const u8 *p,int n){
@@ -737,7 +795,8 @@ static void ip_in(const u8 *p,int n){
     case 1: icmp_in(src,q,qn); break;
     case 6: tcp_in(src,q,qn); break;
     case 17: if(qn>=8){ int ul=rd16(q+4); if(ul<8||ul>qn) break; u16 dp=rd16(q+2);
-                 if(dp==68) dhcp_in(q+8,ul-8); else if(dp==DNS_LPORT) dns_in(q+8,ul-8); } break;
+                 if(dp==68) dhcp_in(q+8,ul-8); else if(dp==DNS_LPORT) dns_in(q+8,ul-8);
+                 else if(dp==NTP_PORT) ntp_in(src,rd16(q),q+8,ul-8); } break;
     }
 }
 static void frame_in(const u8 *f,int n){
@@ -754,6 +813,7 @@ int net_state(void){ return net_st; }
 static void net_start(void){
     my_ip=mask=gw=dns_ip=0; net_st=1; dh_state=1; dh_tries=0; dh_xid=kticks()*2654435761u+0x1234u;
     arp_next=0; memset(arpt,0,sizeof arpt); for(int i=0;i<NPEND;i++) pq[i].len=0;
+    memset(&ntp,0,sizeof ntp); ntp.next=kticks()+100;
     dhcp_send(1);
 }
 int net_init(void){
@@ -818,7 +878,7 @@ void net_poll(void){
     for(int i=0;i<NPEND;i++) if(pq[i].len && (int)(now-pq[i].t)>=100){
         if(++pq[i].tr>3) pq[i].len=0; else { arp_request(pq[i].ip); pq[i].t=now; }
     }
-    dhcp_tick(); dns_tick(); tcp_tick(); http_step(); ping_step(); dns_job(); wget_step();
+    dhcp_tick(); dns_tick(); ntp_tick(); tcp_tick(); http_step(); ping_step(); dns_job(); wget_step();
     if(sock_tick_hook) sock_tick_hook();
 }
 
@@ -857,6 +917,24 @@ static void wget_step(void){
 }
 int net_cmd(char *l){
     while(*l==' ') l++;
+    if(!k_strcmp(l,"hora sincronizar")){
+        if(net_st!=2){ kprintf("NTP: red no disponible; se mantiene el reloj RTC.\n"); return 1; }
+        ntp.phase=0; ntp.next=0;
+        kprintf("NTP: nueva sincronizacion solicitada (UTC).\n");
+        return 1;
+    }
+    if(!k_strcmp(l,"hora")||!k_strcmp(l,"fecha")){
+        uint64_t now=net_utc_epoch();
+        if(now>1577836800ull&&now<4294967295ull){
+            u32 local=(u32)now-18000u; /* America/Lima: UTC-5, sin horario de verano */
+            int y,m,d; vortex_date_from_days((int)(local/86400u),&y,&m,&d);
+            u32 sec=local%86400u;
+            kprintf("Peru (UTC-5): %d/%d/%d %d:%d:%d  fuente %s\n",
+                    d,m,y,(int)(sec/3600u),(int)((sec%3600u)/60u),(int)(sec%60u),
+                    net_time_synced()?"NTP":"RTC");
+        } else kprintf("Hora no disponible (RTC invalido o fuera del rango).\n");
+        return 1;
+    }
     if(!k_strcmp(l,"red")||!k_strcmp(l,"ip")||!k_strcmp(l,"ifconfig")){
         if(!nic){ kprintf("Sin tarjeta de red compatible (soportadas: Intel e1000, Realtek RTL8139).\n"); return 1; }
         char m[20]; macstr(m);
