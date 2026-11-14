@@ -19,6 +19,7 @@ void kinput_event(int type,int code,int value){
 }
 void kproc_key(int c){ (void)c; }
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
+void kserial_puts(const char *s){ (void)s; } /* puerto serie no existe en el simulador */
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
     if(!strcmp(l,"info")) out("kng-kernel 0.5 (i386, Multiboot)\nParte de Königreich OS.\n");
