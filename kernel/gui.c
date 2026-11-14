@@ -1554,7 +1554,7 @@ static int enc_wrap(const char *content,int x,int y,int width,int visible,int sk
 }
 static int enc_body_height(const Win *w){
     int h=w->h-TB-1;
-    return k_max(3,(h-265)/18);
+    return k_max(3,(h-412)/18);
 }
 static void enc_progress_load(Win *w){
     memset(&w->enc_progress,0,sizeof w->enc_progress);
@@ -1642,6 +1642,70 @@ static void enc_quiz_next(Win *w){
         }
     }
     dwin(w);
+}
+/* Ilustraciones educativas dibujadas por Vortex, sin imagenes de terceros.
+ * Los esquemas vectoriales se generan en el framebuffer incluso sin red. */
+static void enc_article_diagram(int category,int x,int y,int w,int h){
+    rrect(x,y,w,h,13,light_theme?0xe9f0f8:0x171c30,255);
+    if(category==1){ /* ciencia: el sistema solar */
+        int cx=x+w/2,cy=y+h/2;
+        circle(x+46,cy,26,0xf4b85c,255);circle(x+45,cy-3,19,0xffdc8c,255);
+        for(int i=0;i<4;i++){
+            int px=x+130+i*(w-175)/4,rad=5+i*2;
+            circle(px,cy-(i&1?16:-18),rad,i==2?0x5abbe3:0xb5a6e2,255);
+            line(x+72,cy,px-8,cy-(i&1?16:-18),1,C_DIM,55);
+        }
+        text_ui(x+14,y+h-22,"Estrellas y planetas",C_DIM);
+    }else if(category==2){ /* historia: andenes escalonados */
+        for(int i=0;i<6;i++){
+            int px=x+28+i*(w-74)/6,yy=y+h-24-i*10;
+            rrect(px,yy,82,11,2,i&1?0x9b804b:0xc1a16f,255);
+            line(px+5,yy,px+66,yy,1,0xe4cb92,210);
+        }
+        rrect(x+34,y+14,46,32,5,0xd4b080,255);
+        rrect(x+49,y+25,14,21,2,0x6d4c44,255);
+        text_ui(x+91,y+18,"Ciudades, caminos y pueblos",C_TXT);
+    }else if(category==3){ /* geografia: cordillera y rio */
+        int base=y+h-25;
+        line(x+24,base,x+94,y+25,3,0x95a3bb,255);
+        line(x+94,y+25,x+165,base,3,0x95a3bb,255);
+        line(x+105,base,x+208,y+34,3,0x7787ad,255);
+        line(x+208,y+34,x+300,base,3,0x7787ad,255);
+        line(x+65,y+53,x+94,y+25,4,0xffffff,210);
+        line(x+94,y+25,x+124,y+54,4,0xffffff,210);
+        for(int i=0;i<14;i++)circle(x+130+i*16,base-7+(i%3)*3,2,0x53afd9,220);
+        text_ui(x+15,y+h-19,"Relieve y agua",C_DIM);
+    }else if(category==4){ /* tecnologia: microprocesador y buses */
+        int px=x+w/2-32,py=y+h/2-27;
+        rrect(px,py,64,55,10,0x3b9ba6,255);
+        rrect(px+9,py+9,46,36,6,0x14283b,255);
+        text_ui_bold(px+15,py+18,"CPU",0xd3f9f3);
+        for(int i=0;i<6;i++){
+            int cy=py+6+i*9;
+            line(px-27,cy,px,cy,2,0x74bac8,255);
+            line(px+64,cy,px+92,cy,2,0x74bac8,255);
+        }
+        text_ui(x+14,y+h-20,"Circuitos y comunicacion",C_DIM);
+    }else if(category==5){ /* cultura: libro abierto */
+        int px=x+w/2,py=y+22;
+        rrect(px-100,py,96,58,7,0xf0d8b0,255);
+        rrect(px+4,py,96,58,7,0xf7e9ca,255);
+        fill(px-1,py,3,58,0x9c6f46,255);
+        for(int j=0;j<4;j++){
+            fill(px-83,py+12+j*10,64,2,0x957d63,180);
+            fill(px+18,py+12+j*10,65,2,0x957d63,180);
+        }
+        text_ui(x+14,y+h-18,"Lectura y expresion",C_DIM);
+    }else if(category==6){ /* salud: cruz y simbolos de bienestar */
+        int px=x+w/2,py=y+15;
+        rrect(px-12,py,25,72,7,0x38a88a,255);
+        rrect(px-37,py+24,75,25,7,0x38a88a,255);
+        circle(x+60,y+42,15,0xec8797,255);
+        circle(x+w-65,y+42,15,0x77bfd5,255);
+        text_ui(x+17,y+h-18,"Cuerpo y bienestar",C_DIM);
+    }else{
+        text_ui(x+22,y+31,"Conocimiento para todos",C_TXT);
+    }
 }
 static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     /* Cabecera editorial y búsqueda, integrada en la paleta Vortex. */
@@ -1776,7 +1840,8 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
         text_big(rx+20,ry+52,a->title,C_TXT);
         text_ui(rx+21,ry+88,a->subtitle,C_DIM);
         fill(rx+20,ry+120,rw-40,2,ACCENT,145);
-        int yy=ry+135;
+        enc_article_diagram(a->category,rx+20,ry+130,rw-40,96);
+        int yy=ry+238;
         int visible=enc_body_height(w);
         clip_set(rx+19,yy,rw-35,visible*18);
         enc_wrap(a->body,rx+21,yy,rw-43,visible,w->enc_scroll,1);
