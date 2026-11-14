@@ -288,6 +288,35 @@ int main(void){
       closeall();
       puts("VORTEX MULTIVENTANA: CLIC CENTRAL, MINIMIZAR, CTRL+MAYUS+N/W OK");
     }
+    /* Notificación real a la hora de una cita. Un clic en ella abre el
+     * calendario; la X la descarta y no se duplica en el mismo minuto. */
+    {
+      closeall();workspace_set(0);
+      Win *cal=open_app(A_CALENDAR);
+      cal->cal_year=2026;cal->cal_month=11;cal->cal_day=14;
+      k_strcpy(cal->cal_text,"10:45 Reunion de Vortex",sizeof cal->cal_text);
+      cal->cal_len=k_strlen(cal->cal_text);
+      notif_open=0;notif_seen_date=-1;notif_seen_minute=-1;
+      calendar_save(cal,0);
+      if(!notif_open||strcmp(notif_text,"Reunion de Vortex")){
+          puts("FALLO alerta local al guardar evento con hora");return 1;
+      }
+      shot("49_notificacion_calendario");
+      int w=k_min(W-20,390),x=W-w-16,y=BARH+14;
+      click(x+w-23,y+20);
+      if(notif_open){puts("FALLO cerrar notificacion");return 1;}
+      T+=101;gui_frame();
+      if(notif_open){puts("FALLO evitar recordatorios duplicados");return 1;}
+      notif_seen_date=-1;notif_seen_minute=-1;
+      calendar_check_reminder();
+      click(x+67,y+70);
+      if(notif_open||win_top()<0||wins[win_top()].type!=A_CALENDAR){
+          puts("FALLO clic abre calendario desde alerta");return 1;
+      }
+      cal=&wins[win_top()];
+      calendar_save(cal,1);closeall();
+      puts("VORTEX NOTIFICACIONES: ALARMA LOCAL, DESCARTAR, ABRIR Y SIN DUPLICADOS OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];

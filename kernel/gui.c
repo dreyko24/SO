@@ -116,6 +116,8 @@ static int cfg_get(const char *key,char *val,int max);
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
 static int clk_h=12,clk_m=0,clk_y=0,clk_mon=0,clk_d=0;
 static uint32_t clk_next;
+static int notif_open,notif_seen_date=-1,notif_seen_minute=-1;
+static char notif_text[100];
 /* Naranja Ubuntu + berenjena GNOME; la marca y el compositor siguen siendo Vortex. */
 static const uint32_t ACC[6]={0xe95420,0x77216f,0x9141ac,0x26a269,0x3584e4,0xf6a800};
 #define ACCENT ACC[acc_i]
@@ -1909,6 +1911,10 @@ static void calendar_save(Win *w,int remove){
     else if(w->cal_len>0&& !fs_create(dir,name,w->cal_text,w->cal_len))return;
     w->cal_edit=0;
     if(vortexfs_active())(void)vortexfs_save();
+    /* Si la cita coincide con el minuto actual, activar la alerta sin
+     * esperar un minuto adicional de RTC. */
+    notif_seen_date=-1;notif_seen_minute=-1;
+    calendar_check_reminder();
     dirty=1;
 }
 static void calendar_shift_month(Win *w,int delta){
@@ -1945,7 +1951,7 @@ static void calendar_render(Win *w,int x,int y,int width,int height){
     cat(date,sizeof date," de ");cat(date,sizeof date,CMON[w->cal_month-1]);
     text_ui_bold(x+22,y+381,date,C_TXT);
     rrect(x+22,y+409,width-44,36,10,C_TILE,255);
-    text_ui(x+34,y+418,w->cal_len?w->cal_text:"Escribe un evento para esta fecha...",
+    text_ui(x+34,y+418,w->cal_len?w->cal_text:"10:45 Recordatorio o evento del dia...",
             w->cal_len?C_TXT:C_DIM);
     if(w->cal_edit&&((kticks()/50)&1))
         fill(x+34+text_ui_w(w->cal_text),y+416,2,18,ACCENT,255);
@@ -1953,6 +1959,56 @@ static void calendar_render(Win *w,int x,int y,int width,int height){
     button(x+151,y+454,118,31,"Eliminar",0);
     text_ui(x+285,y+461,vortexfs_active()?"Guardado en VortexFS":
         "En RAM: configura un disco para conservar",C_DIM);
+}
+/* Alertas auténticas del calendario basadas en la fecha/hora local.
+ * Un evento como "10:45 Revisar proyecto" avisa una vez por minuto/día.
+ * No se inventan notificaciones ni se consulta una web externa. */
+static void calendar_check_reminder(void){
+    if(clk_y<1970||clk_mon<1||clk_d<1)return;
+    int date=clk_y*10000+clk_mon*100+clk_d;
+    int minute=clk_h*60+clk_m;
+    if(notif_seen_date==date&&notif_seen_minute==minute)return;
+    notif_seen_date=date;notif_seen_minute=minute;
+    FsNode *event=cal_event(clk_y,clk_mon,clk_d);
+    if(!event||!event->data||event->size<7)return;
+    const unsigned char *p=(const unsigned char*)event->data;
+    if(p[0]<'0'||p[0]>'2'||p[1]<'0'||p[1]>'9'||p[2]!=':'||
+       p[3]<'0'||p[3]>'5'||p[4]<'0'||p[4]>'9'||
+       p[5]!=' '||!p[6])return;
+    int hour=(p[0]-'0')*10+p[1]-'0';
+    int min=(p[3]-'0')*10+p[4]-'0';
+    if(hour>23||hour!=clk_h||min!=clk_m)return;
+    k_strcpy(notif_text,(const char*)(p+6),sizeof notif_text);
+    notif_open=1;dirty=1;
+    kserial_puts("[vortex-calendar] recordatorio activado\n");
+}
+static void notification_draw(void){
+    if(!notif_open)return;
+    int w=k_min(gw-20,390),x=gw-w-16,y=BARH+14;
+    if(x<4)x=4;
+    rrect(x+5,y+5,w,86,16,0x040205,95);
+    rrect(x,y,w,86,16,C_PANEL,255);
+    fill(x+12,y+14,4,57,ACCENT,255);
+    text_ui_bold(x+28,y+12,"Recordatorio del calendario",C_TXT);
+    text_ui(x+28,y+40,notif_text,C_DIM);
+    text_ui(x+28,y+63,"Abrir calendario",ACCENT);
+    rrect(x+w-37,y+8,28,26,10,C_BTN,255);
+    text_ui_bold(x+w-27,y+13,"X",C_TXT);
+}
+static int notification_click(void){
+    if(!notif_open)return 0;
+    int w=k_min(gw-20,390),x=gw-w-16,y=BARH+14;
+    if(x<4)x=4;
+    if(!in_rect(mx,my,x,y,w,86))return 0;
+    notif_open=0;dirty=1;
+    if(mx<x+w-44){
+        Win *cal=open_app(A_CALENDAR);
+        if(cal){
+            cal->cal_year=clk_y;cal->cal_month=clk_mon;cal->cal_day=clk_d;
+            calendar_load(cal);dwin(cal);
+        }
+    }
+    return 1;
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
@@ -2946,6 +3002,7 @@ static void render_region(int x0,int y0,int x1,int y1){
     }
     mu_draw();
     switch_draw();
+    notification_draw();
     gfx_present_rect(x0,y0,rw,rh);
     clip_base(0,0,gw,gh);
 }
@@ -2979,6 +3036,7 @@ void gui_frame(void){
                 clk_h=local.hour;clk_m=local.minute;
                 dmark(0,0,gw,BARH);dmark(gw-240,BARH,240,230);
             }
+            calendar_check_reminder();
         }
     }
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
@@ -3286,6 +3344,7 @@ static void appmenu_launch(int idx){
     }
 }
 static void on_press(void){
+    if(notification_click())return;
     if(language_menu_open){
         int choice=language_menu_hit(mx,my);language_menu_open=0;dirty=1;
         if(choice>=0&&choice<3)set_language(choice);
