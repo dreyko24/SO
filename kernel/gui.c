@@ -1521,7 +1521,8 @@ static void draw_window(int wi,int focused){
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
             { char fecha[80]="Fecha local (RTC UTC): "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
               cat(fecha,sizeof fecha,"/"); cat_int(fecha,sizeof fecha,clk_y); }
-              else cat(fecha,sizeof fecha,"fecha no disponible"); text(cx+20,oy+285,fecha,C_DIM); }
+              else cat(fecha,sizeof fecha,"fecha no disponible");
+              text(cx+20,oy+285,fecha,C_DIM); }
             text_bold(cx+20,oy+312,"Teclado",C_TXT);
             for(int i=0;i<3;i++) button(cx+20+i*150,oy+340,140,26,kbd_layout_name(i),kbd_layout()==i);
             text(cx+20,oy+376,"Tambien: teclado latam | es | us desde Terminal",C_DIM);
@@ -1797,7 +1798,8 @@ void gui_frame(void){
             if(local>=0){
                 unsigned long long seconds;
                 int days=(int)udiv64((unsigned long long)local,86400,&seconds);
-                int h=(int)(seconds/3600), m=(int)((seconds%3600)/60);
+                unsigned int sec32=(unsigned int)seconds; /* 0..86399: evitar libgcc __udivmoddi4 en 32 bits */
+                int h=(int)(sec32/3600u), m=(int)((sec32%3600u)/60u);
                 /* Conversion de dias UTC al calendario gregoriano, con cambio de dia correcto en Peru. */
                 int z=days+719468, era=(z>=0?z:z-146096)/146097;
                 int doe=z-era*146097, yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
