@@ -400,7 +400,7 @@ static const PApp PAPPS[]={
     {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
     {"Opera","Navegador web","opera","instalar opera","/usr/bin/opera",0xef4444},
     {"Firefox","Navegador web","firefox-esr","instalar firefox","/usr/bin/firefox-esr",0xf59e0b},
-    {"Chromium","Navegador web","chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
+    {"Chromium","Navegador web","vortex-chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
     {"LibreOffice","Textos, hojas y presentaciones","libreoffice","instalar libreoffice","/usr/bin/libreoffice",0x22c55e},
     {"OpenOffice","Textos, hojas y presentaciones","openoffice","instalar openoffice","/opt/openoffice4/program/soffice",0x38bdf8},
     {"Terminal X","Terminal con ventana de X","xterm","instalar xterm","/usr/bin/xterm",0x8a8fa8},
@@ -2024,8 +2024,8 @@ static int browser_chromium_command(const char *url,char *out,int max){
              c=='?'||c=='&'||c=='='||c=='%'||c=='#'||
              c=='_'||c=='-'||c=='+'||c=='~'||c=='@')) return -1;
     }
-    if(max<n+16) return -1;
-    k_strcpy(out,"abrir chromium ",max);
+    if(max<n+23) return -1;
+    k_strcpy(out,"abrir vortex-chromium ",max);
     cat(out,max,target);
     return 0;
 }
@@ -2037,7 +2037,7 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
         if(papp_installed(4)){
             char cmd[160];
             if(!browser_chromium_command(w->url,cmd,sizeof cmd)) run_quiet(cmd);
-            else run_quiet("abrir chromium https://www.google.com/");
+            else run_quiet("abrir vortex-chromium https://www.google.com/");
         } else run_in_terminal("instalar chromium");
         dirty=1; return;
     }
