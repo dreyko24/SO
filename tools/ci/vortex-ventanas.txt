@@ -1,0 +1,24 @@
+# Prueba real con raton y teclado en QEMU a 1024x768
+esperar 2
+raton 42 74
+clic
+captura aplicaciones
+raton 210 178
+clic
+captura biblioteca_saber
+raton 210 244
+clic
+captura primera_leccion
+tecla 1
+captura respuesta
+tecla ret
+captura siguiente_pregunta
+tecla f11
+captura pantalla_completa
+tecla f11
+raton 734 95
+clic
+captura minimizada
+raton 42 650
+clic
+captura restaurada
