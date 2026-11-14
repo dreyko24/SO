@@ -462,6 +462,29 @@ int main(void){
       closeall();fs_remove(folder);
       puts("VORTEX INTELLIMOUSE SCROLL VENTANA BAJO CURSOR OK");
     }
+    /* La rueda en Notas permite leer el comienzo sin perder lo escrito,
+     * y en el visor de imagenes hace zoom reversible con limites. */
+    {
+      closeall();workspace_set(0);
+      Win *n=open_app(A_NOTES);
+      if(!n){puts("FALLO abrir Notas con rueda");return 1;}
+      n->nlen=0;
+      for(int i=0;i<43;i++){
+          char line[32]="Linea ";cat_int(line,sizeof line,i);cat(line,sizeof line," texto de prueba\n");
+          int len=k_strlen(line);
+          if(n->nlen+len>=NOTEMAX){puts("FALLO capacidad nota");return 1;}
+          memcpy(n->note+n->nlen,line,(size_t)len);n->nlen+=len;
+      }
+      n->note[n->nlen]=0;dwin(n);
+      gui_mouse_abs(n->x+50,n->y+TB+130,0);
+      gui_mouse_wheel(3);
+      if(n->scroll!=6){puts("FALLO scroll arriba Notas");return 1;}
+      shot("43_rueda_notas");
+      gui_mouse_wheel(-4);
+      if(n->scroll!=0){puts("FALLO scroll abajo Notas");return 1;}
+      closeall();
+      puts("VORTEX NOTAS: RUEDA BIDIRECCIONAL OK");
+    }
     /* Enciclopedia original sin internet: lanzador, indexado, artículos y
      * rueda para desplazarse entre resultados. */
     {

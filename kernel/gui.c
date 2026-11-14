@@ -36,7 +36,7 @@ typedef struct {
     int xw, xh; uint32_t xnext; int xlx, xly;                                     /* pantalla X (servidor Xvfb) */
     FsNode *dir, *sel, *last; int scroll; uint32_t lastclick;                    /* archivos / visor */
     FsNode *file;                                                                /* visor */
-    VImage picture; int media_tab; /* multimedia */
+    VImage picture; int media_tab; int image_zoom; /* multimedia */
     VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
     int enc_category,enc_topic,enc_scroll,enc_search_len;
     int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
@@ -486,7 +486,8 @@ static Win *open_app(int type){
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
                      memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
     case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
-    case A_VIEWER:   w->w=640; w->h=480; set_title(w,"Visor multimedia"); break;
+    case A_VIEWER:   w->w=640; w->h=480; w->image_zoom=100;
+                     set_title(w,"Visor multimedia");break;
     case A_MEDIA:    w->w=590; w->h=480; set_title(w,"Multimedia"); break;
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
@@ -884,12 +885,23 @@ static void notes_save(Win *w){
 static int u8_enc(int c,char *o){ if(c>=0xA0&&c<=0xFF){ o[0]=(char)(0xC0|(c>>6)); o[1]=(char)(0x80|(c&0x3F)); return 2; } if(c>=32&&c<127){ o[0]=(char)c; return 1; } return 0; }
 static int u8_last(const char *b,int len){ int n=1; while(n<len && ((unsigned char)b[len-n]&0xC0)==0x80) n++; return n; }   /* bytes del ultimo caracter */
 static void notes_new(Win *w){ w->file=0; w->nlen=0; w->note[0]=0; w->nstat[0]=0; set_title(w,"Notas"); }
+static int notes_line_count(const Win *w){
+    int cw=w->w-2,cols=k_max(1,(cw-40)/8);
+    int total=1,col=0;
+    for(int i=0;i<w->nlen;i++){
+        if(w->note[i]=='\n'||col>=cols){
+            total++;col=0;if(w->note[i]=='\n')continue;
+        }
+        col++;
+    }
+    return total;
+}
 static void notes_key(Win *w,int c){
     char e[2]; int en=(c=='\n')?0:u8_enc(c,e);
     if(c=='\b'){ if(w->nlen>0){ w->nlen-=u8_last(w->note,w->nlen); w->note[w->nlen]=0; } }
     else if(c=='\n' && w->nlen<NOTEMAX){ w->note[w->nlen++]='\n'; w->note[w->nlen]=0; }
     else if(en && w->nlen+en<NOTEMAX){ for(int i=0;i<en;i++) w->note[w->nlen++]=e[i]; w->note[w->nlen]=0; }
-    w->nstat[0]=0; dwin(w);
+    w->scroll=0;w->nstat[0]=0;dwin(w);
 }
 /* calculadora */
 /* calculadora: numeros con 4 decimales guardados x10000 en 64 bits. La division de 64 bits se hace a mano (el kernel de 32 bits no tiene libgcc). */
@@ -1678,10 +1690,14 @@ static void draw_window(int wi,int focused){
             /* Ajustar imagen a la zona disponible, ampliando tambien fotos pequenas. */
             int aw=cw-24,ah=ch-56,dw=aw,dh=w->picture.h*aw/w->picture.w;
             if(dh>ah){dh=ah;dw=w->picture.w*ah/w->picture.h;}
+            /* Rueda = zoom sobre el centro de la imagen, sin alterar el archivo. */
+            int zoom=w->image_zoom?w->image_zoom:100;
+            dw=dw*zoom/100;dh=dh*zoom/100;
             if(dw<1)dw=1;if(dh<1)dh=1;
             int dx=cx+(cw-dw)/2,dy=cy+10+(ah-dh)/2;
             blit_scaled32(dx,dy,dw,dh,w->picture.pixels,w->picture.w,w->picture.h);
             char info[60]="Imagen ";cat_int(info,60,w->picture.w);cat(info,60," x ");cat_int(info,60,w->picture.h);
+            cat(info,60,"  Zoom ");cat_int(info,60,zoom);cat(info,60,"%");
             text(cx+12,cy+ch-31,info,C_DIM);button(cx+cw-167,cy+ch-38,155,28,"Usar de fondo",0);
         }else if(w->file && w->file->data){
             if(ext_is(w->file,"png")||ext_is(w->file,"bmp")||ext_is(w->file,"ppm")||
@@ -1841,9 +1857,10 @@ static void draw_window(int wi,int focused){
         if(w->nstat[0]) text(cx+178,cy+10,w->nstat,0x7ee787);
         else { char b[40]=""; cat_int(b,40,w->nlen); cat(b,40," / "); cat_int(b,40,NOTEMAX); text(cx+cw-16-text_w(b),cy+10,b,C_DIM); }
         rrect(cx+8,cy+38,cw-16,ch-46,13,C_TILE,255);
-        int cols=(cw-40)/8, rows=(ch-46-16)/16, total=1, col=0;
-        for(int i=0;i<w->nlen;i++){ if(w->note[i]=='\n'||col>=cols){ total++; col=0; if(w->note[i]=='\n') continue; } col++; }
-        int skip=total>rows?total-rows:0, row=0; col=0;
+        int cols=k_max(1,(cw-40)/8),rows=k_max(1,(ch-46-16)/16);
+        int total=notes_line_count(w),maximum=k_max(0,total-rows);
+        if(w->scroll>maximum)w->scroll=maximum;
+        int skip=maximum-w->scroll,row=0,col=0;
         clip_set(cx+8,cy+38,cw-16,ch-46);
         for(int i=0;i<=w->nlen;i++){
             if(i<w->nlen && w->note[i]=='\n'){ row++; col=0; continue; }
@@ -1852,6 +1869,12 @@ static void draw_window(int wi,int focused){
             else if(focused_cursor && ((kticks()/50)&1) && row>=skip) fill(cx+20+col*8,cy+46+(row-skip)*16+13,8,3,ACCENT,255);
         }
         clip_reset();
+        if(total>rows){
+            int th=ch-46,bh=k_max(22,th*rows/total);
+            int by=cy+38+(th-bh)*skip/k_max(1,maximum);
+            rrect(cx+cw-15,cy+38,5,th,3,C_PANEL,255);
+            rrect(cx+cw-15,by,5,bh,3,ACCENT,235);
+        }
         break; }
     case A_CALC:{
         rrect(cx+14,cy+10,cw-28,58,12,light_theme?0xe4e1eb:0x17141e,255);
@@ -2979,7 +3002,20 @@ void gui_mouse_wheel(int steps){
             maximum=k_max(0,w->page.content_h-(w->h-TB-1-38));
             increment=56;break;
         case A_VIEWER:
+            if(w->picture.pixels){
+                int before=w->image_zoom?w->image_zoom:100;
+                int next=before+steps*15;
+                if(next<25)next=25;
+                if(next>400)next=400;
+                if(next!=before){w->image_zoom=next;dwin(w);}
+                return;
+            }
             maximum=100000;increment=5;break;
+        case A_NOTES:{
+            int rows=k_max(1,(w->h-TB-1-62)/16);
+            maximum=k_max(0,notes_line_count(w)-rows);
+            increment=2;break;
+        }
         case A_ENCARTA:
             if(w->enc_quiz)return;
             if(w->enc_topic<0){
@@ -3011,7 +3047,7 @@ void gui_mouse_wheel(int steps){
         }
         before=w->type==A_BROWSER?w->bscroll:
                w->type==A_ENCARTA?w->enc_scroll:w->scroll;
-        after=before-steps*increment;
+        after=before+(w->type==A_NOTES?steps:-steps)*increment;
         if(after<0)after=0;
         if(after>maximum)after=maximum;
         if(after!=before){
