@@ -44,6 +44,7 @@ static int open_new;                                               /* open_app: 
 static int order[MAXW], nord;
 static int mx, my, mb, drag=-1, dragdx, dragdy, hover=-1;
 static int dirty=1, cursor_dirty=1, cur_x=-100, cur_y=-100;
+static int launcher_open; /* panel de aplicaciones, no crea una ventana */
 static int dr0x, dr0y, dr1x, dr1y;                           /* rectangulo sucio pendiente (vacio si dr1x<=dr0x) */
 static void dmark(int x,int y,int w,int h){
     if(w<=0||h<=0) return;
@@ -1341,11 +1342,11 @@ static void draw_topbar(void){
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
     { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
 }
-#define NDOCK 10
+#define NDOCK 9
 #define TILE 52
 static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
-static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
-static const char *DOCK_LBL[NDOCK]={"Inicio","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0x1a1d33,255);
     clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
@@ -1384,6 +1385,53 @@ static void draw_dock(void){
         for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
         if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
     }
+}
+
+/* El logotipo abre una vista integrada de aplicaciones; Programas no ocupa un segundo icono. */
+#define LAUNCH_COLS 3
+#define LAUNCH_ROWS 3
+#define LAUNCH_TILEW 150
+#define LAUNCH_TILEH 98
+static const int LAUNCH_APPS[9]={A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SETTINGS,A_MONITOR,A_SNAKE,A_PROGS};
+static const char *LAUNCH_NAMES[9]={"Navegador","Archivos","Terminal","Notas","Calculadora","Ajustes","Monitor","Snake","Programas Linux"};
+static void launcher_bounds(int *x,int *y,int *w,int *h){
+    *w=LAUNCH_COLS*LAUNCH_TILEW+32; *h=LAUNCH_ROWS*LAUNCH_TILEH+76;
+    *x=(gw-*w)/2; *y=(gh-*h)/2;
+    if(*y<BARH+8) *y=BARH+8;
+}
+static void draw_launcher(void){
+    if(!launcher_open) return;
+    int x,y,w,h; launcher_bounds(&x,&y,&w,&h);
+    fill(0,BARH,gw,gh-BARH,0x050713,155);
+    rrect(x-2,y-2,w+4,h+4,22,0xffffff,35);
+    rrect(x,y,w,h,20,0x151a2d,250);
+    crown(x+19,y+16,38,0xe9c46a,ACCENT,255);
+    text_big(x+70,y+18,"Aplicaciones",0xffffff);
+    text(x+20,y+54,"Selecciona una aplicacion",C_DIM);
+    for(int i=0;i<9;i++){
+        int tx=x+16+(i%LAUNCH_COLS)*LAUNCH_TILEW;
+        int ty=y+70+(i/LAUNCH_COLS)*LAUNCH_TILEH;
+        rrect(tx,ty,LAUNCH_TILEW-8,LAUNCH_TILEH-8,12,0x252b45,255);
+        /* El primer icono del dock es el logo, no una aplicacion. */
+        int glyph=i==8?9:i==7?6:i==6?8:i==5?7:i==4?5:i==3?4:i==2?3:i==1?2:1;
+        draw_icon(glyph,tx+(LAUNCH_TILEW-8-TILE)/2,ty+6);
+        int tw=text_w(LAUNCH_NAMES[i]);
+        text(tx+(LAUNCH_TILEW-8-tw)/2,ty+65,LAUNCH_NAMES[i],C_TXT);
+    }
+}
+static int launcher_click(int px,int py){
+    if(!launcher_open) return 0;
+    int x,y,w,h; launcher_bounds(&x,&y,&w,&h);
+    launcher_open=0; dirty=1;
+    if(px<x||py<y||px>=x+w||py>=y+h) return 1;
+    for(int i=0;i<9;i++){
+        int tx=x+16+(i%LAUNCH_COLS)*LAUNCH_TILEW;
+        int ty=y+70+(i/LAUNCH_COLS)*LAUNCH_TILEH;
+        if(px>=tx&&px<tx+LAUNCH_TILEW-8&&py>=ty&&py<ty+LAUNCH_TILEH-8){
+            open_app(LAUNCH_APPS[i]); return 1;
+        }
+    }
+    return 1;
 }
 
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
@@ -1509,7 +1557,7 @@ static void render(void){
         int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
         if(!hidden) draw_window(order[k],k==nord-1);
     }
-    draw_topbar(); draw_dock();
+    draw_topbar(); draw_dock(); draw_launcher();
     if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
         rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
     mu_draw();
@@ -1637,6 +1685,8 @@ static void on_press(void){
     if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
     if(dren>=0) dren_commit();
     int d=dock_hit(mx,my);
+    if(d==0){ launcher_open=!launcher_open; dirty=1; return; }
+    if(launcher_click(mx,my)) return;
     if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
     if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
@@ -1738,6 +1788,7 @@ static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
+    if(launcher_open){ if(c==27){ launcher_open=0; dirty=1; } return; }
     if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
     int top=win_top();
     if(top<0){                                                      /* sin ventanas: las teclas son para el icono elegido del escritorio */
