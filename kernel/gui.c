@@ -2164,6 +2164,13 @@ void gui_key(int c){
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
     if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; } /* Ctrl+T: terminal */
     int top=win_top();
+    if(c==0x502||c==0x503){ /* Ctrl+Tab: recorrer ventanas, incluidas minimizadas */
+        if(nord>1){
+            int target=c==0x502?order[0]:order[nord-2];
+            focus(target);
+        } else if(nord==1) focus(order[0]);
+        return;
+    }
     if(c==0x501){ /* F10: instancia independiente de la aplicacion activa */
         if(top>=0){ int app=wins[top].type; open_new=1; open_app(app); open_new=0; }
         return;
