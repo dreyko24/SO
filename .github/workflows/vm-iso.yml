@@ -1,5 +1,5 @@
-name: vortex-iso-maquina-virtual
-# ISO de evaluacion en dos variantes; no modifica la rama principal.
+name: vortex-iso-unica
+# Unico medio de evaluacion: arranque grafico del kernel propio de 32 y 64 bits.
 on:
   push:
     branches: [cambio-nombre-vortex-os]
@@ -8,87 +8,79 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: vortex-iso-vm-${{ github.ref }}
+  group: vortex-iso-unica-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   iso:
-    strategy:
-      fail-fast: false
-      matrix:
-        edicion: [ligera, debian]
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
-      - name: Herramientas necesarias para generar y probar una ISO real
+      - name: Preparar compilador, Debian y virtualizacion
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-multilib libc6-dev binutils grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 cpio gzip qemu-system-x86 debootstrap debian-archive-keyring ca-certificates dosfstools fdisk
-      - name: Construir Vortex OS con ambos kernels
+      - name: Construir VortexOS.iso (32/64 grafico, Debian solo en 64)
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ matrix.edicion }}" == debian ]]; then
-            VORTEX_DEBIAN=1 VORTEX_SIN_INSTALADOR=1 bash tools/build-iso.sh
-            ISO="VortexOS-Debian-VM.iso"
-          else
-            VORTEX_SIN_INSTALADOR=1 bash tools/build-iso.sh
-            ISO="VortexOS-VM.iso"
-          fi
-          mv out/VortexOS.iso "out/$ISO"
-          rm out/VortexOS.iso.sha256
-          ( cd out && sha256sum "$ISO" > "$ISO.sha256" )
-          echo "ISO=$ISO" >> "$GITHUB_ENV"
-          ls -lh "out/$ISO"
-          ( cd out && sha256sum -c "$ISO.sha256" )
-      - name: Comprobar el arranque de la propia ISO en QEMU
+          VORTEX_DEBIAN=1 bash tools/build-iso.sh
+          test -s out/VortexOS.iso
+          test "$(grep -c '^menuentry ' build/iso/boot/grub/grub.cfg)" -eq 2
+          grep -Fq 'Vortex OS - 64 bits (grafico)' build/iso/boot/grub/grub.cfg
+          grep -Fq 'Vortex OS - 32 bits (grafico)' build/iso/boot/grub/grub.cfg
+          test -s build/iso/boot/vortex-kernel.elf
+          test -s build/iso/boot/vortex-kernel64.elf
+          ( cd out && sha256sum -c VortexOS.iso.sha256 )
+          cat build/iso/boot/grub/grub.cfg
+          ls -lh out/VortexOS.iso
+      - name: Verificar ISO real 64 bits en QEMU
         shell: bash
         run: |
           set -euo pipefail
-          ram=2048
-          if [[ "${{ matrix.edicion }}" == debian ]]; then ram=4096; fi
           set +e
-          timeout --signal=TERM --kill-after=5s 90s qemu-system-x86_64 \
-            -m "$ram" -cdrom "out/$ISO" -boot order=d -display none \
-            -vga std -serial file:vortex-iso-boot.log -monitor none -no-reboot \
-            -netdev user,id=net0 -device e1000,netdev=net0
+          timeout --signal=TERM --kill-after=5s 110s qemu-system-x86_64             -m 4096 -cdrom out/VortexOS.iso -boot order=d -display none             -vga std -serial file:vortex-64.log -monitor none -no-reboot             -netdev user,id=n0 -device e1000,netdev=n0
           rc=$?
           set -e
-          if [[ "$rc" != 0 && "$rc" != 124 ]]; then
-            echo "QEMU termino de forma inesperada (codigo $rc)"
-            tail -80 vortex-iso-boot.log || true
-            exit 1
-          fi
-          tail -60 vortex-iso-boot.log || true
-          grep -aFq "Iniciando escritorio" vortex-iso-boot.log || {
-            echo "FALLO: el escritorio de Vortex OS no arranco desde la ISO"; exit 1;
+          if [[ "$rc" != 0 && "$rc" != 124 ]]; then echo "QEMU 64 falló: $rc"; exit 1; fi
+          grep -aFq 'Iniciando escritorio' vortex-64.log || {
+            tail -80 vortex-64.log; echo 'FALLO: no arranco modo grafico de 64 bits'; exit 1;
           }
-          echo "ISO verificada: arranque grafico correcto en QEMU"
-      - name: Guardar ISO y prueba de arranque en GitHub Actions
+          echo 'Vortex 64 bits grafico: OK'
+      - name: Verificar segundo modo grafico de la misma imagen (32 bits)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^set default=0$/set default=1/' build/iso/boot/grub/grub.cfg
+          grub-mkrescue -o /tmp/vortex32-check.iso build/iso >/tmp/vortex-grub32.log 2>&1 || {
+            cat /tmp/vortex-grub32.log; exit 1;
+          }
+          set +e
+          timeout --signal=TERM --kill-after=5s 95s qemu-system-x86_64             -m 1024 -cdrom /tmp/vortex32-check.iso -boot order=d -display none             -vga std -serial file:vortex-32.log -monitor none -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" != 0 && "$rc" != 124 ]]; then echo "QEMU 32 fallo: $rc"; exit 1; fi
+          grep -aFq 'Iniciando escritorio' vortex-32.log || {
+            tail -80 vortex-32.log; echo 'FALLO: no arranco modo grafico de 32 bits'; exit 1;
+          }
+          echo 'Vortex 32 bits grafico: OK'
+      - name: Guardar la ISO unica y registros
         uses: actions/upload-artifact@v4
         with:
-          name: VortexOS-ISO-${{ matrix.edicion }}
+          name: VortexOS-ISO-unica
           path: |
-            out/*.iso
-            out/*.sha256
-            vortex-iso-boot.log
+            out/VortexOS.iso
+            out/VortexOS.iso.sha256
+            vortex-64.log
+            vortex-32.log
           if-no-files-found: error
           retention-days: 30
-      - name: Publicar ISO descargable como version preliminar
+      - name: Publicar una unica ISO preliminar descargable
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           short="${GITHUB_SHA:0:7}"
-          tag="vortex-vm-${{ matrix.edicion }}-$short"
-          if [[ "${{ matrix.edicion }}" == debian ]]; then
-            notes="ISO preliminar de Vortex OS (kernel propio) con Debian 12, apt y entorno preparado para instalar LibreOffice. RAM recomendada: 4 GB. No incluye LibreOffice preinstalado. USB fisico verificado solo en UHCI/FAT32 emulado; MP4/MP3 sin decodificador nativo. Sin instalador en disco."
-          else
-            notes="ISO preliminar de Vortex OS (kernel propio) con escritorio, galeria, WAV AC97 y AVI RGB; SIN Debian ni LibreOffice instalado. RAM recomendada: 2 GB. Sin instalador en disco."
-          fi
-          gh release create "$tag" \
-            "out/$ISO" "out/$ISO.sha256" \
-            --target "$GITHUB_SHA" \
-            --title "Vortex OS para maquina virtual - ${{ matrix.edicion }} ($short)" \
-            --notes "$notes" --prerelease
+          tag="vortex-iso-$short"
+          gh release create "$tag"             out/VortexOS.iso out/VortexOS.iso.sha256             --target "$GITHUB_SHA" --prerelease             --title "Vortex OS - ISO unica 32/64 grafico ($short)"             --notes "Una sola ISO con dos modos graficos del kernel propio (64 y 32 bits). Incluye Debian para el modo 64, sin LibreOffice preinstalado. Arranque de ambos modos verificado en QEMU. Audio AC97 y USB UHCI FAT32 probados en QEMU; VMware ES1371/HDA y USB XHCI no estan soportados aun. Suspender es reposo de pantalla, no ACPI S3. No incluye instalador de disco."
