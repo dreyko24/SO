@@ -4,7 +4,18 @@ name: vortex-iso-unica
 on:
   push:
     branches: [cambio-nombre-vortex-os]
-    paths: ['.github/workflows/vm-iso.yml']
+    paths:
+      - '.github/workflows/vm-iso.yml'
+      - 'kernel/gui.c'
+      - 'kernel/ui_locale.h'
+      - 'kernel/media_demo.c'
+      - 'kernel/usb_storage.c'
+      - 'kernel/exfat_layout.h'
+      - 'kernel/audio.c'
+      - 'kernel/audio_sb16.c'
+      - 'kernel/video.c'
+      - 'kernel/gfx.c'
+      - 'tools/build-iso.sh'
   workflow_dispatch:
 permissions:
   contents: write
