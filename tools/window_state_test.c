@@ -42,6 +42,22 @@ int main(void){
     CHECK(win_top()==note_id&&notes->used&&!wins[duplicate].used,
           "cerrar una instancia conserva la otra");
     CHECK(files->used,"otras aplicaciones continuan abiertas");
+    /* Una actualizacion de Vortex Saber no debe borrar las notas historicas. */
+    FsNode *doc=fs_resolve(fs_root(),"/Documentos");
+    CHECK(doc&&doc->dir,"Documentos disponible para progreso educativo");
+    if(doc){
+        const char old_progress[]="32124\n";
+        FsNode *f=fs_create(doc,"Vortex-Saber-progreso.txt",old_progress,6);
+        CHECK(f!=0,"crear fichero de progreso anterior");
+        saber_loaded=0;
+        saber_load();
+        CHECK(saber_best[0]==3&&saber_best[1]==2&&saber_best[2]==1&&
+              saber_best[3]==2&&saber_best[4]==0&&saber_best[5]==0&&
+              saber_best[NSABER]==4,"migrar progreso previo sin perder partida");
+        saber_save();
+        f=fs_find(doc,"Vortex-Saber-progreso.txt");
+        CHECK(f&&f->size==NSABER+2,"guardar nuevo progreso de seis materias");
+    }
     win_close(note_id);
     win_close(file_id);
     CHECK(win_top()==-1&&nord==0,"cerrar todas las ventanas libera el foco");
