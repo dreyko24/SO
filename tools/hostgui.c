@@ -178,6 +178,25 @@ int main(void){
       dock(7); { Win *st=&wins[win_top()]; click(st->x+1+170+60,st->y+TB+50+322+13); if(kbd_layout()!=KBD_LATAM){ puts("FALLO boton teclado"); return 1; } } shot("20_ajustes_teclado"); closeall();
       kbd_set_layout(KBD_US); { char kv[16]; cfg_get("teclado",kv,sizeof kv); kbd_set_layout(layout_from_name(kv)); if(kbd_layout()!=KBD_LATAM){ puts("FALLO leer cfg"); return 1; } }
       gui_panic("Falta de pagina","eip",0x1234abcdULL,0x2,0xdeadbeefULL,1); shot("21_panic"); gui_force_redraw(); puts("TECLADO GUI OK"); }
+    /* La barra conserva el nombre del SO. El primer boton del dock
+     * debe abrir Aplicaciones y ofrecer acceso real a LibreOffice. */
+    closeall();
+    dock(0);
+    if(!appmenu_open){puts("FALLO menu Aplicaciones del dock");return 1;}
+    shot("22_menu_aplicaciones");
+    { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+      int target=-1;
+      for(int i=0;i<APPMENU_N;i++)
+        if(!strcmp(APPMENU[i].label,"LibreOffice")){target=i;break;}
+      if(target<0){puts("FALLO LibreOffice ausente del menu");return 1;}
+      int px=bx+40,py=by-APPMENU_N*28-42+28+target*28+14;
+      click(px,py);
+      if(nord<1||wins[win_top()].type!=A_OFFICE){
+          puts("FALLO abrir LibreOffice desde Aplicaciones");return 1;}
+      shot("23_centro_libreoffice");
+      puts("VORTEX APPS Y LIBREOFFICE GUI OK");
+    }
+    closeall();
     /* escritorio lleno */
     dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
