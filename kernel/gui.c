@@ -1372,17 +1372,19 @@ static void draw_window(int wi,int focused){
                 text(cx+20,cy+206,"FAT32 de unidad fisica montada en modo lectura.",C_DIM);
                 button(cx+20,cy+242,200,34,"Abrir dispositivo",1);
             }else{
-                text(cx+20,cy+205,"UHCI USB 1.1 + almacenamiento SCSI/FAT32.",C_DIM);
-                text(cx+20,cy+226,"EHCI/XHCI y exFAT aun no admitidos.",C_DIM);
+                text(cx+20,cy+205,"VMware: VM > Dispositivos extraibles > USB.",C_TXT);
+                text(cx+20,cy+226,"Selecciona Kingston y 'Conectar al invitado'.",C_DIM);
+                text(cx+20,cy+247,"USB de la VM: compatibilidad 1.1 (UHCI), FAT32.",C_DIM);
+                text(cx+20,cy+268,"XHCI/EHCI, NTFS y exFAT aun no admitidos.",0xffb86b);
             }
-            button(cx+20,cy+298,222,34,"Buscar USB conectado",0);
-            text(cx+20,cy+354,"No se escribe ni formatea una unidad externa.",C_DIM);
+            button(cx+20,cy+307,222,34,"Buscar USB conectado",0);
+            text(cx+20,cy+360,"Solo lectura. No se escribe ni formatea el USB.",C_DIM);
         }else{
             const char *dirs[]={"/Imagenes","/Musica","/Videos"};
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
             int n=dir?fs_list(dir,fl,FLMAX):0;
             text(cx+20,cy+54,dirs[w->media_tab],C_DIM);
-            if(w->media_tab==1)text(cx+20,cy+78,"Abre WAV PCM. Requiere tarjeta AC'97.",C_DIM);
+            if(w->media_tab==1)text(cx+20,cy+78,"WAV PCM: AC'97. VMware ES1371/HDA requiere driver.",C_DIM);
             else if(w->media_tab==2)text(cx+20,cy+78,"Abre AVI RGB sin compresion.",C_DIM);
             else text(cx+20,cy+78,"Haz clic en una imagen para abrirla.",C_DIM);
             int max=(ch-115)/32;if(max<1)max=1;
@@ -2030,7 +2032,7 @@ static void app_click(Win *w,int lx,int ly){
             if(i==3)(void)usb_storage_probe();
             dirty=1;return;}
         if(w->media_tab==3){
-            if(in_rect(lx,ly,20,298,222,34)){(void)usb_storage_probe();dirty=1;return;}
+            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_probe();dirty=1;return;}
             if(usb_storage_ready()&&in_rect(lx,ly,20,242,200,34)){
                 FsNode *root=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
                 if(root){Win *f=open_app(A_FILES);if(f){f->dir=root;f->scroll=0;f->sel=0;}}
