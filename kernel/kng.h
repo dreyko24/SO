@@ -18,6 +18,7 @@ void  kshell_exec(char *line);         /* ejecuta un comando del shell del kerne
 void  kreboot(void);
 void  khalt(void);
 int   krtc(int *h, int *m);            /* hora del RTC (CMOS); 0 si ok */
+uint64_t krtc_epoch(void);             /* fecha y hora UTC completa del RTC */
 uint32_t kram_kb(void);
 extern void (*kcon_hook)(char);        /* si no es NULL, la salida de consola va a esta funcion */
 /* programas "pegados" a la ventana de terminal (kernel de 64 bits): corren en segundo plano de verdad y reciben las teclas de la ventana */
