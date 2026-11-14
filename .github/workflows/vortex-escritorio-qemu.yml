@@ -28,7 +28,7 @@ jobs:
           python3 - <<'PY'
           import pathlib, hashlib
           d=pathlib.Path('capturas')
-          expected=['aplicaciones','biblioteca_saber','primera_leccion','respuesta','siguiente_pregunta','pantalla_completa','minimizada','restaurada']
+          expected=['aplicaciones','biblioteca_saber','primera_leccion','respuesta','siguiente_pregunta','pantalla_completa','minimizada','restaurada','segunda_instancia','instancia_cerrada','maximizada','tamano_restaurado']
           files=[d/(n+'.png') for n in expected]
           for f in files:
               assert f.exists() and f.stat().st_size>5000, f'Captura ausente o vacia: {f}'
@@ -43,6 +43,11 @@ jobs:
               raw=zlib.decompress(compressed); row=1+width*3
               assert height==768 and width==1024 and len(raw)==height*row, 'PNG inesperado'
               assert all(raw[y*row]==0 for y in range(height)), 'PNG no compatible'
+              if path.stem=='pantalla_completa':
+                  # Fondo completamente opaco y sin widgets/dock en pantalla completa.
+                  for px,py in [(1000,680),(42,650)]:
+                      i=py*row+1+px*3
+                      assert raw[i:i+3]==bytes([22,24,38]), f'Pantalla completa deja ver el escritorio en {px},{py}'
               # Una zona interior donde se muestran las ventanas (excluye reloj y cursor del dock).
               return b''.join(raw[y*row+1+120*3:y*row+1+850*3] for y in range(100,625))
           snapshots=[pixels(f) for f in files]
@@ -51,7 +56,7 @@ jobs:
               diff=sum(x!=y for x,y in zip(a,b))
               print(expected[i-1], '->', expected[i], 'bytes cambiados:',diff)
               assert diff>7000, f'Interaccion sin efecto visible: {expected[i-1]} -> {expected[i]}'
-          print('QEMU: controles y contenidos cambiaron entre los 8 estados esperados')
+          print('QEMU: controles y contenidos cambiaron entre los 12 estados esperados')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
