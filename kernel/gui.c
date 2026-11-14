@@ -1204,11 +1204,12 @@ static int mu_item_at(int px,int py){
 static void mu_draw(void){
     if(!mu_open) return;
     for(int i=3;i>=1;i--) rrect(mu_x-i,mu_y-i+3,mu_w+2*i,mu_h+2*i,10+i,0x000000,22);
-    rrect(mu_x,mu_y,mu_w,mu_h,9,C_BORDER,255); rrect(mu_x+1,mu_y+1,mu_w-2,mu_h-2,8,0x1b1d30,255);
+    rrect(mu_x,mu_y,mu_w,mu_h,14,C_BORDER,255);
+    rrect(mu_x+1,mu_y+1,mu_w-2,mu_h-2,13,C_PANEL,255);
     int y=mu_y+4;
     for(int i=0;i<mu_n;i++){ int h=mu_ih(i);
-        if(!mu_it[i].act) fill(mu_x+10,y+4,mu_w-20,1,0xffffff,30);
-        else { if(i==mu_hover) rrect(mu_x+4,y,mu_w-8,h,6,ACCENT,200); text(mu_x+16,y+4,mu_it[i].l,i==mu_hover?0xffffff:C_TXT); }
+        if(!mu_it[i].act)fill(mu_x+10,y+4,mu_w-20,1,C_BORDER,80);
+        else { if(i==mu_hover)rrect(mu_x+4,y,mu_w-8,h,8,ACCENT,200); text(mu_x+16,y+4,mu_it[i].l,i==mu_hover?0xffffff:C_TXT); }
         y+=h; }
 }
 static void mu_exec(int i){
@@ -1380,10 +1381,9 @@ static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
     /* Sombra en bandas finas, nunca 12 rectangulos de tamano ventana:
      * anteriormente cada movimiento recalculaba millones de mezclas. */
-    fill(x-7,y+9,7,w->h,0x03070f,60);
-    fill(x+w->w,y+9,7,w->h,0x03070f,60);
-    fill(x+7,y+w->h,w->w-14,8,0x03070f,60);
-    fill(x-3,y+w->h,w->w+6,3,0x03070f,35);
+    /* Sombra difusa de GNOME/Adwaita en vez de bandas grises duras. */
+    rrect(x-7,y+7,w->w+14,w->h+11,22,0x08050d,light_theme?36:81);
+    rrect(x-3,y+3,w->w+6,w->h+6,19,0x100b16,light_theme?19:45);
     rrect(x,y,w->w,w->h,17,focused?mix(C_BORDER,ACCENT,35):C_BORDER,255);
     rrect(x+1,y+1,w->w-2,w->h-2,16,C_BG,255);
     clip_set(x+1,y+1,w->w-2,TB-1);
@@ -1411,7 +1411,7 @@ static void draw_window(int wi,int focused){
     switch(w->type){
     case A_ABOUT:{
         vortex_logo(cx+cw/2-60,cy+24,120,255);
-        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",0xffffff);
+        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",C_TXT);
         { char vb[80]="vortex-kernel " VORTEX_VERSION " (" VORTEX_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
         text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
         text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
@@ -1439,17 +1439,19 @@ static void draw_window(int wi,int focused){
         { char t[40]="Archivos - "; cat(t,40,w->dir==fs_root()?"/":w->dir->name); k_strcpy(w->title,t,40); }
         for(int i=0;i<8;i++){ int bw, bx=ftb_x(i,&bw); int off=((i==2||i==3||i==5||i==6||i==7)&&!w->sel)||(i==4&&!clip_path[0]);
             button(cx+bx,cy+6,bw,24,FTB[i],i==1); if(off) rrect(cx+bx,cy+6,bw,24,6,C_BG,150); }
-        rrect(cx+8,cy+36,cw-16,24,6,0x10111b,255);
+        rrect(cx+8,cy+36,cw-16,24,9,C_TILE,255);
         { char p[200]; fs_path(w->dir,p,sizeof p); clip_set(cx+12,cy+36,cw-24,24); text(cx+16,cy+40,p,C_TXT); clip_set(cx,cy,cw,ch); }
         int tx=cx+cw-230, sx=cx+cw-24;
         text(cx+46,cy+66,"Nombre",C_DIM); text(tx,cy+66,"Tipo",C_DIM); text(sx-text_w("Tamano"),cy+66,"Tamano",C_DIM);
-        fill(cx+8,cy+84,cw-16,1,0xffffff,24);
+        fill(cx+8,cy+84,cw-16,1,C_BORDER,93);
         int n=fs_list(w->dir,fl,FLMAX), ly=cy+88, rows=fm_rows(w);
         if(w->scroll>k_max(0,n-rows)) w->scroll=k_max(0,n-rows);
         for(int i=0;i<rows && i+w->scroll<n;i++){
             FsNode *f=fl[i+w->scroll]; int ry=ly+i*26;
-            if(f==w->sel) rrect(cx+6,ry,cw-22,25,5,ACCENT,90);
-            else if(fd_on&&f->dir&&in_rect(mx,my,cx+6,ry,cw-22,25)) rrect(cx+6,ry,cw-22,25,5,0xffffff,30);    /* carpeta donde se soltaria */
+            if(f==w->sel)rrect(cx+6,ry,cw-22,25,9,ACCENT,light_theme?55:115);
+            else if(fd_on&&f->dir&&in_rect(mx,my,cx+6,ry,cw-22,25))
+                rrect(cx+6,ry,cw-22,25,9,C_HOVER,180);
+            else if(i&1)rrect(cx+6,ry,cw-22,25,9,C_PANEL,130);    /* carpeta donde se soltaria */
             draw_ficon(cx+14,ry+2,f);
             if(w->editing&&f==w->sel){
                 rrect(cx+42,ry+1,tx-cx-50,23,4,ACCENT,255); rrect(cx+43,ry+2,tx-cx-52,21,3,0x05060c,255);
@@ -1464,14 +1466,15 @@ static void draw_window(int wi,int focused){
         }
         if(n>rows){ int th=ch-88-22, bh=k_max(20,th*rows/n), by=cy+88+(th-bh)*w->scroll/k_max(1,n-rows); rrect(cx+cw-10,cy+88,6,th,3,0xffffff,14); rrect(cx+cw-10,by,6,bh,3,C_DIM,170); }
         if(!n) text(cx+46,ly+6,"(carpeta vacia - clic derecho para crear algo)",C_DIM);
-        fill(cx,cy+ch-22,cw,22,0x10111b,255);
+        fill(cx,cy+ch-22,cw,22,C_PANEL,255);
+        fill(cx,cy+ch-22,cw,1,C_BORDER,70);
         { char b[80]=""; cat_int(b,80,n); cat(b,80,n==1?" elemento":" elementos");
           if(w->sel){ cat(b,80,"  |  "); cat(b,80,w->sel->name); } b[60]=0; text(cx+10,cy+ch-19,b,C_DIM);
           const char *m=w->nstat[0]?w->nstat:(clip_path[0]?(clip_cut?"Portapapeles: cortado":"Portapapeles: copiado"):"");
           if(*m) text(cx+cw-10-text_w(m),cy+ch-19,m,w->nstat[0]?0x7ee787:C_DIM); }
         break; }
     case A_VIEWER:{
-        fill(cx,cy,cw,ch,0x10111b,255);
+        fill(cx,cy,cw,ch,light_theme?0xe8e7ed:0x16141f,255);
         if(w->picture.pixels){
             /* Ajustar imagen a la zona disponible, ampliando tambien fotos pequenas. */
             int aw=cw-24,ah=ch-56,dw=aw,dh=w->picture.h*aw/w->picture.w;
@@ -1506,7 +1509,7 @@ static void draw_window(int wi,int focused){
         text_bold(cx+20,cy+18,"Reproductor de audio WAV",C_TXT);
         text(cx+20,cy+45,w->file?w->file->name:"Sin archivo",C_DIM);
         int ok=audio_active(),progress=audio_progress();
-        rrect(cx+20,cy+81,cw-40,18,8,0x0b0e1a,255);
+        rrect(cx+20,cy+81,cw-40,18,8,C_TILE,255);
         if(progress>0)rrect(cx+20,cy+81,(cw-40)*progress/100,18,8,ACCENT,255);
         char b[80]="Progreso: ";cat_int(b,80,progress);cat(b,80,"%");text(cx+22,cy+109,b,C_TXT);
         if(!audio_hardware()){
@@ -1576,7 +1579,7 @@ static void draw_window(int wi,int focused){
             if(w->scroll>k_max(0,n-max))w->scroll=k_max(0,n-max);
             for(int i=0;i<max && i+w->scroll<n;i++){
                 FsNode *file=fl[i+w->scroll];int row=cy+108+i*32;
-                if(i&1)rrect(cx+14,row,cw-28,30,4,0xffffff,12);
+                if(i&1)rrect(cx+14,row,cw-28,30,9,C_TILE,230);
                 draw_ficon(cx+22,row+3,file);text(cx+58,row+7,file->name,C_TXT);
             }
             if(!n)text(cx+20,cy+152,"Carpeta vacia. Copia archivos desde Archivos.",C_DIM);
@@ -1584,10 +1587,10 @@ static void draw_window(int wi,int focused){
         break; }
     case A_BROWSER:{
         button(cx+8,cy+6,32,24,"<",0);
-        rrect(cx+48,cy+6,cw-56,24,6,0x10111b,255);
+        rrect(cx+48,cy+6,cw-56,24,10,C_TILE,255);
         char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
         if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
-        text(cx+58,cy+10,shown,w->editing?0xffffff:C_DIM);
+        text(cx+58,cy+10,shown,w->editing?C_TXT:C_DIM);
         if(w->editing && ((kticks()/50)&1)) fill(cx+58+text_w(shown),cy+10,2,16,ACCENT,255);
         int src_len; const char *src=page_src(w,&src_len);
         int vx=cx+12, vy=cy+38, vw=cw-24, vh=ch-38;
@@ -1603,7 +1606,7 @@ static void draw_window(int wi,int focused){
         int cwid=(cw-48)/2;
         for(int i=0;i<NPAPPS;i++){
             int x=cx+16+(i%2)*(cwid+16), y=cy+64+(i/2)*76, inst=papp_installed(i);
-            rrect(x,y,cwid,66,10,0x10111b,255);
+            rrect(x,y,cwid,66,13,C_TILE,255);
             circle(x+32,y+33,17,PAPPS[i].col,255); { char ini[2]={PAPPS[i].name[0],0}; text_bold(x+27,y+25,ini,0xffffff); }
             text_bold(x+60,y+8,PAPPS[i].name,C_TXT); text(x+60,y+26,PAPPS[i].desc,C_DIM);
             text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
@@ -1626,7 +1629,7 @@ static void draw_window(int wi,int focused){
         b[0]=0; cat(b,100,"RAM detectada: "); cat_int(b,100,tot); cat(b,100," MB"); text(cx+20,cy+40,b,C_TXT);
         text_bold(cx+20,cy+88,"Archivos",C_TXT);
         b[0]=0; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,dr); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes"); text(cx+20,cy+110,b,C_TXT);
-        rrect(cx+20,cy+134,cw-40,14,7,0x10111b,255); { int pct=by*100/(KNGFS_CAP); if(pct<1&&by>0) pct=1; if(pct>100) pct=100; if(pct) rrect(cx+20,cy+134,(cw-40)*pct/100,14,7,ACCENT,255); }
+        rrect(cx+20,cy+134,cw-40,14,7,C_TILE,255); { int pct=by*100/(KNGFS_CAP); if(pct<1&&by>0) pct=1; if(pct>100) pct=100; if(pct) rrect(cx+20,cy+134,(cw-40)*pct/100,14,7,ACCENT,255); }
         text_bold(cx+20,cy+164,"Disco",C_TXT);
         b[0]=0; if(disk_sectors()){ cat(b,100,disk_model()); cat(b,100,vortexfs_active()?"  (guardado automatico)":"  (sin formato vortex)"); } else cat(b,100,"sin disco (los archivos se pierden al apagar)");
         text(cx+20,cy+186,b,disk_sectors()&&vortexfs_active()?0x7ee787:C_DIM);
@@ -1638,7 +1641,7 @@ static void draw_window(int wi,int focused){
         button(cx+8,cy+6,70,24,"Nueva",0); button(cx+86,cy+6,80,24,"Guardar",1);
         if(w->nstat[0]) text(cx+178,cy+10,w->nstat,0x7ee787);
         else { char b[40]=""; cat_int(b,40,w->nlen); cat(b,40," / "); cat_int(b,40,NOTEMAX); text(cx+cw-16-text_w(b),cy+10,b,C_DIM); }
-        rrect(cx+8,cy+38,cw-16,ch-46,8,0x10111b,255);
+        rrect(cx+8,cy+38,cw-16,ch-46,13,C_TILE,255);
         int cols=(cw-40)/8, rows=(ch-46-16)/16, total=1, col=0;
         for(int i=0;i<w->nlen;i++){ if(w->note[i]=='\n'||col>=cols){ total++; col=0; if(w->note[i]=='\n') continue; } col++; }
         int skip=total>rows?total-rows:0, row=0; col=0;
@@ -1652,14 +1655,16 @@ static void draw_window(int wi,int focused){
         clip_reset();
         break; }
     case A_CALC:{
-        rrect(cx+14,cy+10,cw-28,58,10,0x10111b,255);
+        rrect(cx+14,cy+10,cw-28,58,12,light_theme?0xe4e1eb:0x17141e,255);
         char b[40]; if(w->cerr) k_strcpy(b,"Error",40); else calc_fmt(w->ccur,(!w->cfresh&&w->cdec>=0)?w->cdec:-1,b,40);
-        text_big(cx+cw-28-text_w_big(b),cy+34,b,w->cerr?0xff7b72:0xffffff);
+        text_big(cx+cw-28-text_w_big(b),cy+34,b,w->cerr?0xd7445a:C_TXT);
         if(w->cop){ char e[48]; calc_fmt(w->cacc,-1,e,40); char o[4]={' ',w->cop=='*'?'x':(char)w->cop,0,0}; cat(e,48,o); text(cx+cw-28-text_w(e),cy+14,e,C_DIM); }
         for(int i=0;i<NCKEYS;i++){ int x,y,kw,kh; ckey_rect(&CKEYS[i],&x,&y,&kw,&kh); x+=cx; y+=cy; int k=CKEYS[i].k;
-            uint32_t bc=((k>='0'&&k<='9')||k=='.')?0x2a2e4a:(k=='=')?ACCENT:(k=='C'||k=='<'||k=='n'||k=='%')?0x3a3550:mix(0x2a2e4a,ACCENT,90);
-            rrect(x,y,kw,kh,8,0xffffff,16); rrect(x+1,y+1,kw-2,kh-2,7,bc,255);
-            text_bold(x+(kw-text_w(CKEYS[i].l))/2,y+12,CKEYS[i].l,0xffffff); }
+            uint32_t bc=((k>='0'&&k<='9')||k=='.')?C_TILE:(k=='=')?ACCENT:
+                (k=='C'||k=='<'||k=='n'||k=='%')?C_BTN:mix(C_TILE,ACCENT,76);
+            rrect(x,y,kw,kh,10,C_BORDER,30);
+            rrect(x+1,y+1,kw-2,kh-2,9,bc,255);
+            text_bold(x+(kw-text_w(CKEYS[i].l))/2,y+12,CKEYS[i].l,k=='='?0xffffff:C_TXT); }
         break; }
     case A_SNAKE:{
         fill(cx,cy,cw,34,0x141626,255);
