@@ -25,7 +25,9 @@ int kgetc(void){ return -1; }
 void (*kcon_hook)(char);
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kprintf(const char *f,...){ (void)f; }
+static char host_last_shell[256];
 void kshell_exec(char *l){
+    k_strcpy(host_last_shell,l,sizeof host_last_shell);
     if(!strcmp(l,"info")) out("vortex-kernel 0.5 (i386, Multiboot)\nParte de Vortex OS.\n");
     else if(!strcmp(l,"uptime")) out("12.3 s\n");
     else { out("comando desconocido: "); out(l); out(" (prueba 'help')\n"); }
@@ -107,7 +109,27 @@ int main(void){
          browser_safe_target("https://google.com/sitio con espacio")){
           puts("FALLO URI o busqueda Chromium real");return 1;
       }
-      puts("VORTEX WEB: GOOGLE URL ENCODING, BLOQUEO DE INYECCION Y PUENTE CHROMIUM OK");
+      /* Simular existencia del ejecutable: el puente debe invocar el
+       * comando real de Debian y no simular una pagina HTTPS. */
+      FsNode *root=fs_root();
+      FsNode *usr=fs_find(root,"usr");if(!usr)usr=fs_mkdir(root,"usr");
+      FsNode *bin=usr?fs_find(usr,"bin"):0;if(usr&&!bin)bin=fs_mkdir(usr,"bin");
+      FsNode *chromium=bin?fs_create(bin,"chromium","test",4):0;
+      if(!chromium){puts("FALLO instalar binario simulado Chromium");return 1;}
+      host_last_shell[0]=0;
+      if(!browser_open_modern("https://www.google.com/")||
+         strcmp(host_last_shell,"abrir chromium https://www.google.com/")){
+          puts("FALLO puente a Chromium real");return 1;
+      }
+      Win *web=open_app(A_BROWSER);
+      k_strcpy(web->ebuf,"sistema operativo",sizeof web->ebuf);
+      web->elen=k_strlen(web->ebuf);
+      host_last_shell[0]=0;browser_go_typed(web);
+      if(strcmp(host_last_shell,"abrir chromium https://www.google.com/search?q=sistema+operativo")){
+          puts("FALLO Google busqueda de palabras desde navegador");return 1;
+      }
+      closeall();fs_remove(chromium);
+      puts("VORTEX WEB: CHROMIUM REAL INSTALADO, GOOGLE HTTPS Y BUSQUEDA OK");
     }
     /* Multitarea por teclado: ciclo completo, retroceso, y estado
      * intacto al volver a una ventana minimizada. */

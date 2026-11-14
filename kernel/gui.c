@@ -914,7 +914,11 @@ static void browser_go_typed(Win *w){
         }else if((dot||k_startswith(w->ebuf,"localhost"))&&!sp){
             char site[192]="https://";cat(site,sizeof site,w->ebuf);
             if(browser_open_modern(site)){w->editing=0;dwin(w);return;}
-        }else if(!has&&sp){
+        }else if(!has&&w->ebuf[0]!='/'&&
+                 (sp||!dot)&&
+                 k_strcmp(w->ebuf,"inicio")&&k_strcmp(w->ebuf,"ayuda")&&
+                 k_strcmp(w->ebuf,"acerca")&&k_strcmp(w->ebuf,"error")){
+
             browser_google_query(w->ebuf,u,sizeof u);
             if(browser_open_modern(u)){w->editing=0;dwin(w);return;}
         }
@@ -2991,7 +2995,13 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     w->editing=0;
     for(int i=0;i<w->page.nlinks;i++){
         HLink *k=&w->page.links[i]; int px=12+k->x, py=38+k->y-w->bscroll;
-        if(ly>=38 && in_rect(lx,ly,px,py,k->w,k->h)){ const char *hr=w->page.hrefs[k->href]; if(hr[0]=='#') return; char u[192]; resolve(w->url,hr,u,sizeof u); nav(w,u,1); return; }
+        if(ly>=38 && in_rect(lx,ly,px,py,k->w,k->h)){
+            const char *hr=w->page.hrefs[k->href];
+            if(hr[0]=='#')return;
+            char u[192];resolve(w->url,hr,u,sizeof u);
+            if(browser_safe_target(u)&&browser_open_modern(u))return;
+            nav(w,u,1);return;
+        }
     }
     dirty=1;
 }
