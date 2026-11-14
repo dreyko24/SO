@@ -190,8 +190,8 @@ int main(void){
       for(int i=0;i<APPMENU_N;i++)
         if(!strcmp(APPMENU[i].label,"LibreOffice")){target=i;break;}
       if(target<0){puts("FALLO LibreOffice ausente del menu");return 1;}
-      int cw=(w-177)/4,rh=(h-87)/4;
-      int px=x+156+(target%4)*cw+cw/2,py=y+77+(target/4)*rh+rh/2;
+      int cw=(w-177)/4,rh=(h-134)/4;
+      int px=x+156+(target%4)*cw+cw/2,py=y+122+(target/4)*rh+rh/2;
       click(px,py);
       if(nord<1||wins[win_top()].type!=A_OFFICE){
           puts("FALLO abrir LibreOffice desde Aplicaciones");return 1;}
@@ -206,10 +206,39 @@ int main(void){
       shot("24_launcher_categorias");
       int n=appmenu_index(0);
       if(n<0||APPMENU[n].app!=A_MEDIA){puts("FALLO apps multimedia");return 1;}
-      click(x+156+(w-177)/8,y+77+(h-87)/8);
+      click(x+156+(w-177)/8,y+122+(h-134)/8);
       if(nord<1||wins[win_top()].type!=A_MEDIA){puts("FALLO lanzar galeria desde categoria");return 1;}
       closeall();
       puts("VORTEX LAUNCHER CATEGORIAS OK");
+    }
+    /* Prueba de uso real: buscar aplicaciones y pulsar Enter. */
+    { uint64_t before=gui_painted_pixels;
+      dock(0);
+      if(!appmenu_open){puts("FALLO launcher de busqueda");return 1;}
+      uint64_t area=gui_painted_pixels-before;
+      if(area>=(uint64_t)W*H){
+          fprintf(stderr,"FALLO: launcher repinto toda la pantalla (%llu px)\n",
+                  (unsigned long long)area);return 1;
+      }
+      typestr("calc");
+      if(appmenu_index(0)<0||APPMENU[appmenu_index(0)].app!=A_CALC){
+          puts("FALLO filtro de busqueda de aplicaciones");return 1;
+      }
+      shot("28_launcher_busqueda");
+      gui_key('\n');gui_frame();
+      if(nord<1||wins[win_top()].type!=A_CALC){
+          puts("FALLO abrir calculadora con Enter");return 1;
+      }
+      closeall();
+      { uint64_t p=gui_painted_pixels;
+        for(int i=0;i<64;i++){gui_mouse_abs(400+i,475,0);gui_frame();}
+        if(gui_painted_pixels!=p){
+            puts("FALLO cursor mueve y repinta widgets innecesarios");return 1;
+        }
+      }
+      fprintf(stderr,"[vortex-perf] launcher %llu pixeles pintados de %d de pantalla\n",
+              (unsigned long long)area,W*H);
+      puts("VORTEX BUSQUEDA Y REDIBUJADO INCREMENTAL OK");
     }
     click(W-26,14);
     if(!power_menu_open){puts("FALLO menu energia");return 1;}
