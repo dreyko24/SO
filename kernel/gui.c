@@ -2002,27 +2002,42 @@ static void settings_click(int lx,int ly,int cw,int ch){
         else if(in_rect(lx,ly,142,ch-44,110,28)) khalt();
     }
 }
+/* Construye un comando seguro para Chromium conservando enlaces y busquedas.
+ * Devuelve -1 si el URL no cabe o contiene caracteres de shell no permitidos. */
+static int browser_chromium_command(const char *url,char *out,int max){
+    char target[128];
+    if(k_startswith(url,"http://")||k_startswith(url,"https://")){
+        if(k_strlen(url)>120) return -1;
+        k_strcpy(target,url,sizeof target);
+    } else if(k_startswith(url,"kng://buscar?q=")){
+        const char *q=url+15;
+        if(k_strlen(q)>85) return -1;
+        k_strcpy(target,"https://www.google.com/search?q=",sizeof target);
+        cat(target,sizeof target,q);
+    } else k_strcpy(target,"https://www.google.com/",sizeof target);
+    int n=k_strlen(target);
+    if(n<=0||n>120) return -1;
+    for(int i=0;i<n;i++){
+        unsigned char c=(unsigned char)target[i];
+        if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||
+             (c>='0'&&c<='9')||c=='.'||c=='/'||c==':'||
+             c=='?'||c=='&'||c=='='||c=='%'||c=='#'||
+             c=='_'||c=='-'||c=='+'||c=='~'||c=='@')) return -1;
+    }
+    if(max<n+16) return -1;
+    k_strcpy(out,"abrir chromium ",max);
+    cat(out,max,target);
+    return 0;
+}
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
     if(in_rect(lx,ly,cw-138,6,130,24)){
         w->editing=0;
         if(papp_installed(4)){
-            /* Chromium usa el motor moderno. Mantener la URL actual al abrirlo
-             * y no permitir que entradas sin validar se conviertan en comandos. */
-            char cmd[160]="abrir chromium";
-            const char *u=w->url;
-            int n=k_strlen(u), safe=n>0&&n<=120;
-            if(!(k_startswith(u,"http://")||k_startswith(u,"https://"))) safe=0;
-            for(int i=0;safe&&i<n;i++){
-                int c=(unsigned char)u[i];
-                if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||
-                     (c>='0'&&c<='9')||c=='.'||c=='/'||c==':'||
-                     c=='?'||c=='&'||c=='='||c=='%'||c=='#'||
-                     c=='_'||c=='-'||c=='+'||c=='~'||c=='@')) safe=0;
-            }
-            if(safe){ cat(cmd,sizeof cmd," "); cat(cmd,sizeof cmd,u); }
-            run_quiet(cmd);
+            char cmd[160];
+            if(!browser_chromium_command(w->url,cmd,sizeof cmd)) run_quiet(cmd);
+            else run_quiet("abrir chromium https://www.google.com/");
         } else run_in_terminal("instalar chromium");
         dirty=1; return;
     }
