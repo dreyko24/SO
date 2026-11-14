@@ -1738,8 +1738,8 @@ static int power_menu_hit(int mx0,int my0){
 static void power_menu_draw(void){
     if(!power_menu_open)return;
     int x=gw-230,y=BARH+6;
-    rrect(x+3,y+4,218,196,12,0x000000,80);
-    rrect(x,y,218,196,12,0x1a2138,255);
+    rrect(x+3,y+4,218,188,12,0x000000,80);
+    rrect(x,y,218,188,12,0x1a2138,255);
     text_bold(x+19,y+12,"Energia",0xffffff);
     static const char *const power_labels[]={"Apagar","Suspender","Reiniciar"};
     for(int i=0;i<3;i++){
@@ -1751,7 +1751,6 @@ static void power_menu_draw(void){
         else {line(x+27,cy+24,x+39,cy+17,2,0xffffff,255);line(x+38,cy+17,x+37,cy+26,2,0xffffff,255);}
         text(x+57,cy+13,power_labels[i],0xeaf0ff);
     }
-    text(x+16,y+187,"Suspender: reposo de pantalla",C_DIM);
 }
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
 
