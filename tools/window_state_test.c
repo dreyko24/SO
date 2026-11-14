@@ -10,6 +10,12 @@ static int failures;
 int main(void){
     fb=calloc(W*H,sizeof *fb);
     if(!fb || gui_init(fb,W,H,W*4)){ fprintf(stderr,"No se pudo iniciar GUI\n"); return 2; }
+    FsNode *welcome=fs_resolve(fs_root(),"/Documentos/bienvenida.txt");
+    FsNode *version=fs_resolve(fs_root(),"/Sistema/version.txt");
+    CHECK(welcome&&welcome->data&&strstr(welcome->data,"Bienvenido a Vortex OS")!=0,
+          "el sistema de archivos inicial identifica Vortex OS");
+    CHECK(version&&version->data&&strstr(version->data,"Vortex OS")!=0,
+          "la version del sistema identifica Vortex OS");
     Win *files=open_app(A_FILES), *notes=open_app(A_NOTES);
     CHECK(files&&notes&&files!=notes,"dos aplicaciones independientes");
     if(!files||!notes) return 2;
@@ -66,6 +72,27 @@ int main(void){
         saber_save();
         f=fs_find(doc,"Vortex-Saber-progreso.txt");
         CHECK(f&&f->size==NSABER+2,"guardar nuevo progreso de seis materias");
+    }
+    CHECK(NSABER==6 && SABER_NQ==3,"Saber incluye seis materias y 18 preguntas");
+    Win *school=open_app(A_SABER);
+    CHECK(school!=0,"abrir plataforma educativa");
+    if(school){
+        const int answers[3]={0,1,2};
+        for(int subject=4;subject<=5;subject++){
+            saber_start(school,subject);
+            CHECK(school->saber_topic==subject,"iniciar materia nueva");
+            for(int q=0;q<3;q++){
+                CHECK(SABER[subject].correcta[q]==answers[q],"clave de evaluacion correcta");
+                saber_answer(school,answers[q]);
+                CHECK(school->saber_hits==q+1,"puntaje refleja las respuestas");
+                saber_next(school);
+            }
+            CHECK(saber_best[subject]==3,"dominio de la materia guardado");
+        }
+        FsNode *progress=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
+        CHECK(progress&&progress->size==NSABER+2&&progress->data[4]=='3'&&progress->data[5]=='3',
+              "nuevo progreso educativo guardado para Geografia y Comunicacion");
+        win_close((int)(school-wins));
     }
     win_close(note_id);
     win_close(file_id);

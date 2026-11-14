@@ -29,8 +29,14 @@ int main(void){
     check(ntp.phase==0 && ntp.next>T,"reprograma la sincronizacion");
     char request[]="hora sincronizar", status[]="fecha";
     check(net_cmd(status)==1,"comando fecha disponible en el shell");
+    /* El comando debe programar NTP solo si DHCP/red estan listos. */
+    ntp.next=123;
+    check(net_cmd(request)==1&&ntp.next==123,
+          "no iniciar NTP sin conectividad");
+    net_st=2; /* simular DHCP completado */
     check(net_cmd(request)==1&&ntp.next==0&&ntp.phase==0,
           "comando hora sincronizar programa un NTP inmediato");
+    net_st=0;
     if(errors) return 1;
     puts("VORTEX NTP STACK OK");
     return 0;

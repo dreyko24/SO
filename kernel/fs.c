@@ -286,10 +286,10 @@ void fs_init(void){
     FsNode *esc=fs_mkdir(root,"Escritorio"), *doc=fs_mkdir(root,"Documentos"), *img=fs_mkdir(root,"Imagenes"),
            *sys=fs_mkdir(root,"Sistema"), *prog=fs_mkdir(root,"Programas");
     (void)esc; (void)img;
-    put(doc,"bienvenida.txt","Bienvenido a Königreich OS\n\nEste es un sistema operativo propio, con kernel propio (kng-kernel).\nNo es Linux ni usa codigo de Linux.\n\nPuedes explorar los archivos, abrir la terminal,\ncambiar colores y fondos en Ajustes, y probar el navegador.\n\nLos archivos viven en memoria: al reiniciar se pierden\n(todavia no hay controlador de disco).\n");
-    put(doc,"notas.txt","Notas\n-----\n- Crear controlador de disco\n- Pasar el kernel a 64 bits\n- Red (tarjeta virtual) para el navegador\n");
-    put(doc,"pagina.html","<title>Mi pagina</title><h1>Hola, Königreich</h1><p>Esta pagina es un archivo del sistema, abierto con el navegador de kng.</p><p><a href=\"kng://inicio\">Volver al inicio</a></p>");
-    put(sys,"version.txt","Königreich OS\nkernel: kng-kernel 0.5\narquitectura: i386 (x86_64 en desarrollo)\n");
+    put(doc,"bienvenida.txt","Bienvenido a Vortex OS\n\nSistema operativo de escritorio en desarrollo con kernel propio.\nIncluye herramientas nativas y, en el modo de 64 bits con Debian,\nuna capa para ejecutar programas Linux.\n\nAbre Aplicaciones para explorar Vortex Saber, Archivos, Terminal,\nAjustes y el navegador. El navegador interno es limitado;\npara webs modernas utiliza Chromium sobre el entorno Debian.\n\nPara conservar tus documentos tras reiniciar, configura un disco\nde almacenamiento KNGFS desde Ajustes. Antes de formatear\nhaz una copia de seguridad: el formateo borra los datos del disco.\n");
+    put(doc,"notas.txt","Notas de Vortex OS\n------------------\n- El escritorio tiene ventanas independientes y Vortex Saber.\n- La persistencia requiere un disco compatible configurado.\n- Los controladores USB fisicos y audio siguen en desarrollo.\n- Para probar la imagen usa QEMU antes de un PC real.\n");
+    put(doc,"pagina.html","<title>Vortex OS</title><h1>Bienvenido a Vortex OS</h1><p>Pagina local abierta con el navegador integrado de Vortex OS.</p><p><a href=\"kng://inicio\">Volver al inicio</a></p>");
+    put(sys,"version.txt","Vortex OS\nkernel: kng (compatibilidad interna)\narquitecturas: i386 y x86_64\nestado: desarrollo activo, hardware general pendiente de validar\n");
     put(sys,"kng.cfg","# configuracion de ejemplo\nidioma=es\nteclado=us\n# buscador web: kng-proxy (tools/kng-proxy.py en tu PC, host = 10.0.2.2 en NAT). Borra la linea para buscar solo en kng:\nbuscador=http://10.0.2.2:8080/search?q=%s\n");
     put(prog,"terminal","aplicacion integrada\n");
     put(prog,"archivos","aplicacion integrada\n");

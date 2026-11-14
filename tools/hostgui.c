@@ -22,7 +22,7 @@ static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kserial_puts(const char *s){ (void)s; } /* puerto serie no existe en el simulador */
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
-    if(!strcmp(l,"info")) out("kng-kernel 0.5 (i386, Multiboot)\nParte de Königreich OS.\n");
+    if(!strcmp(l,"info")) out("kng-kernel 0.5 (i386, Multiboot)\nParte de Vortex OS.\n");
     else if(!strcmp(l,"uptime")) out("12.3 s\n");
     else { out("comando desconocido: "); out(l); out(" (prueba 'help')\n"); }
 }
