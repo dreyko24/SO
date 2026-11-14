@@ -1,7 +1,7 @@
 # Test de audio/video: interfaz Ubuntu+GNOME (Actividades superior).
 # Menu 1024x768: Musica col3 fila0=857,305; Videos col0 fila1=398,404.
 captura 01-escritorio
-raton 950 110
+raton 5 80
 clic
 raton 53 14
 clic

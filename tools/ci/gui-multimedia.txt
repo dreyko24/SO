@@ -1,7 +1,7 @@
 # Vortex Flow (Ubuntu/GNOME): Actividades en (53,14), dock vertical a la izquierda.
 # Lanzador 1024x768: primera fila centrada en y=305; Galeria col 2 (x=704).
 captura 01-escritorio
-raton 950 110
+raton 5 80
 clic
 esperar 1
 raton 53 14
