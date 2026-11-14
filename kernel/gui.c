@@ -2933,12 +2933,14 @@ void gui_mouse_wheel(int steps){
         }
         default:return;
         }
-        before=w->type==A_BROWSER?w->bscroll:w->scroll;
+        before=w->type==A_BROWSER?w->bscroll:
+               w->type==A_ENCARTA?w->enc_scroll:w->scroll;
         after=before-steps*increment;
         if(after<0)after=0;
         if(after>maximum)after=maximum;
         if(after!=before){
             if(w->type==A_BROWSER)w->bscroll=after;
+            else if(w->type==A_ENCARTA)w->enc_scroll=after;
             else w->scroll=after;
             dwin(w);
         }
