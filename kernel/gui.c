@@ -234,7 +234,7 @@ static Win *term_target;
 typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; } PApp;
 
 /* Vortex Saber: contenidos y evaluaciones reales, sin consultas ni servicios simulados. */
-#define NSABER 4
+#define NSABER 6
 #define SABER_NQ 3
 typedef struct {
     const char *nombre, *lectura[3], *pregunta[SABER_NQ];
@@ -289,7 +289,32 @@ static const SaberLeccion SABER[NSABER]={
        {"Una secuencia de pasos","Un monitor","Un cable"}},
       {"La RAM convencional es volatil.",
        "HTTPS establece conexiones protegidas mediante TLS.",
-       "Los algoritmos describen pasos definidos."}, {1,0,0}, 0xa78bfa }
+       "Los algoritmos describen pasos definidos."}, {1,0,0}, 0xa78bfa },
+    { "Geografia",
+      {"El Peru tiene tres regiones naturales: costa, sierra y selva.",
+       "Los Andes atraviesan el territorio peruano de norte a sur.",
+       "La selva amazonica alberga una enorme biodiversidad."},
+      {"¿Que region natural del Peru limita con el oceano Pacifico?",
+       "¿Que cordillera atraviesa el Peru?",
+       "¿Que caracteriza a la selva amazonica?"},
+      {{"Costa","Sierra","Selva"},{"Alpes","Andes","Himalaya"},
+       {"Baja biodiversidad","Solo desiertos","Gran biodiversidad"}},
+      {"La costa peruana se encuentra junto al oceano Pacifico.",
+       "La cordillera de los Andes recorre Sudamerica.",
+       "La Amazonia contiene multiples ecosistemas y especies."}, {0,1,2}, 0x38bdf8 },
+    { "Comunicacion",
+      {"La idea principal expresa el asunto central de un texto.",
+       "Una fuente confiable permite contrastar datos y autorias.",
+       "Un resumen conserva las ideas esenciales con menos palabras."},
+      {"¿Que expresa la idea principal de un texto?",
+       "¿Que conviene hacer antes de compartir una noticia?",
+       "¿Como se elabora un buen resumen?"},
+      {{"El asunto central","Solo un ejemplo","Solo el titulo"},
+       {"Compartir sin leer","Verificar la fuente","Cambiar los datos"},
+       {"Copiar todo","Inventar datos","Extraer ideas esenciales"}},
+      {"La idea principal sintetiza el contenido mas relevante.",
+       "Consultar la fuente permite detectar errores y desinformacion.",
+       "Resumir implica seleccionar las ideas mas importantes."}, {0,1,2}, 0xf472b6 }
 };
 static const int APPS_LOCAL[]={A_SABER,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_ABOUT};
 static const char *APPS_LOCAL_NOMBRES[]={"Vortex Saber","Navegador simple","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Acerca de"};
@@ -304,8 +329,18 @@ static void saber_load(void){
     for(int i=0;i<=NSABER;i++) saber_best[i]=0;
     FsNode *f=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
     if(!f||f->dir||!f->data) return;
-    for(int i=0;i<=NSABER&&i<f->size;i++){
-        char c=f->data[i]; if(c>='0'&&c<=(i==NSABER?'4':'3')) saber_best[i]=c-'0';
+    /* Migracion del formato anterior (4 materias + juego): no perder la marca
+     * del juego al ampliar la biblioteca a 6 materias. */
+    if(f->size==6 && f->data[5]=='\n'){
+        for(int i=0;i<4;i++){
+            char c=f->data[i]; if(c>='0'&&c<='3') saber_best[i]=c-'0';
+        }
+        char game=f->data[4];
+        if(game>='0'&&game<='4') saber_best[NSABER]=game-'0';
+    } else {
+        for(int i=0;i<=NSABER&&i<f->size;i++){
+            char c=f->data[i]; if(c>='0'&&c<=(i==NSABER?'4':'3')) saber_best[i]=c-'0';
+        }
     }
 }
 static void saber_save(void){
@@ -1427,16 +1462,16 @@ static void draw_window(int wi,int focused){
             cat(xpstr,sizeof xpstr," XP");
             text_bold(cx+20,cy+46,xpstr,0x7ee787);
             text(cx+20,cy+68,"Lee, responde y mejora tu mejor resultado en cada tema.",C_DIM);
-            int pw=(cw-56)/2;
+            int pw=(cw-80)/3;
             for(int i=0;i<NSABER;i++){
-                int xx=cx+18+(i%2)*(pw+20), yy=cy+104+(i/2)*138;
+                int xx=cx+18+(i%3)*(pw+12), yy=cy+104+(i/3)*138;
                 rrect(xx,yy,pw,122,12,0x10111b,255);
                 rrect(xx,yy,5,122,3,SABER[i].color,255);
                 circle(xx+34,yy+32,18,SABER[i].color,255);
                 if(i==0){ text_bold(xx+29,yy+23,"x",0xffffff); }
                 else if(i==1){ circle(xx+34,yy+32,9,0xffffff,80); }
                 else if(i==2){ text_bold(xx+29,yy+23,"H",0xffffff); }
-                else { text_bold(xx+29,yy+23,"T",0xffffff); }
+                else { const char *initial=i==3?"T":i==4?"G":"C"; text_bold(xx+29,yy+23,initial,0xffffff); }
                 text_bold(xx+62,yy+18,SABER[i].nombre,C_TXT);
                 text(xx+18,yy+62,"Lectura y 3 preguntas",C_DIM);
                 for(int j=0;j<SABER_NQ;j++) circle(xx+21+j*18,yy+101,5,j<saber_best[i]?0x7ee787:C_BORDER,255);
@@ -1445,7 +1480,11 @@ static void draw_window(int wi,int focused){
             button(cx+20,cy+376,200,34,"Juego de parejas",0);
             char best[72]="Mejor juego: "; cat_int(best,sizeof best,saber_best[NSABER]);
             cat(best,sizeof best,"/4"); text(cx+240,cy+385,best,0x7ee787);
-            text(cx+20,cy+422,xp>=200?"Logro: aprendiz constante":xp>=75?"Logro: primera evaluacion":"Logro pendiente: completa una evaluacion",C_TXT);
+            int masters=0; for(int i=0;i<NSABER;i++) if(saber_best[i]==3) masters++;
+            char medals[100]="Insignias de dominio: "; cat_int(medals,sizeof medals,masters);
+            cat(medals,sizeof medals," de 6  |  ");
+            cat(medals,sizeof medals,xp>=200?"Aprendiz constante":xp>=75?"Primera evaluacion":"Continua aprendiendo");
+            text(cx+20,cy+422,medals,C_TXT);
             text(cx+20,cy+450,kngfs_active()?"Progreso persistente: disco activado":"Para conservar datos al reiniciar, activa el disco en Ajustes.",C_DIM);
         } else if(w->saber_topic==-2){
             button(cx+16,cy+10,96,27,"Biblioteca",0);
@@ -2036,9 +2075,9 @@ static void app_click(Win *w,int lx,int ly){
     case A_SABER:
         if(w->saber_topic==-1){
             if(in_rect(lx,ly,20,376,200,34)){ saber_game_start(w); break; }
-            int pw=(cw-56)/2;
+            int pw=(cw-80)/3;
             for(int i=0;i<NSABER;i++){
-                int xx=18+(i%2)*(pw+20), yy=104+(i/2)*138;
+                int xx=18+(i%3)*(pw+12), yy=104+(i/3)*138;
                 if(in_rect(lx,ly,xx,yy,pw,122)){ saber_start(w,i); break; }
             }
         } else if(in_rect(lx,ly,16,10,96,27)){ w->saber_topic=-1; dirty=1; }
