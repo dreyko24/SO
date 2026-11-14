@@ -9,7 +9,8 @@
 #include "disk.h"
 #include "zip.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_SABER };
+#define DOCK_SIDE (gh<620?148:88) /* zona que se reserva a la barra lateral al maximizar */
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -32,7 +33,9 @@ typedef struct {
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
-    int rx, ry, rw, rh, maxed; uint32_t tclick;                                   /* maximizar / ajustar */
+    int rx, ry, rw, rh, maxed, snap, minimized; /* snap: 0 completa, 1 izquierda, 2 derecha */
+    int fullscreen, fx0, fy0, fw0, fh0; /* pantalla completa real, geometria anterior */
+    int apps_tab; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -127,23 +130,24 @@ static void build_wall(void){
 }
 
 /* ---------------- ventanas ---------------- */
-static int win_top(void){ return nord? order[nord-1] : -1; }
+static int win_top(void){ for(int k=nord-1;k>=0;k--) if(wins[order[k]].used&&!wins[order[k]].minimized) return order[k]; return -1; }
 static void focus(int wi){
     int k=0; while(k<nord && order[k]!=wi) k++;
     if(k==nord) return;
     for(;k<nord-1;k++) order[k]=order[k+1];
-    order[nord-1]=wi; dirty=1;
+    order[nord-1]=wi; wins[wi].minimized=0; dirty=1;
 }
 static void doc_free(Win *w);
 static void win_close(int wi){
+    if(wi<0||wi>=MAXW||!wins[wi].used) return;
     if(wins[wi].type==A_TERM&&wins[wi].busy){ char kc[32]="matar "; cat_int(kc,sizeof kc,wins[wi].bpid); kshell_exec(kc); wins[wi].busy=0; }
     int k=0; while(k<nord && order[k]!=wi) k++;
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
-    nord--; wins[wi].used=0; dirty=1;
+    if(k<nord) { nord--; wins[wi].used=0; dirty=1; }
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
-static void crect(Win *w,int *x,int *y,int *cw,int *ch){ *x=w->x+1; *y=w->y+TB; *cw=w->w-2; *ch=w->h-TB-1; }
+static void crect(Win *w,int *x,int *y,int *cw,int *ch){ int t=w->fullscreen?0:TB; *x=w->x+(w->fullscreen?0:1); *y=w->y+t; *cw=w->w-(w->fullscreen?0:2); *ch=w->h-t-(w->fullscreen?0:1); }
 
 static int layout_from_name(const char *n);
 static void set_layout(int l);
@@ -255,12 +259,13 @@ static Win *open_app(int type){
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
-    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
+    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Aplicaciones"); break;
+    case A_SABER:    w->w=670; w->h=530; set_title(w,"Vortex Saber"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
-    w->x=60+off+(gw>800?60:0); w->y=BARH+24+off;
-    if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
+    w->x=DOCK_SIDE+16+off; w->y=BARH+24+off;
+    if(w->x+w->w>gw) w->x=k_max(DOCK_SIDE,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
     order[nord++]=wi; dirty=1;
     if(type==A_BROWSER) nav(w,"kng://inicio",0);
@@ -991,13 +996,34 @@ static void fm_drop(void){                                          /* se solto 
     dsk_sync(); dirty=1;
 }
 
-static int win_resizable(const Win *w){ return w->type==A_BROWSER||w->type==A_FILES||w->type==A_NOTES||w->type==A_VIEWER; }
-static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dirty=1; }
-static void win_set_max(Win *w,int x,int y,int ww,int hh){
-    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
-    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dirty=1;
+static int win_resizable(const Win *w){ (void)w; return 1; }
+static void win_minimize(Win *w){ if(!w||!w->used) return; w->minimized=1; dirty=1; }
+static void win_toggle_fullscreen(Win *w){
+    if(!w||!w->used) return;
+    if(w->fullscreen){
+        w->fullscreen=0; w->x=w->fx0; w->y=w->fy0; w->w=w->fw0; w->h=w->fh0;
+    } else {
+        w->fx0=w->x; w->fy0=w->y; w->fw0=w->w; w->fh0=w->h;
+        w->fullscreen=1; w->x=0; w->y=0; w->w=gw; w->h=gh;
+    }
+    dirty=1;
 }
-static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
+static void win_restore(Win *w){
+    if(w->fullscreen) win_toggle_fullscreen(w);
+    if(!w->maxed) return;
+    dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; w->snap=0; dirty=1;
+}
+static void win_set_max(Win *w,int x,int y,int ww,int hh){
+    if(w->fullscreen) win_toggle_fullscreen(w);
+    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
+    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1;
+    w->snap=(ww>=gw-DOCK_SIDE)?0:(x>DOCK_SIDE?2:1); dirty=1;
+}
+static void win_toggle_max(Win *w){
+    if(w->fullscreen){ win_toggle_fullscreen(w); return; }
+    if(w->maxed) win_restore(w);
+    else win_set_max(w,DOCK_SIDE,BARH,gw-DOCK_SIDE,gh-BARH);
+}
 static int text_w_big(const char *s){ return text_w(s)*3/2; }
 /* ---------------- ajustes: almacenamiento y pantalla ---------------- */
 typedef struct { int x, y, w, h, kind; char name[FS_NAME]; } DObj;   /* kind 0..7 = icono de la app del dock; 100 reloj; 101 sistema; 200 archivo de /Escritorio */
@@ -1064,6 +1090,13 @@ static int set_resolution(int w,int h){
     if(bga_r(1)!=w||bga_r(2)!=h||gfx_resize(fb_front,w,h,w*4)){ kfree(nwall); bga_w(4,0); bga_w(1,(uint16_t)ow); bga_w(2,(uint16_t)oh); bga_w(3,32); bga_w(4,0x41); return -4; }
     kfree(wall); wall=nwall; build_wall();
     for(int i=0;i<MAXW;i++) if(wins[i].used){ Win *v=&wins[i];
+        if(v->fullscreen){ v->x=0; v->y=0; v->w=w; v->h=h; continue; }
+        if(v->maxed){
+            int ux=w-DOCK_SIDE, left=ux/2;
+            v->x=v->snap==2?DOCK_SIDE+left:DOCK_SIDE;
+            v->y=BARH; v->w=v->snap==0?ux:(v->snap==2?ux-left:left);
+            v->h=h-BARH; continue;
+        }
         if(v->w>w) v->w=w;
         if(v->h>h-BARH) v->h=h-BARH;
         if(v->x+v->w>w) v->x=w-v->w;
