@@ -337,7 +337,22 @@ int usb_storage_probe(void){
 int usb_storage_ready(void){return ready;}
 const char *usb_storage_message(void){return info;}
 void usb_storage_poll(void){
-    if(!ready||!io||!port)return;
-    if(!(i16(port)&1)){ready=0;status("USB desconectado; vuelve a conectar y pulsa Actualizar");}
+    static u32 next_probe;
+    u32 now=kticks();
+    if(!ready){
+        /* Hotplug en UHCI: volver a explorar sin crear una unidad ficticia.
+         * La ruta aparece unicamente al leer almacenamiento FAT32 real. */
+        if((int)(now-next_probe)>=0){
+            next_probe=now+500; /* maximo un intento por 5 segundos */
+            (void)usb_storage_probe();
+        }
+        return;
+    }
+    if(!io||!port)return;
+    if(!(i16(port)&1)){
+        ready=0;
+        next_probe=now+200;
+        status("USB desconectado; archivos mostrados son una instantanea");
+    }
 }
 #endif
