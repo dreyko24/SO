@@ -249,6 +249,38 @@ int main(void){
     { Win *s2=&wins[win_top()]; if(!s2->sstart){ puts("FALLO snake"); return 1; } }
     for(int i=0;i<400;i++){ T+=3; gui_frame(); } shot("12b_snake_fin");
     closeall();
+    /* Imágenes KNGFS malformadas se rechazan ANTES de tocar el árbol. */
+    {
+      uint32_t gen0=fs_gen();
+      FsNode *doc0=fs_resolve(fs_root(),"/Documentos");
+      const unsigned char trunc[]={
+        1,1,'x',1,0,0,0,'v',2,1,'q',0 /* falta fin del directorio raiz */
+      };
+      const unsigned char traversal[]={1,2,'.','/',0,0,0,0,0};
+      const unsigned char huge[]={1,1,'x',0xff,0xff,0xff,0x7f,0};
+      const unsigned char valid[]={1,1,'z',1,0,0,0,'p',0};
+      const unsigned char badlink[]={3,1,'q',0xff,0xff,0};
+      const unsigned char trailing[]={0,0};
+      unsigned char deep[3*70+71];int k=0;
+      for(int i=0;i<70;i++){deep[k++]=2;deep[k++]=1;deep[k++]='d';}
+      for(int i=0;i<71;i++)deep[k++]=0;
+      if(fs_overlay(trunc,sizeof trunc)==0||fs_overlay(traversal,sizeof traversal)==0||
+         fs_overlay(huge,sizeof huge)==0||fs_overlay(badlink,sizeof badlink)==0||
+         fs_overlay(trailing,sizeof trailing)==0||fs_overlay(deep,sizeof deep)==0||
+         fs_deserialize(trunc,sizeof trunc)==0){
+         puts("FALLO KNGFS validador de imagenes");return 1;
+      }
+      if(fs_gen()!=gen0||fs_resolve(fs_root(),"/x")||
+         fs_resolve(fs_root(),"/z")||fs_resolve(fs_root(),"/q")||
+         fs_resolve(fs_root(),"/Documentos")!=doc0){
+         puts("FALLO KNGFS datos modificados por imagen invalida");return 1;
+      }
+      if(fs_overlay(valid,sizeof valid)!=0||!fs_resolve(fs_root(),"/z")){
+         puts("FALLO KNGFS imagen valida");return 1;
+      }
+      fs_remove(fs_resolve(fs_root(),"/z"));
+      puts("VORTEXFS SERIALIZACION: TRUNCADO, LONGITUD, TRAVERSAL, PROFUNDIDAD OK");
+    }
     /* disco y sistema de archivos: formatear, guardar, copiar, mover, renombrar, recargar */
     dock(3); typestr("disco\\disco formatear si\\cd /Documentos\\write a.txt hola disco\\cp a.txt b.txt\\mv b.txt /Escritorio\\ren a.txt z.txt\\mkdir sub\\cp /Sistema sub\\df\\"); shot("17_disco_terminal");
     T+=1000; vortexfs_tick();

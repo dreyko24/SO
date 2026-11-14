@@ -157,31 +157,90 @@ void fs_usage(int *files,int *dirs,int *bytes){ *files=*dirs=*bytes=0; usage_rec
  * Las carpetas del sistema sin nada guardable dentro no se escriben. Con out=0 solo se cuenta el tamano. */
 static void sput(uint8_t *o,int k,const void *s,int n){ if(o) memcpy(o+k,s,(size_t)n); }
 static void sput1(uint8_t *o,int k,int v){ if(o) o[k]=(uint8_t)v; }
-static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any){
+#define FS_STREAM_MAX_DEPTH 64
+/* Contar bytes con la misma comprobacion que al emitirlos; una longitud
+ * tomada de ficheros de usuario nunca debe desbordar int. */
+static int ser_room(int k,int bytes,int limit){
+    return bytes>=0&&k>=0&&k<=limit&&bytes<=limit-k;
+}
+static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
+    if(depth>=FS_STREAM_MAX_DEPTH)return -1;
     for(FsNode *c=d->child;c;c=c->next){
         if(c->dev) continue;
         int keep=!c->sys||c->chg, nl=k_strlen(c->name);
         if(c->link){ if(!keep) continue;
-            int tl=k_strlen(c->link); if(o&&k+2+nl+2+tl+1>max) return -1;
+            int tl=k_strlen(c->link);
+            if(nl<1||nl>=FS_NAME||tl>299||!ser_room(k,2+nl+2+tl+1,max))return -1;
             sput1(o,k++,3); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl; sput1(o,k++,tl); sput1(o,k++,tl>>8); sput(o,k,c->link,tl); k+=tl; *any=1; continue; }
         if(c->dir){
-            if(o&&k+2+nl+1>max) return -1;
+            if(nl<1||nl>=FS_NAME||!ser_room(k,2+nl+1,max))return -1;
             int k0=k, sub=0; sput1(o,k++,2); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
-            k=ser_rec(c,o,max,k,&sub); if(k<0) return -1;
+            k=ser_rec(c,o,max,k,&sub,depth+1); if(k<0) return -1;
             if(!sub&&!keep) k=k0; else *any=1;
             continue; }
         if(!keep) continue;
-        if(o&&k+2+nl+4+c->size+1>max) return -1;
+        if(nl<1||nl>=FS_NAME||c->size<0||!ser_room(k,2+nl+4+1,max)||
+           !ser_room(k+2+nl+4,c->size+1,max))return -1;
         sput1(o,k++,1); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
         sput1(o,k++,c->size); sput1(o,k++,c->size>>8); sput1(o,k++,c->size>>16); sput1(o,k++,c->size>>24);
         if(c->size) sput(o,k,c->data,c->size);
         k+=c->size; *any=1;
         if(k<0) return -1;
     }
-    if(o&&k+1>max) return -1;
-    sput1(o,k++,0); return k;
+    if(!ser_room(k,1,max))return -1;
+    sput1(o,k++,0);return k;
 }
-int fs_serialize(uint8_t *out,int max){ int any=0; return ser_rec(root,out,max,0,&any); }   /* out=0: devuelve el tamano necesario */
+int fs_serialize(uint8_t *out,int max){
+    if(!root)return -1;
+    int any=0;return ser_rec(root,out,out?max:0x7fffffff,0,&any,0);
+}
+/* La cabecera KNGFS usa Adler-32 para detectar errores accidentales;
+ * además debemos validar el árbol ANTES de modificar un nodo en RAM.
+ * El comprobador funciona sin reservar memoria ni sumar enteros
+ * potencialmente corruptos a posiciones de acceso. */
+static int fs_validate_rec(const uint8_t *in,int len,int *cursor,int depth,int *nodes){
+    if(depth>=FS_STREAM_MAX_DEPTH)return -1;
+    for(;;){
+        int k=*cursor;
+        if(k>=len)return -1;
+        int type=in[k++];
+        if(type==0){*cursor=k;return 0;}
+        if(type!=1&&type!=2&&type!=3)return -1;
+        if(k>=len)return -1;
+        int nl=in[k++];
+        if(nl<=0||nl>=FS_NAME||nl>len-k)return -1;
+        for(int i=0;i<nl;i++)if(!in[k+i]||in[k+i]=='/')return -1;
+        k+=nl;
+        if(++*nodes>262144)return -1;
+        if(type==2){
+            *cursor=k;
+            if(fs_validate_rec(in,len,cursor,depth+1,nodes))return -1;
+            continue;
+        }
+        if(type==3){
+            if(len-k<2)return -1;
+            int tl=(int)in[k]|((int)in[k+1]<<8);
+            k+=2;
+            if(tl<=0||tl>=300||tl>len-k)return -1;
+            for(int i=0;i<tl;i++)if(!in[k+i])return -1;
+            k+=tl;
+        }else{
+            if(len-k<4)return -1;
+            uint32_t sz=(uint32_t)in[k]|((uint32_t)in[k+1]<<8)|
+                        ((uint32_t)in[k+2]<<16)|((uint32_t)in[k+3]<<24);
+            k+=4;
+            if(sz>0x7fffffffu||sz>(uint32_t)(len-k))return -1;
+            k+=(int)sz;
+        }
+        *cursor=k;
+    }
+}
+static int fs_validate_image(const uint8_t *in,int len){
+    if(!root||!in||len<1)return -1;
+    int cursor=0,nodes=0;
+    if(fs_validate_rec(in,len,&cursor,0,&nodes))return -1;
+    return cursor==len?0:-1;
+}
 static int de_rec(FsNode *d,const uint8_t *in,int len,int k){
     for(;;){
         if(k>=len) return -1;
@@ -228,9 +287,15 @@ static int ov_rec(FsNode *d,const uint8_t *in,int len,int k){
         } else return -1;
     }
 }
-int fs_overlay(const uint8_t *in,int len){ int r=ov_rec(root,in,len,0); gen++; return r<0?-1:0; }
-int fs_deserialize(const uint8_t *in,int len){          /* reemplaza TODO el arbol; solo antes de abrir ventanas */
-    FsNode *old=root; root=newnode(0,"",1); if(!root){ root=old; return -1; }
+int fs_overlay(const uint8_t *in,int len){
+    if(fs_validate_image(in,len))return -1;
+    int r=ov_rec(root,in,len,0);
+    if(r<0)return -1;
+    gen++;return 0;
+}
+int fs_deserialize(const uint8_t *in,int len){  /* reemplaza TODO el arbol; solo antes de abrir ventanas */
+    if(fs_validate_image(in,len))return -1;
+    FsNode *old=root;root=newnode(0,"",1);if(!root){root=old;return -1;}
     if(de_rec(root,in,len,0)<0){ while(root->child) fs_remove(root->child); kfree(root); root=old; return -1; }
     while(old->child) fs_remove(old->child);
     kfree(old); gen++; return 0;
