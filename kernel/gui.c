@@ -1418,8 +1418,9 @@ static void draw_window(int wi,int focused){
         break; }
     case A_SABER:{
         saber_load();
-        int xp=0; for(int i=0;i<NSABER;i++) xp+=saber_best[i]*25;
-        if(w->saber_topic<0){
+        int xp=saber_best[NSABER]*30;
+        for(int i=0;i<NSABER;i++) xp+=saber_best[i]*25;
+        if(w->saber_topic==-1){
             text_big(cx+18,cy+14,"Vortex Saber",C_TXT);
             char xpstr[100]="Nivel "; cat_int(xpstr,sizeof xpstr,1+xp/100);
             cat(xpstr,sizeof xpstr,"  -  "); cat_int(xpstr,sizeof xpstr,xp);
@@ -1441,8 +1442,43 @@ static void draw_window(int wi,int focused){
                 for(int j=0;j<SABER_NQ;j++) circle(xx+21+j*18,yy+101,5,j<saber_best[i]?0x7ee787:C_BORDER,255);
                 text(xx+100,yy+92,saber_best[i]==3?"Dominado":saber_best[i]?"En progreso":"Empezar",C_TXT);
             }
-            text(cx+20,cy+402,xp>=200?"Logro: aprendiz constante":xp>=75?"Logro: primera evaluacion":"Logro pendiente: completa una evaluacion",C_TXT);
-            text(cx+20,cy+430,kngfs_active()?"Progreso persistente: disco activado":"Para conservar datos al reiniciar, activa el disco en Ajustes.",C_DIM);
+            button(cx+20,cy+376,200,34,"Juego de parejas",0);
+            char best[72]="Mejor juego: "; cat_int(best,sizeof best,saber_best[NSABER]);
+            cat(best,sizeof best,"/4"); text(cx+240,cy+385,best,0x7ee787);
+            text(cx+20,cy+422,xp>=200?"Logro: aprendiz constante":xp>=75?"Logro: primera evaluacion":"Logro pendiente: completa una evaluacion",C_TXT);
+            text(cx+20,cy+450,kngfs_active()?"Progreso persistente: disco activado":"Para conservar datos al reiniciar, activa el disco en Ajustes.",C_DIM);
+        } else if(w->saber_topic==-2){
+            button(cx+16,cy+10,96,27,"Biblioteca",0);
+            text_bold(cx+130,cy+14,"Juego de parejas",C_TXT);
+            char level[80]="Parejas: "; int nm=0;
+            for(int i=0;i<SABER_PAIRS;i++) if(w->saber_pair_mask&(1<<i)) nm++;
+            cat_int(level,sizeof level,nm); cat(level,sizeof level,"/4  Fallos: ");
+            cat_int(level,sizeof level,w->saber_pair_errors);
+            text(cx+20,cy+50,level,C_TXT);
+            text(cx+20,cy+76,"Selecciona un concepto y su definicion correspondiente.",C_DIM);
+            int colw=(cw-56)/2;
+            for(int j=0;j<SABER_PAIRS;j++){
+                int yy=cy+112+j*66, ix=cx+18, id=SABER_PERM[j];
+                uint32_t lc=(w->saber_pair_mask&(1<<j))?0x155e37:
+                    w->saber_pair_sel==j?ACCENT:C_BTN;
+                uint32_t rc=(w->saber_pair_mask&(1<<id))?0x155e37:C_BTN;
+                rrect(ix,yy,colw,54,9,lc,255);
+                rrect(ix+colw+20,yy,colw,54,9,rc,255);
+                char label[6]={(char)('1'+j),')',' ',0};
+                text_bold(ix+12,yy+16,label,0xffffff);
+                text_bold(ix+35,yy+16,SABER_TERMS[j],0xffffff);
+                label[0]=(char)('5'+j);
+                text_bold(ix+colw+32,yy+16,label,0xffffff);
+                text(ix+colw+54,yy+16,SABER_DEFS[id],0xffffff);
+            }
+            if(w->saber_pair_mask==15){
+                int score=k_max(0,SABER_PAIRS-w->saber_pair_errors);
+                char won[80]="Reto finalizado. Puntos: "; cat_int(won,sizeof won,score);
+                cat(won,sizeof won," / 4");
+                text_bold(cx+22,cy+397,won,0x7ee787);
+            } else text(cx+22,cy+397,w->saber_pair_sel>=0?"Ahora elige la definicion correcta.":"Elige primero una tarjeta de la izquierda.",C_DIM);
+            button(cx+20,cy+444,160,32,"Reiniciar juego",0);
+            button(cx+198,cy+444,175,32,"Volver al inicio",0);
         } else {
             const SaberLeccion *z=&SABER[w->saber_topic];
             button(cx+16,cy+10,96,27,"Biblioteca",0);
