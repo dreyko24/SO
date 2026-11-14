@@ -1,4 +1,4 @@
-/* kng-kernel64 0.1 — kernel propio de Königreich OS para x86_64 (modo largo).
+/* kng-kernel64 0.1 — kernel propio de Vortex OS para x86_64 (modo largo).
  * Arranca con Multiboot 1 (boot64.S pasa a 64 bits), IDT de 64 bits, PIC, PIT 100 Hz, teclado y raton PS/2, RTC,
  * heap, interfaz grafica (la misma de 32 bits: gfx/gui/fs/html) y red (la misma pila: net.c).
  * Todavia SIN procesos/modo usuario/planificador: las aplicaciones corren dentro del kernel (como en 32 bits).
@@ -384,7 +384,7 @@ static void run(char *l){
     while(*l==' ') l++;
     if(!*l) return;
     if(streq(l,"help")) kprintf("help info mem heap uptime clear echo <txt> reboot halt | ejecutar <ruta> [&] programas procesos matar <pid> rastro [0-2] | red ping <host> dns <host> wget <url> | pantalla abrir <programa> actualizar instalar quitar buscar (ayuda-programas)\n");
-    else if(streq(l,"info")) kprintf("kng-kernel %s (%s, Multiboot)\nParte de Konigreich OS. Modo largo, IDT, heap, interfaz grafica, red. Sin procesos todavia.\n",KNG_VERSION,KNG_ARCH);
+    else if(streq(l,"info")) kprintf("kng-kernel %s (%s, Multiboot)\nParte de Vortex OS. Modo largo, IDT, heap, interfaz grafica, red. Sin procesos todavia.\n",KNG_VERSION,KNG_ARCH);
     else if(streq(l,"mem")) kprintf("RAM usable: %lu KB | heap: %lu KB\n",ram_kb,heap_total/1024);
     else if(streq(l,"probar-ram")) cmd_probar_ram();
     else if(streq(l,"heap")){ u64 u,f,m; heap_stats(&u,&f,&m); kprintf("heap: total %lu KB | usado %lu B | libre %lu B | bloque libre mayor %lu B\n",heap_total/1024,u,f,m); }
@@ -461,7 +461,7 @@ void kmain64(uint32_t magic, struct mb_info *mi){
     if(magic==0x2BADB002 && (mi->flags&(1u<<12)) && mi->fb_type==1 && (mi->fb_bpp==32||mi->fb_bpp==24) && mi->fb_hi==0 && mi->fb_w>=640 && mi->fb_h>=480){
         gfx_set_bpp(mi->fb_bpp);
         fb_addr=mi->fb_lo; fb_pitch=mi->fb_pitch; fb_w=mi->fb_w; fb_h=mi->fb_h; fb_ok=1; }
-    kprintf("== kng-kernel %s (%s) :: Konigreich OS ==\n",KNG_VERSION,KNG_ARCH);
+    kprintf("== kng-kernel %s (%s) :: Vortex OS ==\n",KNG_VERSION,KNG_ARCH);
     if(magic!=0x2BADB002){ kprintf("Arranque no Multiboot (magic=0x%x). Detenido.\n",magic); for(;;) __asm__ volatile("hlt"); }
     kprintf("[ok] modo largo (64 bits), paginacion de 16 GB en identidad\n");
     idt_init(); pic_init(); pit_init(); irq_handlers[1]=kb_irq; mouse_init();

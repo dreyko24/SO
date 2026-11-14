@@ -1,0 +1,29 @@
+name: vortex-integracion
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  compilar-y-probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc gcc-multilib binutils make python3
+      - name: Compilar ambos kernels
+        run: |
+          make -C kernel -j2
+          make -C kernel64 -j2
+      - name: Teclado y atajos nuevos
+        run: |
+          gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbdtest
+          /tmp/vortex-kbdtest
+      - name: Fecha y zona horaria America/Lima
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror tools/time_test.c -o /tmp/vortex-timetest
+          /tmp/vortex-timetest
+      - name: Red simulada y pila de protocolos
+        run: python3 tools/nettest.py

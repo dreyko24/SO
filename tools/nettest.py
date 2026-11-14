@@ -204,7 +204,14 @@ while proc.poll() is None and time.time()-t0<240:
             os.write(w1,struct.pack("<H",len(eth(state["cli_mac"],GW_MAC,0x0800,ip_pkt(GW_IP,CL_IP,1,e)))) + eth(state["cli_mac"],GW_MAC,0x0800,ip_pkt(GW_IP,CL_IP,1,e)))
             a=struct.pack("!HHBBH",1,0x0800,6,4,1)+GW_MAC+GW_IP+b'\0'*6+CL_IP
             fr=eth(b'\xff'*6,GW_MAC,0x0806,a); os.write(w1,struct.pack("<H",len(fr))+fr)
-if proc.poll() is None: proc.kill(); err("el programa no termino")
+# El cierre de FDOUT puede llegar antes de que waitpid() recoja el exit status:
+# no declarar un falso timeout ni matar un proceso que ya esta saliendo.
+try:
+    proc.wait(timeout=5)
+except subprocess.TimeoutExpired:
+    proc.kill()
+    proc.wait()
+    err("el programa no termino")
 th.join(); rc=proc.returncode
 out=errtxt[0] if errtxt else ""
 print(out)

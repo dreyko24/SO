@@ -1,3 +1,15 @@
+# Vortex OS — sistema operativo propio en desarrollo
+
+**Proyecto activo:** Vortex OS conserva los kernels independientes `kng` de 32 y 64 bits y la infraestructura anterior de Königreich OS. La interfaz actual se identifica como Vortex OS. **Todavía no equivale a una instalación de escritorio comercial completa**: faltan controladores USB y audio para hardware general, aceleración gráfica, seguridad de usuarios y validaciones de navegador y ofimática.
+
+**Estado real, cambios realizados, pruebas de QEMU, limitaciones e instrucciones:** [VORTEX_ESTADO.md](VORTEX_ESTADO.md).
+
+Construcción normal de la ISO: `bash tools/build-iso.sh` → `out/VortexOS.iso`. Con Debian: `KNG_DEBIAN=1 bash tools/build-iso.sh`. En GitHub Actions existen los flujos de compilación/pruebas `vortex-integracion` y `vortex-escritorio-qemu`. En GitHub Releases, el workflow manual `construir-iso` publica la ISO con Debian si su compilación termina correctamente.
+
+---
+
+## Documentación técnica original del kernel kng
+
 # Königreich OS (kng) — sistema operativo propio, 32 y 64 bits
 
 Sistema operativo **independiente**: dos kernels propios (`kng-kernel` de 32 y de 64 bits), interfaz gráfica propia, gestor de archivos,

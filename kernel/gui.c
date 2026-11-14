@@ -1,4 +1,4 @@
-/* gui.c — escritorio de Königreich OS: fondo, barra, dock, ventanas y aplicaciones integradas.
+/* gui.c — escritorio de Vortex OS: fondo, barra, dock, ventanas y aplicaciones integradas.
  * Todo se dibuja por software en un backbuffer; el cursor se pinta directo sobre el frontbuffer. */
 #include "gui.h"
 #include "kbd.h"
@@ -8,14 +8,16 @@
 #include "net.h"
 #include "disk.h"
 #include "zip.h"
+#include "timeutil.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_SABER };
+#define DOCK_SIDE (gh<620?148:88) /* zona que se reserva a la barra lateral al maximizar */
 #define SGW 20
 #define SGH 16
 #define SCELL 20
 #define NOTEMAX 3000
 #define KNGFS_CAP (2*1024*1024)
-#define MAXW 10
+#define MAXW 24
 #define TB 30
 #define BARH 28
 #define TW 80
@@ -32,7 +34,10 @@ typedef struct {
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
-    int rx, ry, rw, rh, maxed; uint32_t tclick;                                   /* maximizar / ajustar */
+    int rx, ry, rw, rh, maxed, snap, minimized; /* snap: 0 completa, 1 izquierda, 2 derecha */
+    int fullscreen, fx0, fy0, fw0, fh0; /* pantalla completa real, geometria anterior */
+    int apps_tab; int saber_topic, saber_q, saber_answer, saber_hits, saber_streak;
+    int saber_pair_sel, saber_pair_mask, saber_pair_errors; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -62,7 +67,7 @@ static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
 static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
-static int clk_h=12, clk_m=0; static uint32_t clk_next;
+static int clk_h=12, clk_m=0, clk_y=0, clk_mon=0, clk_day=0; static uint32_t clk_next;
 static const uint32_t ACC[6]={0x7c5cff,0x14b8a6,0xf59e0b,0xec4899,0x3b82f6,0x22c55e};
 #define ACCENT ACC[acc_i]
 #define C_BG 0x161826
@@ -82,6 +87,7 @@ static void cat_int(char *d,int max,int v){
     if(v<0) cat(d,max,"-");
     char o[12]; int k=0; while(i) o[k++]=b[--i]; o[k]=0; cat(d,max,o);
 }
+static void cat2(char *d,int max,int v){ if(v<10) cat(d,max,"0"); cat_int(d,max,v); }
 static void l1_to_utf8(const unsigned char *s,int n,char *d){
     int k=0; for(int i=0;i<n;i++){ unsigned char c=s[i];
         if(c<0x80) d[k++]=(char)c; else { d[k++]=(char)(0xC0|(c>>6)); d[k++]=(char)(0x80|(c&0x3F)); } }
@@ -121,29 +127,33 @@ static uint32_t *get_thumb(int i){
 }
 static void build_wall(void){
     for(int y=0;y<gh;y++) for(int x=0;x<gw;x++) wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
-    uint32_t *save=bb; bb=wall; clip_reset();                                   /* marca de agua: la corona */
-    int cw=gw*18/100; crown(gw*74/100,gh*38/100,cw,0xffffff,0xffffff,38);
+    uint32_t *save=bb; bb=wall; clip_reset();
+    /* Marca de agua Vortex discreta, dibujada en el propio framebuffer. */
+    int sz=k_min(gw,gh)*17/100, x=gw*78/100, y=gh*50/100;
+    line(x-sz/2,y-sz/2,x,y+sz/2,12,0xffffff,35);
+    line(x,y+sz/2,x+sz/2,y-sz/2,12,0x7dd3fc,35);
     bb=save;
 }
 
 /* ---------------- ventanas ---------------- */
-static int win_top(void){ return nord? order[nord-1] : -1; }
+static int win_top(void){ for(int k=nord-1;k>=0;k--) if(wins[order[k]].used&&!wins[order[k]].minimized) return order[k]; return -1; }
 static void focus(int wi){
     int k=0; while(k<nord && order[k]!=wi) k++;
     if(k==nord) return;
     for(;k<nord-1;k++) order[k]=order[k+1];
-    order[nord-1]=wi; dirty=1;
+    order[nord-1]=wi; wins[wi].minimized=0; dirty=1;
 }
 static void doc_free(Win *w);
 static void win_close(int wi){
+    if(wi<0||wi>=MAXW||!wins[wi].used) return;
     if(wins[wi].type==A_TERM&&wins[wi].busy){ char kc[32]="matar "; cat_int(kc,sizeof kc,wins[wi].bpid); kshell_exec(kc); wins[wi].busy=0; }
     int k=0; while(k<nord && order[k]!=wi) k++;
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
-    nord--; wins[wi].used=0; dirty=1;
+    if(k<nord) { nord--; wins[wi].used=0; dirty=1; }
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
-static void crect(Win *w,int *x,int *y,int *cw,int *ch){ *x=w->x+1; *y=w->y+TB; *cw=w->w-2; *ch=w->h-TB-1; }
+static void crect(Win *w,int *x,int *y,int *cw,int *ch){ int t=w->fullscreen?0:TB; *x=w->x+(w->fullscreen?0:1); *y=w->y+t; *cw=w->w-(w->fullscreen?0:2); *ch=w->h-t-(w->fullscreen?0:1); }
 
 static int layout_from_name(const char *n);
 static void set_layout(int l);
@@ -222,6 +232,134 @@ int  gui_screen_size(int *w,int *h){ if(!gw) return -1; *w=gw; *h=gh; return 0; 
 static Win *term_target;
 /* ---------------- Programas de Linux: lanzador de los programas reales instalados con 'instalar' ---------------- */
 typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; } PApp;
+
+/* Vortex Saber: contenidos y evaluaciones reales, sin consultas ni servicios simulados. */
+#define NSABER 4
+#define SABER_NQ 3
+typedef struct {
+    const char *nombre, *lectura[3], *pregunta[SABER_NQ];
+    const char *opcion[SABER_NQ][3], *explicacion[SABER_NQ];
+    unsigned char correcta[SABER_NQ]; uint32_t color;
+} SaberLeccion;
+static const SaberLeccion SABER[NSABER]={
+    { "Matematicas",
+      {"Las fracciones expresan partes iguales de un todo.",
+       "El area es la superficie; el perimetro es el contorno.",
+       "Un porcentaje representa partes de cada cien."},
+      {"¿Cuanto vale tres cuartos en decimal?",
+       "¿Cual es el area de un rectangulo de 3 x 4?",
+       "¿Cuanto es el 20 por ciento de 150?"},
+      {{"0.75","0.34","1.25"},{"7","12","14"},{"20","30","75"}},
+      {"3 dividido entre 4 es 0.75.",
+       "Area = base x altura = 3 x 4 = 12.",
+       "20/100 x 150 = 30."}, {0,1,1}, 0x60a5fa },
+    { "Ciencias",
+      {"El agua cambia de estado segun temperatura y presion.",
+       "Las plantas usan luz, agua y CO2 en la fotosintesis.",
+       "Una hipotesis se contrasta con observaciones y experimentos."},
+      {"¿A cuantos grados hierve el agua al nivel del mar?",
+       "¿Que energia usan las plantas en la fotosintesis?",
+       "¿Que ayuda a comprobar una hipotesis?"},
+      {{"50 C","100 C","200 C"},{"Luz solar","Sonido","Electricidad"},
+       {"Experimentos","Adivinar","Memorizar sin pruebas"}},
+      {"A presion atmosferica estandar, hierve cerca de 100 C.",
+       "La luz aporta la energia del proceso.",
+       "Un experimento aporta evidencia verificable."}, {1,0,0}, 0x22c55e },
+    { "Historia del Peru",
+      {"El Peru proclamo su independencia el 28 de julio de 1821.",
+       "Machu Picchu es un conjunto arquitectonico de los incas.",
+       "Las lineas de Nazca son geoglifos de la costa sur peruana."},
+      {"¿En que anio se proclamo la independencia del Peru?",
+       "¿Que civilizacion construyo Machu Picchu?",
+       "¿Donde se encuentran las lineas de Nazca?"},
+      {{"1821","1881","1921"},{"Romana","Inca","Griega"},
+       {"Costa sur del Peru","Sierra norte","Amazonia"}},
+      {"La proclamacion ocurrio en Lima en 1821.",
+       "Fue construido durante el periodo incaico.",
+       "Los geoglifos se encuentran en la region Ica."}, {0,1,0}, 0xf59e0b },
+    { "Tecnologia",
+      {"La RAM mantiene datos de trabajo mientras hay energia.",
+       "HTTPS protege la comunicacion con cifrado TLS.",
+       "Un algoritmo es una secuencia de instrucciones para resolver algo."},
+      {"¿Que sucede con la RAM si se corta la energia?",
+       "¿Que tecnologia protege normalmente HTTPS?",
+       "¿Que es un algoritmo?"},
+      {{"Conserva todo","Pierde su contenido","Se vuelve disco"},
+       {"TLS","FTP","Texto plano"},
+       {"Una secuencia de pasos","Un monitor","Un cable"}},
+      {"La RAM convencional es volatil.",
+       "HTTPS establece conexiones protegidas mediante TLS.",
+       "Los algoritmos describen pasos definidos."}, {1,0,0}, 0xa78bfa }
+};
+static const int APPS_LOCAL[]={A_SABER,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_ABOUT};
+static const char *APPS_LOCAL_NOMBRES[]={"Vortex Saber","Navegador simple","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Acerca de"};
+#define SABER_PAIRS 4
+static const char *SABER_TERMS[SABER_PAIRS]={"Fraccion","Fotosintesis","Independencia","HTTPS"};
+static const char *SABER_DEFS[SABER_PAIRS]={"Parte igual de un todo","Plantas usan luz","Peru: 1821","Cifrado TLS"};
+static const int SABER_PERM[SABER_PAIRS]={2,0,3,1};
+static int saber_best[NSABER+1], saber_loaded;
+static void saber_load(void){
+    if(saber_loaded) return;
+    saber_loaded=1;
+    for(int i=0;i<=NSABER;i++) saber_best[i]=0;
+    FsNode *f=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
+    if(!f||f->dir||!f->data) return;
+    for(int i=0;i<=NSABER&&i<f->size;i++){
+        char c=f->data[i]; if(c>='0'&&c<=(i==NSABER?'4':'3')) saber_best[i]=c-'0';
+    }
+}
+static void saber_save(void){
+    FsNode *r=fs_root(), *d=fs_find(r,"Documentos");
+    if(!d) d=fs_mkdir(r,"Documentos");
+    if(!d||!d->dir) return;
+    char buf[NSABER+3];
+    for(int i=0;i<=NSABER;i++) buf[i]=(char)('0'+saber_best[i]);
+    buf[NSABER+1]='\n'; buf[NSABER+2]=0;
+    (void)fs_create(d,"Vortex-Saber-progreso.txt",buf,NSABER+2);
+}
+static void saber_start(Win *w,int topic){
+    if(topic<0||topic>=NSABER) return;
+    saber_load(); w->saber_topic=topic; w->saber_q=0;
+    w->saber_answer=-1; w->saber_hits=0; w->saber_streak=0; dirty=1;
+}
+static void saber_answer(Win *w,int choice){
+    if(w->saber_topic<0||w->saber_q>=SABER_NQ||w->saber_answer>=0||choice<0||choice>2) return;
+    w->saber_answer=choice;
+    if(choice==SABER[w->saber_topic].correcta[w->saber_q]){ w->saber_hits++; w->saber_streak++; }
+    else w->saber_streak=0;
+    dirty=1;
+}
+static void saber_next(Win *w){
+    if(w->saber_topic<0||w->saber_answer<0||w->saber_q>=SABER_NQ) return;
+    w->saber_q++; w->saber_answer=-1;
+    if(w->saber_q==SABER_NQ && w->saber_hits>saber_best[w->saber_topic]){
+        saber_best[w->saber_topic]=w->saber_hits; saber_save();
+    }
+    dirty=1;
+}
+
+/* Juego interactivo de parejas: conceptos/definiciones, sin respuestas preconcedidas. */
+static void saber_game_start(Win *w){
+    saber_load();
+    w->saber_topic=-2; w->saber_pair_sel=-1; w->saber_pair_mask=0;
+    w->saber_pair_errors=0; dirty=1;
+}
+static void saber_game_select(Win *w,int column,int row){
+    if(w->saber_topic!=-2||row<0||row>=SABER_PAIRS||w->saber_pair_mask==15) return;
+    int id=column?SABER_PERM[row]:row;
+    if(w->saber_pair_mask&(1<<id)) return;
+    if(!column){ w->saber_pair_sel=id; dirty=1; return; }
+    if(w->saber_pair_sel<0) return;
+    if(w->saber_pair_sel==id){
+        w->saber_pair_mask|=1<<id;
+        if(w->saber_pair_mask==15){
+            int pts=k_max(0,SABER_PAIRS-w->saber_pair_errors);
+            if(pts>saber_best[NSABER]){ saber_best[NSABER]=pts; saber_save(); }
+        }
+    }else w->saber_pair_errors++;
+    w->saber_pair_sel=-1; dirty=1;
+}
+
 static const PApp PAPPS[]={
     {"Brave","Navegador web","brave","instalar brave","/usr/bin/brave-browser",0xf97316},
     {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
@@ -245,22 +383,25 @@ static Win *open_app(int type){
     Win *w=&wins[wi]; memset(w,0,sizeof *w); w->used=1; w->type=type;
     int off=(nord%5)*28;
     switch(type){
-    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Königreich OS"); break;
+    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Vortex OS"); break;
     case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Navegador"); break;
     case A_FILES:    w->w=660; w->h=440; set_title(w,"Archivos"); w->dir=fs_root(); break;
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
-                     memset(w->grid,' ',sizeof w->grid); tp(w,"Königreich OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
+                     memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
     case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
     case A_VIEWER:   w->w=600; w->h=420; set_title(w,"Visor de texto"); break;
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
-    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
+    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Aplicaciones"); break;
+    case A_SABER:    w->w=670; w->h=530; set_title(w,"Vortex Saber"); w->saber_topic=-1; w->saber_answer=-1; saber_load(); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
-    w->x=60+off+(gw>800?60:0); w->y=BARH+24+off;
-    if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
+    if(w->w>gw-DOCK_SIDE-8) w->w=gw-DOCK_SIDE-8;
+    if(w->h>gh-BARH-8) w->h=gh-BARH-8;
+    w->x=DOCK_SIDE+16+off; w->y=BARH+24+off;
+    if(w->x+w->w>gw) w->x=k_max(DOCK_SIDE,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
     order[nord++]=wi; dirty=1;
     if(type==A_BROWSER) nav(w,"kng://inicio",0);
@@ -315,15 +456,15 @@ static void term_cmd(Win *w,char *line){
     else if(!k_strcmp(cmd,"df")){ int f,d2,by; fs_usage(&f,&d2,&by); char b[100]=""; cat_int(b,100,f); cat(b,100," archivos, "); cat_int(b,100,d2); cat(b,100," carpetas, "); cat_int(b,100,by); cat(b,100," bytes\n"); tp(w,b); }
     else if(!k_strcmp(cmd,"instalar-sistema")){
         uint32_t n=0;
-        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Konigreich OS en el disco duro\".\n"); }
+        if(!kng_disk_image||!kng_disk_image(&n)){ tp(w,"Para instalar: arranca desde el USB y elige \"INSTALAR Vortex OS en el disco duro\".\n"); }
         else if(disk_init()){ tp(w,"No se encontro un disco duro (IDE, SATA o NVMe).\n"); }
         else {
             char b[140]="Disco: "; cat(b,140,disk_kind()); cat(b,140," "); cat(b,140,disk_model()); cat(b,140,", "); cat_int(b,140,(int)(disk_sectors()/2048)); cat(b,140," MB\n"); tp(w,b);
-            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Konigreich OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
+            if(k_strcmp(arg,"SI")){ tp(w,"Se BORRARA todo lo que tenga ese disco y se instalara Vortex OS.\nPara instalar escribe:   instalar-sistema SI\n"); }
             else {
                 tp(w,"Instalando... no apagues la PC (de 1 a 3 minutos).\n"); dirty=1; render();
                 int r=kng_install();
-                if(r==0) tp(w,"LISTO: Konigreich OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
+                if(r==0) tp(w,"LISTO: Vortex OS quedo instalado en el disco.\nRetira el USB y reinicia (escribe: reiniciar).\n");
                 else { char e2[80]="No se pudo instalar (error "; cat_int(e2,80,r); cat(e2,80,r==-3?": disco demasiado chico)\n":r==-4?": error al escribir el disco)\n":")\n"); tp(w,e2); }
             }
         } }
@@ -430,7 +571,7 @@ static const char *build_search(const char *url,int *len){
     static const struct { const char *u, *t, *kw; } PG[]={
         {"kng://inicio","Inicio","inicio bienvenida enlaces home principal"},
         {"kng://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
-        {"kng://acerca","Acerca de Königreich OS","acerca kernel autor sistema version nick kng"}};
+        {"kng://acerca","Acerca de Vortex OS","acerca kernel autor sistema version vortex"}};
     int any=0;
     for(int i=0;i<3;i++) if(ci_find(PG[i].t,k_strlen(PG[i].t),q)>=0 || ci_find(PG[i].kw,k_strlen(PG[i].kw),q)>=0){
         if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
@@ -722,6 +863,14 @@ static void button(int x,int y,int w,int h,const char *label,int primary){
     clip_set(x+1,y+1,w-2,h/2); rrect(x+1,y+1,w-2,h-2,5,0xffffff,14); clip_reset();
     text(x+(w-text_w(label))/2,y+(h-16)/2,label,0xffffff);
 }
+/* Marca vectorial de Vortex, sin depender de fuentes o recursos externos. */
+static void vortex_mark(int x,int y,int size){
+    int cx=x+size/2, cy=y+size/2, t=k_max(2,size/11);
+    circle(cx,cy,size/2,0x121b35,255);
+    circle(cx,cy,size/2-2,ACCENT,55);
+    line(x+size/4,y+size/4,cx,y+size*3/4,t,0xe2e8f0,255);
+    line(cx,y+size*3/4,x+size*3/4,y+size/4,t,0x38bdf8,255);
+}
 static void draw_folder(int x,int y){ rrect(x,y+2,10,6,2,0xe0a62d,255); rrect(x,y+5,22,14,3,0xf5b83d,255); }
 static void draw_doc(int x,int y){ rrect(x+2,y+1,16,20,2,0xe8eaf4,255); fill(x+5,y+8,10,1,0x8a8fa8,255); fill(x+5,y+12,10,1,0x8a8fa8,255); fill(x+5,y+16,7,1,0x8a8fa8,255); }
 
@@ -838,9 +987,9 @@ static const char *NEWN[]={"Nueva carpeta","Nuevo documento.txt","Nueva pagina.h
 static const char *NEWT[]={"","",
     "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>Nueva pagina</title></head>\n<body>\n<h1>Hola</h1>\n<p>Escribe aqui.</p>\n</body>\n</html>\n",
     "# Titulo\n\nEscribe aqui.\n",
-    "#!/bin/sh\necho \"Hola desde Konigreich OS\"\n",
-    "print(\"Hola desde Konigreich OS\")\n",
-    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Konigreich OS\\n\");\n    return 0;\n}\n",
+    "#!/bin/sh\necho \"Hola desde Vortex OS\"\n",
+    "print(\"Hola desde Vortex OS\")\n",
+    "#include <stdio.h>\n\nint main(void){\n    printf(\"Hola desde Vortex OS\\n\");\n    return 0;\n}\n",
     "{\n  \"nombre\": \"valor\"\n}\n",""};
 static FsNode *fm_unz;                                              /* ultima carpeta extraida de un .zip */
 static void fm_do(int act,Win *w,FsNode *dir,FsNode *t){
@@ -972,7 +1121,7 @@ static FsNode *fm_row_node(Win *w,int ly,int *n_out){             /* elemento ba
 static void fm_drop(void){                                          /* se solto un archivo arrastrado */
     FsNode *s=fs_resolve_nf(fs_root(),fd_path); if(!s) return;
     FsNode *dst=0; Win *tw=0; int onwin=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     FsNode *dk=desk_dir();
@@ -991,13 +1140,34 @@ static void fm_drop(void){                                          /* se solto 
     dsk_sync(); dirty=1;
 }
 
-static int win_resizable(const Win *w){ return w->type==A_BROWSER||w->type==A_FILES||w->type==A_NOTES||w->type==A_VIEWER; }
-static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dirty=1; }
-static void win_set_max(Win *w,int x,int y,int ww,int hh){
-    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
-    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1; dirty=1;
+static int win_resizable(const Win *w){ (void)w; return 1; }
+static void win_minimize(Win *w){ if(!w||!w->used) return; w->minimized=1; dirty=1; }
+static void win_toggle_fullscreen(Win *w){
+    if(!w||!w->used) return;
+    if(w->fullscreen){
+        w->fullscreen=0; w->x=w->fx0; w->y=w->fy0; w->w=w->fw0; w->h=w->fh0;
+    } else {
+        w->fx0=w->x; w->fy0=w->y; w->fw0=w->w; w->fh0=w->h;
+        w->fullscreen=1; w->x=0; w->y=0; w->w=gw; w->h=gh;
+    }
+    dirty=1;
 }
-static void win_toggle_max(Win *w){ if(w->maxed) win_restore(w); else win_set_max(w,0,BARH,gw,gh-BARH-86); }
+static void win_restore(Win *w){
+    if(w->fullscreen) win_toggle_fullscreen(w);
+    if(!w->maxed) return;
+    dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; w->snap=0; dirty=1;
+}
+static void win_set_max(Win *w,int x,int y,int ww,int hh){
+    if(w->fullscreen) win_toggle_fullscreen(w);
+    if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
+    w->x=x; w->y=y; w->w=ww; w->h=hh; w->maxed=1;
+    w->snap=(ww>=gw-DOCK_SIDE)?0:(x>DOCK_SIDE?2:1); dirty=1;
+}
+static void win_toggle_max(Win *w){
+    if(w->fullscreen){ win_toggle_fullscreen(w); return; }
+    if(w->maxed) win_restore(w);
+    else win_set_max(w,DOCK_SIDE,BARH,gw-DOCK_SIDE,gh-BARH);
+}
 static int text_w_big(const char *s){ return text_w(s)*3/2; }
 /* ---------------- ajustes: almacenamiento y pantalla ---------------- */
 typedef struct { int x, y, w, h, kind; char name[FS_NAME]; } DObj;   /* kind 0..7 = icono de la app del dock; 100 reloj; 101 sistema; 200 archivo de /Escritorio */
@@ -1064,6 +1234,13 @@ static int set_resolution(int w,int h){
     if(bga_r(1)!=w||bga_r(2)!=h||gfx_resize(fb_front,w,h,w*4)){ kfree(nwall); bga_w(4,0); bga_w(1,(uint16_t)ow); bga_w(2,(uint16_t)oh); bga_w(3,32); bga_w(4,0x41); return -4; }
     kfree(wall); wall=nwall; build_wall();
     for(int i=0;i<MAXW;i++) if(wins[i].used){ Win *v=&wins[i];
+        if(v->fullscreen){ v->x=0; v->y=0; v->w=w; v->h=h; continue; }
+        if(v->maxed){
+            int ux=w-DOCK_SIDE, left=ux/2;
+            v->x=v->snap==2?DOCK_SIDE+left:DOCK_SIDE;
+            v->y=BARH; v->w=v->snap==0?ux:(v->snap==2?ux-left:left);
+            v->h=h-BARH; continue;
+        }
         if(v->w>w) v->w=w;
         if(v->h>h-BARH) v->h=h-BARH;
         if(v->x+v->w>w) v->x=w-v->w;
@@ -1082,6 +1259,12 @@ static int set_resolution(int w,int h){
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
+    if(w->fullscreen){
+        /* La ventana cubre absolutamente todos los píxeles; ninguna app ni widget
+         * del escritorio puede quedar visible a través del contenido. */
+        fill(0,0,gw,gh,C_BG,255);
+    }
+    if(!w->fullscreen){
     { int X0=x-8,Y0=y-6,X1=x+w->w+8,Y1=y+w->h+14;                                     /* sombra suave, solo fuera de la ventana */
       for(int bnd=0;bnd<4;bnd++){
           if(bnd==0) clip_set(X0,Y0,X1-X0,y-Y0); else if(bnd==1) clip_set(X0,y+w->h,X1-X0,Y1-(y+w->h));
@@ -1100,15 +1283,24 @@ static void draw_window(int wi,int focused){
     circle(x+w->w-20,y+TB/2,7,focused?0xe5534b:0x4a4d63,255);                     /* boton cerrar */
     line(x+w->w-23,y+TB/2-3,x+w->w-17,y+TB/2+3,1,0xffffff,focused?255:120);
     line(x+w->w-17,y+TB/2-3,x+w->w-23,y+TB/2+3,1,0xffffff,focused?255:120);
+    circle(x+w->w-44,y+TB/2,7,focused?0x42b983:0x4a4d63,255);
+    rrect(x+w->w-47,y+TB/2-3,6,6,1,0xffffff,focused?255:130);
+    circle(x+w->w-68,y+TB/2,7,focused?0xe3b341:0x4a4d63,255);
+    fill(x+w->w-71,y+TB/2+2,6,1,0xffffff,255);
+    circle(x+w->w-92,y+TB/2,7,focused?ACCENT:0x4a4d63,255);
+    line(x+w->w-95,y+TB/2-3,x+w->w-89,y+TB/2-3,1,0xffffff,255);
+    line(x+w->w-95,y+TB/2-3,x+w->w-95,y+TB/2+3,1,0xffffff,255);
+    line(x+w->w-89,y+TB/2+3,x+w->w-89,y+TB/2-3,1,0xffffff,255);
+    } /* marco de ventana normal */
 
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     clip_set(cx,cy,cw,ch);
     switch(w->type){
     case A_ABOUT:{
-        crown(cx+cw/2-60,cy+24,120,0xe9c46a,ACCENT,255);
-        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Königreich OS",0xffffff);
+        vortex_mark(cx+cw/2-60,cy+24,120);
+        int tw=text_w_big("Vortex OS"); text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",0xffffff);
         { char vb[80]="kng-kernel " KNG_VERSION " (" KNG_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
-        text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
+        text(cx+28,cy+190,"Kernel propio compatible con aplicaciones Linux.",C_TXT);
         text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
         break; }
     case A_TERM:{
@@ -1178,11 +1370,14 @@ static void draw_window(int wi,int focused){
         break; }
     case A_BROWSER:{
         button(cx+8,cy+6,32,24,"<",0);
-        rrect(cx+48,cy+6,cw-56,24,6,0x10111b,255);
+        rrect(cx+48,cy+6,cw-194,24,6,0x10111b,255);
+        button(cx+cw-138,cy+6,130,24,papp_installed(4)?"Abrir Chromium":"Instalar Chromium",1);
         char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
+        clip_set(cx+56,cy+8,cw-208,20);
         if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
         text(cx+58,cy+10,shown,w->editing?0xffffff:C_DIM);
         if(w->editing && ((kticks()/50)&1)) fill(cx+58+text_w(shown),cy+10,2,16,ACCENT,255);
+        clip_reset();
         int src_len; const char *src=page_src(w,&src_len);
         int vx=cx+12, vy=cy+38, vw=cw-24, vh=ch-38;
         html_render(src,src_len,vx,vy,vw,vh,w->bscroll,mix(0x8ab4ff,ACCENT,60),1,&w->page);
@@ -1191,16 +1386,137 @@ static void draw_window(int wi,int focused){
         if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
         break; }
     case A_PROGS:{
-        text_bold(cx+16,cy+12,"Programas de Linux",C_TXT);
-        text(cx+16,cy+34,"Son los programas reales de Debian. Se instalan con: instalar <nombre>",C_DIM);
-        button(cx+cw-196,cy+8,86,24,"Pantalla X",0); button(cx+cw-100,cy+8,84,24,"Actualizar",1);
-        int cwid=(cw-48)/2;
-        for(int i=0;i<NPAPPS;i++){
-            int x=cx+16+(i%2)*(cwid+16), y=cy+64+(i/2)*76, inst=papp_installed(i);
-            rrect(x,y,cwid,66,10,0x10111b,255);
-            circle(x+32,y+33,17,PAPPS[i].col,255); { char ini[2]={PAPPS[i].name[0],0}; text_bold(x+27,y+25,ini,0xffffff); }
-            text_bold(x+60,y+8,PAPPS[i].name,C_TXT); text(x+60,y+26,PAPPS[i].desc,C_DIM);
-            text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
+        button(cx+14,cy+10,128,26,"Integradas",!w->apps_tab);
+        button(cx+150,cy+10,138,26,"Programas Linux",w->apps_tab);
+        if(!w->apps_tab){
+            text(cx+16,cy+44,"Aplicaciones del sistema: abre una o varias ventanas independientes.",C_DIM);
+            int pw=(cw-48)/2;
+            for(int i=0;i<(int)(sizeof APPS_LOCAL/sizeof *APPS_LOCAL);i++){
+                int xx=cx+16+(i%2)*(pw+16), yy=cy+74+(i/2)*58;
+                uint32_t col=i==0?0x60a5fa:(i%2?ACCENT:0x14b8a6);
+                rrect(xx,yy,pw,50,10,0x10111b,255);
+                circle(xx+26,yy+25,14,col,255);
+                char initial[2]={APPS_LOCAL_NOMBRES[i][0],0};
+                text_bold(xx+22,yy+17,initial,0xffffff);
+                text_bold(xx+50,yy+16,APPS_LOCAL_NOMBRES[i],C_TXT);
+            }
+        }else{
+            text(cx+16,cy+44,"Aplicaciones reales del entorno Debian (requieren instalacion).",C_DIM);
+            button(cx+cw-196,cy+8,86,24,"Pantalla X",0);
+            button(cx+cw-100,cy+8,84,24,"Actualizar",1);
+            int cwid=(cw-48)/2;
+            for(int i=0;i<NPAPPS;i++){
+                int xx=cx+16+(i%2)*(cwid+16), yy=cy+64+(i/2)*76, inst=papp_installed(i);
+                rrect(xx,yy,cwid,66,10,0x10111b,255);
+                circle(xx+32,yy+33,17,PAPPS[i].col,255);
+                { char ini[2]={PAPPS[i].name[0],0}; text_bold(xx+27,yy+25,ini,0xffffff); }
+                text_bold(xx+60,yy+8,PAPPS[i].name,C_TXT);
+                text(xx+60,yy+26,PAPPS[i].desc,C_DIM);
+                text(xx+60,yy+44,inst?"Instalado - clic para abrir":"Clic para instalar",inst?0x7ee787:0xf59e0b);
+            }
+        }
+        break; }
+    case A_SABER:{
+        saber_load();
+        int xp=saber_best[NSABER]*30;
+        for(int i=0;i<NSABER;i++) xp+=saber_best[i]*25;
+        if(w->saber_topic==-1){
+            text_big(cx+18,cy+14,"Vortex Saber",C_TXT);
+            char xpstr[100]="Nivel "; cat_int(xpstr,sizeof xpstr,1+xp/100);
+            cat(xpstr,sizeof xpstr,"  -  "); cat_int(xpstr,sizeof xpstr,xp);
+            cat(xpstr,sizeof xpstr," XP");
+            text_bold(cx+20,cy+46,xpstr,0x7ee787);
+            text(cx+20,cy+68,"Lee, responde y mejora tu mejor resultado en cada tema.",C_DIM);
+            int pw=(cw-56)/2;
+            for(int i=0;i<NSABER;i++){
+                int xx=cx+18+(i%2)*(pw+20), yy=cy+104+(i/2)*138;
+                rrect(xx,yy,pw,122,12,0x10111b,255);
+                rrect(xx,yy,5,122,3,SABER[i].color,255);
+                circle(xx+34,yy+32,18,SABER[i].color,255);
+                if(i==0){ text_bold(xx+29,yy+23,"x",0xffffff); }
+                else if(i==1){ circle(xx+34,yy+32,9,0xffffff,80); }
+                else if(i==2){ text_bold(xx+29,yy+23,"H",0xffffff); }
+                else { text_bold(xx+29,yy+23,"T",0xffffff); }
+                text_bold(xx+62,yy+18,SABER[i].nombre,C_TXT);
+                text(xx+18,yy+62,"Lectura y 3 preguntas",C_DIM);
+                for(int j=0;j<SABER_NQ;j++) circle(xx+21+j*18,yy+101,5,j<saber_best[i]?0x7ee787:C_BORDER,255);
+                text(xx+100,yy+92,saber_best[i]==3?"Dominado":saber_best[i]?"En progreso":"Empezar",C_TXT);
+            }
+            button(cx+20,cy+376,200,34,"Juego de parejas",0);
+            char best[72]="Mejor juego: "; cat_int(best,sizeof best,saber_best[NSABER]);
+            cat(best,sizeof best,"/4"); text(cx+240,cy+385,best,0x7ee787);
+            text(cx+20,cy+422,xp>=200?"Logro: aprendiz constante":xp>=75?"Logro: primera evaluacion":"Logro pendiente: completa una evaluacion",C_TXT);
+            text(cx+20,cy+450,kngfs_active()?"Progreso persistente: disco activado":"Para conservar datos al reiniciar, activa el disco en Ajustes.",C_DIM);
+        } else if(w->saber_topic==-2){
+            button(cx+16,cy+10,96,27,"Biblioteca",0);
+            text_bold(cx+130,cy+14,"Juego de parejas",C_TXT);
+            char level[80]="Parejas: "; int nm=0;
+            for(int i=0;i<SABER_PAIRS;i++) if(w->saber_pair_mask&(1<<i)) nm++;
+            cat_int(level,sizeof level,nm); cat(level,sizeof level,"/4  Fallos: ");
+            cat_int(level,sizeof level,w->saber_pair_errors);
+            text(cx+20,cy+50,level,C_TXT);
+            text(cx+20,cy+76,"Selecciona un concepto y su definicion correspondiente.",C_DIM);
+            int colw=(cw-56)/2;
+            for(int j=0;j<SABER_PAIRS;j++){
+                int yy=cy+112+j*66, ix=cx+18, id=SABER_PERM[j];
+                uint32_t lc=(w->saber_pair_mask&(1<<j))?0x155e37:
+                    w->saber_pair_sel==j?ACCENT:C_BTN;
+                uint32_t rc=(w->saber_pair_mask&(1<<id))?0x155e37:C_BTN;
+                rrect(ix,yy,colw,54,9,lc,255);
+                rrect(ix+colw+20,yy,colw,54,9,rc,255);
+                char label[6]={(char)('1'+j),')',' ',0};
+                text_bold(ix+12,yy+16,label,0xffffff);
+                text_bold(ix+35,yy+16,SABER_TERMS[j],0xffffff);
+                label[0]=(char)('5'+j);
+                text_bold(ix+colw+32,yy+16,label,0xffffff);
+                text(ix+colw+54,yy+16,SABER_DEFS[id],0xffffff);
+            }
+            if(w->saber_pair_mask==15){
+                int score=k_max(0,SABER_PAIRS-w->saber_pair_errors);
+                char won[80]="Reto finalizado. Puntos: "; cat_int(won,sizeof won,score);
+                cat(won,sizeof won," / 4");
+                text_bold(cx+22,cy+397,won,0x7ee787);
+            } else text(cx+22,cy+397,w->saber_pair_sel>=0?"Ahora elige la definicion correcta.":"Elige primero una tarjeta de la izquierda.",C_DIM);
+            button(cx+20,cy+444,160,32,"Reiniciar juego",0);
+            button(cx+198,cy+444,175,32,"Volver al inicio",0);
+        } else {
+            const SaberLeccion *z=&SABER[w->saber_topic];
+            button(cx+16,cy+10,96,27,"Biblioteca",0);
+            text_bold(cx+130,cy+14,z->nombre,C_TXT);
+            char estado[80]="Aciertos: "; cat_int(estado,sizeof estado,w->saber_hits);
+            cat(estado,sizeof estado," / "); cat_int(estado,sizeof estado,SABER_NQ);
+            text(cx+cw-16-text_w(estado),cy+14,estado,C_DIM);
+            if(w->saber_q>=SABER_NQ){
+                text_big(cx+30,cy+110,"Evaluacion completada",C_TXT);
+                char nota[80]="Respuestas correctas: "; cat_int(nota,sizeof nota,w->saber_hits);
+                cat(nota,sizeof nota," de 3"); text_bold(cx+30,cy+180,nota,0x7ee787);
+                text(cx+30,cy+224,w->saber_hits==3?"Excelente: has dominado este tema.":"Repasa la lectura y vuelve a intentarlo.",C_DIM);
+                text(cx+30,cy+266,"Tu mejor puntuacion se guarda en Documentos.",C_DIM);
+                button(cx+30,cy+328,225,40,"Volver a la biblioteca",1);
+                button(cx+270,cy+328,175,40,"Repetir leccion",0);
+            } else {
+                text_bold(cx+20,cy+55,"Lectura",z->color);
+                rrect(cx+18,cy+80,cw-36,100,10,0x10111b,255);
+                for(int j=0;j<3;j++) text(cx+30,cy+90+j*26,z->lectura[j],C_TXT);
+                char qp[40]="Pregunta "; cat_int(qp,sizeof qp,w->saber_q+1);
+                cat(qp,sizeof qp," de 3"); text_bold(cx+20,cy+192,qp,z->color);
+                text(cx+20,cy+215,z->pregunta[w->saber_q],C_TXT);
+                for(int j=0;j<3;j++){
+                    int yy=cy+246+j*43;
+                    int answered=w->saber_answer>=0;
+                    uint32_t col=answered&&j==z->correcta[w->saber_q]?0x155e37:
+                        answered&&j==w->saber_answer?0x7f1d1d:C_BTN;
+                    rrect(cx+20,yy,cw-40,36,8,col,255);
+                    char txt[108]; txt[0]=(char)('1'+j); txt[1]=')'; txt[2]=' '; txt[3]=0;
+                    cat(txt,sizeof txt,z->opcion[w->saber_q][j]); text_bold(cx+34,yy+9,txt,0xffffff);
+                }
+                if(w->saber_answer>=0){
+                    int good=w->saber_answer==z->correcta[w->saber_q];
+                    text_bold(cx+20,cy+379,good?"Respuesta correcta":"Respuesta incorrecta",good?0x7ee787:0xff8888);
+                    text(cx+20,cy+400,z->explicacion[w->saber_q],C_DIM);
+                    button(cx+cw-172,cy+436,150,32,w->saber_q==SABER_NQ-1?"Resultados":"Siguiente",1);
+                }else text(cx+20,cy+392,"Selecciona 1, 2 o 3 para comprobar tu respuesta.",C_DIM);
+            }
         }
         break; }
     case A_MONITOR:{
@@ -1271,11 +1587,17 @@ static void draw_window(int wi,int focused){
                 { uint32_t *th=get_thumb(i); if(th) for(int yy=2;yy<58;yy++) for(int xx=2;xx<94;xx++) px_blend(tx2+xx,ty+yy,th[yy*THW+xx],255); } }
             text_bold(cx+20,oy+192,"Hora",C_TXT);
             button(cx+20,oy+218,28,24,"-",0); button(cx+56,oy+218,28,24,"+",0);
-            { char b[40]="Zona horaria: UTC"; if(tz>=0) cat(b,40,"+"); cat_int(b,40,tz); text(cx+98,oy+222,b,C_TXT); }
+            { char b[70]="Zona: "; if(tz==-5) cat(b,sizeof b,"America/Lima (UTC-5)");
+              else { cat(b,sizeof b,"UTC"); if(tz>=0) cat(b,sizeof b,"+"); cat_int(b,sizeof b,tz); }
+              text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
-            text_bold(cx+20,oy+296,"Teclado",C_TXT);
-            for(int i=0;i<3;i++) button(cx+20+i*150,oy+322,140,26,kbd_layout_name(i),kbd_layout()==i);
-            text(cx+20,oy+354,"Tambien: escribe  teclado latam | es | us  en la terminal",C_DIM);
+            { char fecha[80]="Fecha local (RTC UTC): "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
+              cat(fecha,sizeof fecha,"/"); cat_int(fecha,sizeof fecha,clk_y); }
+              else cat(fecha,sizeof fecha,"fecha no disponible");
+              text(cx+20,oy+285,fecha,C_DIM); }
+            text_bold(cx+20,oy+312,"Teclado",C_TXT);
+            for(int i=0;i<3;i++) button(cx+20+i*150,oy+340,140,26,kbd_layout_name(i),kbd_layout()==i);
+            text(cx+20,oy+376,"Tambien: teclado latam | es | us desde Terminal",C_DIM);
         } else if(set_tab==1){
             char b[80]=""; cat(b,80,"Resolucion actual: "); cat_int(b,80,gw); cat(b,80," x "); cat_int(b,80,gh); cat(b,80,fb_bpp0==24?" (24 bits)":" (32 bits)");
             text_bold(cx+20,oy+14,b,C_TXT);
@@ -1286,7 +1608,7 @@ static void draw_window(int wi,int focused){
             } else {
                 text(cx+20,oy+42,"En este equipo la resolucion la pone el menu de arranque:",C_DIM);
                 text(cx+20,oy+64,"al encender, entra en \"Resolucion de pantalla\", elige una",C_DIM);
-                text(cx+20,oy+84,"y luego arranca Konigreich OS. Por defecto usa la mayor",C_DIM);
+                text(cx+20,oy+84,"y luego arranca Vortex OS. Por defecto usa la mayor",C_DIM);
                 text(cx+20,oy+104,"disponible hasta 1920 x 1080.",C_DIM);
             }
         } else if(set_tab==2){
@@ -1307,14 +1629,14 @@ static void draw_window(int wi,int focused){
                 uint64_t seg[1]={used}; uint32_t col[1]={ACCENT}; stor_bar(cx+20,dy+48,cw-40,22,seg,col,1,cap);
                 if(kngfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
                     button(cx+20,dy+104,150,28,"Guardar ahora",1); }
-                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Konigreich OS.",0xffb86b);
+                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Vortex OS.",0xffb86b);
                     button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
             } else { text(cx+20,dy+24,"No se encontro un disco duro (IDE o SATA).",C_DIM); text(cx+20,dy+44,"Sin disco, lo que hagas se pierde al apagar.",0xffb86b); }
             button(cx+cw-170,dy+104,150,28,"Vaciar Papelera",0);
         } else {
             char b[96];
             text_bold(cx+20,oy+10,"Sistema",C_TXT);
-            b[0]=0; cat(b,96,"Kernel: kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
+            b[0]=0; cat(b,96,"Vortex OS / kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
             b[0]=0; cat(b,96,"Memoria RAM: "); { char s1[24]; hsize((uint64_t)kram_kb()*1024u,s1,24); cat(b,96,s1); } text(cx+20,oy+60,b,C_DIM);
             b[0]=0; cat(b,96,"Pantalla: "); cat_int(b,96,gw); cat(b,96," x "); cat_int(b,96,gh); text(cx+20,oy+82,b,C_DIM);
             b[0]=0; cat(b,96,"Tiempo encendido: "); cat_int(b,96,(int)(kticks()/6000)); cat(b,96," min"); text(cx+20,oy+104,b,C_DIM);
@@ -1325,34 +1647,47 @@ static void draw_window(int wi,int focused){
         break; }
     }
     clip_reset();
-    { int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-40,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+    if(!w->fullscreen){ int tx=x+14; if(w->type==A_ABOUT){ vortex_mark(x+12,y+5,20); tx=x+38; }
+      clip_set(x+1,y+1,w->w-116,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
 /* ---------------- barra superior y dock ---------------- */
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Königreich OS",C_TXT);
-    char t[16]=""; int h=clk_h;
-    if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
-    else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
+    vortex_mark(10,4,24); text(42,6,"Vortex OS",C_TXT);
+    char t[44]="";
+    if(clk_y){ cat2(t,sizeof t,clk_day); cat(t,sizeof t,"/"); cat2(t,sizeof t,clk_mon); cat(t,sizeof t,"/"); cat_int(t,sizeof t,clk_y); cat(t,sizeof t,"  "); }
+    else cat(t,sizeof t,"RTC sin fecha  ");
+    int h=clk_h;
+    if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; cat2(t,sizeof t,h); cat(t,sizeof t,":"); cat2(t,sizeof t,clk_m); cat(t,sizeof t,am?" PM":" AM"); }
+    else { cat2(t,sizeof t,h); cat(t,sizeof t,":"); cat2(t,sizeof t,clk_m); }
     text_bold((gw-text_w(t))/2,6,t,0xffffff);
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
     { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
 }
 #define NDOCK 10
 #define TILE 52
-static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
-static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
-static const char *DOCK_LBL[NDOCK]={"Inicio","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static int dock_cols(void){ return gh<620?2:1; }
+static int dock_gap(void){ int rows=(NDOCK+dock_cols()-1)/dock_cols(); int g=(gh-BARH-24-rows*TILE)/(rows+1); return k_max(2,k_min(12,g)); }
+static void dock_geom(int *bx,int *by,int *bw,int *bh){
+    int cols=dock_cols(), rows=(NDOCK+cols-1)/cols;
+    *bw=cols*TILE+(cols+1)*8; *bh=rows*TILE+(rows+1)*dock_gap();
+    *bx=8; *by=BARH+8;
+}
+static void dock_icon_pos(int i,int *x,int *y){
+    int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); (void)bw; (void)bh;
+    *x=bx+8+(i%dock_cols())*(TILE+8); *y=by+dock_gap()+(i/dock_cols())*(TILE+dock_gap());
+}
+static const int DOCK_APP[NDOCK]={A_PROGS,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_SABER};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Vortex Saber"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0x1a1d33,255);
     clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
     rrect(x,y,TILE,TILE,13,0xffffff,10);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: crown(x+9,y+11,34,0xe9c46a,ACCENT,255); break;
+    case 0: vortex_mark(x+8,y+8,36); break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
     case 2: rrect(x+9,y+14,16,9,3,0xe0a62d,255); rrect(x+9,y+19,34,22,4,0xf5b83d,255); fill(x+13,y+25,26,2,0xffffff,70); break;
@@ -1370,19 +1705,26 @@ static void draw_icon(int i,int x,int y){
     case 7:{ static const short C8[8]={1000,707,0,-707,-1000,-707,0,707}, S8[8]={0,707,1000,707,0,-707,-1000,-707};
             for(int k=0;k<8;k++) circle(cx+17*C8[k]/1000,cy+17*S8[k]/1000,4,0x14b8a6,255);
             circle(cx,cy,15,0x14b8a6,255); circle(cx,cy,6,0x1a1d33,255); break; }
-    case 9: rrect(x+9,y+9,15,15,4,0xf97316,255); rrect(x+28,y+9,15,15,4,0x60a5fa,255); rrect(x+9,y+28,15,15,4,0x4ade80,255); rrect(x+28,y+28,15,15,4,0xe9c46a,255); break;
+    case 9: rrect(x+11,y+10,14,30,3,0x60a5fa,255); rrect(x+27,y+10,14,30,3,0x14b8a6,255); fill(x+25,y+13,2,27,0xffffff,230); fill(x+14,y+16,7,2,0xffffff,190); fill(x+30,y+16,7,2,0xffffff,190); break;
     case 8: rrect(x+9,y+10,34,32,5,0x0d0e16,255); fill(x+14,y+30,5,9,0x4ade80,255); fill(x+23,y+22,5,17,0x60a5fa,255); fill(x+32,y+16,5,23,0xf59e0b,255); break;
     }
 }
 static void draw_dock(void){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    rrect(bx,by,bw,bh,18,0x05060c,150); rrect(bx,by,bw,bh,18,0xffffff,16);
+    rrect(bx,by,bw,bh,18,0x05060c,215); rrect(bx,by,bw,bh,18,0xffffff,16);
+    int top=win_top();
     for(int i=0;i<NDOCK;i++){
-        int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
+        int x,y; dock_icon_pos(i,&x,&y);
         if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,70);
         draw_icon(i,x,y);
-        for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
-        if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
+        for(int k=0;k<nord;k++) if(wins[order[k]].used&&wins[order[k]].type==DOCK_APP[i]){
+            circle(x+TILE/2,y+TILE-4,3,wins[order[k]].minimized?0xfbbf24:0xffffff,255); break;
+        }
+        /* Con una ventana maximizada no mostrar un tooltip encima de su contenido. */
+        if(hover==i&&(top<0||!wins[top].maxed)){
+            int lw=text_w(DOCK_LBL[i])+16, xx=bx+bw+8;
+            rrect(xx,y+14,lw,22,6,0x05060c,230); text(xx+8,y+17,DOCK_LBL[i],0xffffff);
+        }
     }
 }
 
@@ -1391,7 +1733,7 @@ static void draw_dock(void){
 static int ddrag=-1, ddx, ddy, dmoved, dlast=-1; static uint32_t dlastt;
 static void dobj_init(void){
     static const int ik[4]={1,2,4,6};
-    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=22; dobj[i].y=BARH+18+i*96; }
+    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=DOCK_SIDE+24; dobj[i].y=BARH+18+i*96; }
     dobj[4].kind=100; dobj[4].w=210; dobj[4].h=92; dobj[4].x=gw-232; dobj[4].y=BARH+18;
     dobj[5].kind=101; dobj[5].w=210; dobj[5].h=108; dobj[5].x=gw-232; dobj[5].y=BARH+124;
     for(int i=6;i<NDO;i++) dobj[i].kind=-1;
@@ -1434,14 +1776,14 @@ static int dobj_hit(int px,int py){ for(int i=NDO-1;i>=0;i--) if(dobj[i].kind>=0
 static int dsk_find(const char *name){ for(int i=0;i<NDO;i++) if(dobj[i].kind==200&&!k_strcmp(dobj[i].name,name)) return i; return -1; }
 static int dsk_find_at(int x,int y){ int i=dobj_hit(x,y); return (i>=0&&dobj[i].kind==200)?i:-1; }
 static const char *dsk_name(int i){ return dobj[i].name; }
-static void dsk_clamp(DObj *o){ if(o->x<0) o->x=0; if(o->y<BARH) o->y=BARH; if(o->x+o->w>gw) o->x=gw-o->w; if(o->y+o->h>gh-70) o->y=gh-70-o->h; }
+static void dsk_clamp(DObj *o){ if(o->x<DOCK_SIDE+8) o->x=DOCK_SIDE+8; if(o->y<BARH) o->y=BARH; if(o->x+o->w>gw) o->x=gw-o->w; if(o->y+o->h>gh-70) o->y=gh-70-o->h; }
 static void dsk_moveto(int i,int x,int y){ DObj *o=&dobj[i]; dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=x; o->y=y; dsk_clamp(o); dmark(o->x-6,o->y-6,o->w+12,o->h+12); }
 static void dsk_free_slot(int *x,int *y){                           /* primer hueco libre de la cuadricula, de arriba abajo y de izquierda a derecha */
     for(int col=0;col<14;col++) for(int row=0;row<8;row++){
-        int px=22+col*90, py=BARH+18+row*96; if(py+84>gh-90||px+76>gw) continue;
+        int px=DOCK_SIDE+24+col*90, py=BARH+18+row*96; if(py+84>gh-90||px+76>gw) continue;
         int ok=1; for(int j=0;j<NDO&&ok;j++){ DObj *o=&dobj[j]; if(o->kind>=0&&px<o->x+o->w&&px+76>o->x&&py<o->y+o->h&&py+84>o->y) ok=0; }
         if(ok){ *x=px; *y=py; return; } }
-    *x=110; *y=BARH+18;
+    *x=DOCK_SIDE+24; *y=BARH+18;
 }
 static void dsk_sync(void){                                         /* los iconos de archivos del escritorio siguen a la carpeta /Escritorio */
     FsNode *d=desk_dir(); if(!d) return;
@@ -1468,7 +1810,7 @@ static void dsk_open(int i){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj
 static int dsk_drop(int i){                                         /* se solto un icono del escritorio: sobre una ventana de archivos o una carpeta, se mueve ahi */
     FsNode *dk=desk_dir(); FsNode *s=dk?fs_find(dk,dobj[i].name):0; if(!s) return 0;
     FsNode *dst=0; Win *tw=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     if(!dst){ for(int j=NDO-1;j>=0;j--) if(j!=i&&dobj[j].kind==200&&in_rect(mx,my,dobj[j].x,dobj[j].y,dobj[j].w,dobj[j].h)){ FsNode *f=fs_find(dk,dobj[j].name); if(f&&f->dir&&f!=s) dst=f; break; } }
@@ -1505,11 +1847,11 @@ static void render(void){
     for(int i=0;i<NDO;i++) if(dobj[i].kind>=0 && rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh)) draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
-        if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
-        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
-        if(!hidden) draw_window(order[k],k==nord-1);
+        if(w->minimized||!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
+        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(!o->minimized && rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
+        if(!hidden) draw_window(order[k],order[k]==win_top());
     }
-    draw_topbar(); draw_dock();
+    { int top=win_top(); if(top<0||!wins[top].fullscreen){ draw_topbar(); draw_dock(); } }
     if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
         rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
     mu_draw();
@@ -1521,11 +1863,28 @@ static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==
 void gui_frame(void){
     uint32_t t=kticks();
     browser_poll();
-    if(t>=clk_next){ int h,m; clk_next=t+100; if(!krtc(&h,&m)){ h=((h+tz)%24+24)%24; if(h!=clk_h||m!=clk_m){ clk_h=h; clk_m=m; dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230); } } }
+    if((int)(t-clk_next)>=0){ clk_next=t+100;
+        uint64_t utc=krtc_epoch();
+        if(utc>=946684800ull&&utc<13569465600ull){
+            long long local=(long long)utc+(long long)tz*3600ll;
+            if(local>=0){
+                unsigned long long seconds;
+                int days=(int)udiv64((unsigned long long)local,86400,&seconds);
+                unsigned int sec32=(unsigned int)seconds; /* 0..86399: evitar libgcc __udivmoddi4 en 32 bits */
+                int h=(int)(sec32/3600u), m=(int)((sec32%3600u)/60u);
+                /* Conversion de dias UTC al calendario gregoriano, con cambio de dia correcto en Peru. */
+                int yy,mo,dd; vortex_date_from_days(days,&yy,&mo,&dd);
+                if(h!=clk_h||m!=clk_m||yy!=clk_y||mo!=clk_mon||dd!=clk_day){
+                    clk_h=h; clk_m=m; clk_y=yy; clk_mon=mo; clk_day=dd;
+                    dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230);
+                }
+            }
+        }
+    }
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
         if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
     { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
-    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
+    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]]; if(xw->minimized) continue; if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); } else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); } } }       /* la pantalla X se redibuja ~30 veces por segundo */
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
     snake_tick(t); kngfs_tick();
@@ -1536,10 +1895,13 @@ void gui_frame(void){
 /* ---------------- entrada ---------------- */
 static int in_rect(int px,int py,int x,int y,int w,int h){ return px>=x&&px<x+w&&py>=y&&py<y+h; }
 static int dock_hit(int px,int py){
+    int top=win_top(); if(top>=0&&wins[top].fullscreen) return -1;
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    if(!in_rect(px,py,bx,by-6,bw,bh+6)) return -1;
-    for(int i=0;i<NDOCK;i++) if(in_rect(px,py,bx+14+i*(TILE+14)-7,by,TILE+14,bh)) return i;
-    return -2;                                                       /* sobre el dock, pero entre iconos */
+    if(!in_rect(px,py,bx,by,bw,bh)) return -1;
+    for(int i=0;i<NDOCK;i++){ int x,y; dock_icon_pos(i,&x,&y);
+        if(in_rect(px,py,x-3,y-3,TILE+6,TILE+6)) return i;
+    }
+    return -2;
 }
 static void files_click(Win *w,int lx,int ly,int cw,int ch){
     int wi=(int)(w-wins);
@@ -1575,12 +1937,15 @@ static void settings_click(int lx,int ly,int cw,int ch){
     if(set_tab==0){
         for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
         for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i){ wall_i=i; build_wall(); } dirty=1; return; }
-        if(in_rect(lx,y,20,218,28,24)){ if(tz>-12) tz--; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,56,218,28,24)){ if(tz<14) tz++; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; dirty=1; }
-        else if(in_rect(lx,y,20,322,140,26)) set_layout(KBD_US);
-        else if(in_rect(lx,y,170,322,140,26)) set_layout(KBD_LATAM);
-        else if(in_rect(lx,y,320,322,140,26)) set_layout(KBD_ES);
+        if(in_rect(lx,y,20,218,28,24)||in_rect(lx,y,56,218,28,24)){
+            if(lx<52&&tz>-12) tz--; else if(lx>=52&&tz<14) tz++;
+            char zona[12]=""; cat_int(zona,sizeof zona,tz); cfg_set("zona",zona);
+            clk_next=0; dirty=1;
+        }
+        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; cfg_set("reloj24",show24?"1":"0"); dirty=1; }
+        else if(in_rect(lx,y,20,340,140,26)) set_layout(KBD_US);
+        else if(in_rect(lx,y,170,340,140,26)) set_layout(KBD_LATAM);
+        else if(in_rect(lx,y,320,340,140,26)) set_layout(KBD_ES);
     } else if(set_tab==1){
         if(bga_ok()) for(int i=0;i<NRES;i++) if(in_rect(lx,y,20+(i%3)*160,70+(i/3)*36,150,28)){ set_resolution(RES[i][0],RES[i][1]); return; }
     } else if(set_tab==2){
@@ -1600,7 +1965,13 @@ static void settings_click(int lx,int ly,int cw,int ch){
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
-    if(in_rect(lx,ly,48,6,cw-56,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
+    if(in_rect(lx,ly,cw-138,6,130,24)){
+        w->editing=0;
+        if(papp_installed(4)) run_quiet("abrir chromium");
+        else run_in_terminal("instalar chromium");
+        dirty=1; return;
+    }
+    if(in_rect(lx,ly,48,6,cw-194,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
     w->editing=0;
     for(int i=0;i<w->page.nlinks;i++){
         HLink *k=&w->page.links[i]; int px=12+k->x, py=38+k->y-w->bscroll;
@@ -1625,10 +1996,54 @@ static void app_click(Win *w,int lx,int ly){
         if(w->sover||!w->sstart) snake_key(w,' ');
         break;
     case A_PROGS:
-        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
-        else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
-        else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){ int x=16+(i%2)*(cwid+16), y=64+(i/2)*76;
-            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dirty=1; break; } } }
+        if(in_rect(lx,ly,14,10,128,26)){ w->apps_tab=0; dirty=1; break; }
+        if(in_rect(lx,ly,150,10,138,26)){ w->apps_tab=1; dirty=1; break; }
+        if(!w->apps_tab){
+            int pw=(cw-48)/2;
+            for(int i=0;i<(int)(sizeof APPS_LOCAL/sizeof *APPS_LOCAL);i++){
+                int xx=16+(i%2)*(pw+16), yy=74+(i/2)*58;
+                if(in_rect(lx,ly,xx,yy,pw,50)){ open_app(APPS_LOCAL[i]); break; }
+            }
+        }else{
+            if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
+            else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
+            else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){
+                int xx=16+(i%2)*(cwid+16), yy=64+(i/2)*76;
+                if(in_rect(lx,ly,xx,yy,cwid,66)){
+                    if(papp_installed(i)){ char cmd[80]="abrir "; cat(cmd,sizeof cmd,PAPPS[i].cmd); run_quiet(cmd); }
+                    else run_in_terminal(PAPPS[i].inst);
+                    dirty=1; break;
+                }
+            } }
+        }
+        break;
+    case A_SABER:
+        if(w->saber_topic==-1){
+            if(in_rect(lx,ly,20,376,200,34)){ saber_game_start(w); break; }
+            int pw=(cw-56)/2;
+            for(int i=0;i<NSABER;i++){
+                int xx=18+(i%2)*(pw+20), yy=104+(i/2)*138;
+                if(in_rect(lx,ly,xx,yy,pw,122)){ saber_start(w,i); break; }
+            }
+        } else if(in_rect(lx,ly,16,10,96,27)){ w->saber_topic=-1; dirty=1; }
+        else if(w->saber_topic==-2){
+            if(in_rect(lx,ly,20,444,160,32)){ saber_game_start(w); break; }
+            if(in_rect(lx,ly,198,444,175,32)){ w->saber_topic=-1; dirty=1; break; }
+            int colw=(cw-56)/2;
+            for(int j=0;j<SABER_PAIRS;j++){
+                int yy=112+j*66;
+                if(in_rect(lx,ly,18,yy,colw,54)){ saber_game_select(w,0,j); break; }
+                if(in_rect(lx,ly,18+colw+20,yy,colw,54)){ saber_game_select(w,1,j); break; }
+            }
+        }
+        else if(w->saber_q>=SABER_NQ){
+            if(in_rect(lx,ly,30,328,225,40)){ w->saber_topic=-1; dirty=1; }
+            else if(in_rect(lx,ly,270,328,175,40)) saber_start(w,w->saber_topic);
+        } else {
+            if(w->saber_answer<0){
+                for(int j=0;j<3;j++) if(in_rect(lx,ly,20,246+j*43,cw-40,36)){ saber_answer(w,j); break; }
+            } else if(in_rect(lx,ly,cw-172,436,150,32)) saber_next(w);
+        }
         break;
     default: break;
     }
@@ -1639,21 +2054,28 @@ static void on_press(void){
     int d=dock_hit(mx,my);
     if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
+    { int top=win_top(); if(my<BARH&&(top<0||!wins[top].fullscreen)){
+        if(mx<146) open_app(A_PROGS); /* logo y nombre abren Aplicaciones */
+        else if(mx>gw-48) open_app(A_SETTINGS);
+        return;
+    } }
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi);
-        if(my<w->y+TB){
-            int dx=mx-(w->x+w->w-20), dy=my-(w->y+TB/2);
-            if(dx*dx+dy*dy<=100){ win_close(wi); return; }
+        if(!w->fullscreen&&my<w->y+TB){
+            if(mx>=w->x+w->w-32){ win_close(wi); return; }
+            if(mx>=w->x+w->w-56){ win_toggle_max(w); return; }
+            if(mx>=w->x+w->w-80){ win_minimize(w); return; }
+            if(mx>=w->x+w->w-104){ win_toggle_fullscreen(w); return; }
             { uint32_t t=kticks(); int rs=win_resizable(w);
               if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
               w->tclick=t;
-              if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
+              if(w->maxed){ win_restore(w); w->x=k_max(DOCK_SIDE,mx-w->w/2); dirty=1; }
               drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return; }
         }
-        app_click(w,mx-(w->x+1),my-(w->y+TB));
+        { int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
+          app_click(w,mx-cx,my-cy); }
         return;
     }
     { int di=dobj_hit(mx,my); if(di>=0){ ddrag=di; ddx=mx-dobj[di].x; ddy=my-dobj[di].y; dmoved=0; if(dobj[di].kind==200&&dsel!=di){ dsel=di; dirty=1; } }
@@ -1664,7 +2086,7 @@ static void on_rpress(void){                                         /* boton de
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi); dirty=1;
         if(w->type==A_FILES&&my>=w->y+TB){
             if(w->editing) fm_commit_rename(w);
@@ -1685,23 +2107,25 @@ static void mouse_set(int x,int y,int b){
     if(x!=mx||y!=my) cursor_dirty=1;
     mx=x; my=y; mb=b;
     { int top=win_top();                                       /* sobre la pantalla X, el raton se le entrega al programa de Linux */
-      if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top]; int lx=x-(xw->x+1), ly=y-(xw->y+TB);
+      if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top];
+         int cx,cy,cw,ch; crect(xw,&cx,&cy,&cw,&ch);
+         int lx=x-cx, ly=y-cy; (void)cw; (void)ch;
         if(lx>=0&&ly>=0&&lx<xw->xw&&ly<xw->xh){
             if(lx!=xw->xlx||ly!=xw->xly){ xw->xlx=lx; xw->xly=ly; kinput_event(3,0,lx); kinput_event(3,1,ly); kinput_event(0,0,0); }
             static const int bit[3]={1,2,4}, code[3]={0x110,0x111,0x112};
             for(int k=0;k<3;k++) if((b^omb)&bit[k]){ kinput_event(1,code[k],(b&bit[k])?1:0); kinput_event(0,0,0); } } } }
-    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; { int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); dmark(bx-10,by-40,bw+20,bh+52); } }
+    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; dirty=1; }
     if(drag>=0){
-        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
+        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=k_max(DOCK_SIDE,mx-dragdx); w->y=k_max(BARH,my-dragdy); dwin(w); }
         if(released){ Win *w=&wins[drag]; drag=-1;
             if(win_resizable(w)){
-                if(my<=BARH+3){ win_set_max(w,0,BARH,gw,gh-BARH-86); }
-                else if(mx<=3){ win_set_max(w,0,BARH,gw/2,gh-BARH-86); }
-                else if(mx>=gw-4){ win_set_max(w,gw/2,BARH,gw-gw/2,gh-BARH-86); } } }
+                if(my<=BARH+3){ win_set_max(w,DOCK_SIDE,BARH,gw-DOCK_SIDE,gh-BARH); }
+                else if(mx<=3){ win_set_max(w,DOCK_SIDE,BARH,(gw-DOCK_SIDE)/2,gh-BARH); }
+                else if(mx>=gw-4){ int ww=(gw-DOCK_SIDE)/2; win_set_max(w,DOCK_SIDE+ww,BARH,gw-DOCK_SIDE-ww,gh-BARH); } } }
     }
     if(ddrag>=0){
         DObj *o=&dobj[ddrag];
-        if(b&1){ int nx=mx-ddx, ny=my-ddy; if(nx<0) nx=0; if(ny<BARH) ny=BARH; if(nx+o->w>gw) nx=gw-o->w; if(ny+o->h>gh-70) ny=gh-70-o->h;
+        if(b&1){ int nx=mx-ddx, ny=my-ddy; if(nx<DOCK_SIDE+8) nx=DOCK_SIDE+8; if(ny<BARH) ny=BARH; if(nx+o->w>gw) nx=gw-o->w; if(ny+o->h>gh-70) ny=gh-70-o->h;
                  if(nx!=o->x||ny!=o->y){ dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=nx; o->y=ny; dmark(o->x-6,o->y-6,o->w+12,o->h+12); dmoved=1; } }
         if(released){ int i=ddrag; ddrag=-1;
             if(dmoved && o->kind==200) dsk_drop(i);
@@ -1738,8 +2162,18 @@ static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
-    if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
+    if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; } /* Ctrl+T: terminal */
     int top=win_top();
+    if(c==0x501){ /* F10: instancia independiente de la aplicacion activa */
+        if(top>=0){ int app=wins[top].type; open_new=1; open_app(app); open_new=0; }
+        return;
+    }
+    if(top>=0){
+        if(c==0x500){ win_toggle_fullscreen(&wins[top]); return; } /* F11 */
+        if(c==0x417){ win_close(top); return; } /* Ctrl+W */
+        if(c==0x40D){ win_minimize(&wins[top]); return; } /* Ctrl+M */
+        if(c==27&&wins[top].fullscreen){ win_toggle_fullscreen(&wins[top]); return; }
+    }
     if(top<0){                                                      /* sin ventanas: las teclas son para el icono elegido del escritorio */
         if(dsel>=0&&dobj[dsel].kind==200){ FsNode *dk=desk_dir(); FsNode *f=dk?fs_find(dk,dobj[dsel].name):0;
             if(f){ if(c=='\n') dsk_open(dsel); else if(c==0x7F) fm_do(M_DELETE,0,dk,f); else if(c==0x412) dren_start(dsel);
@@ -1797,6 +2231,20 @@ void gui_key(int c){
         else if(c=='%') calc_press(w,'%');
         break;
     case A_SNAKE: snake_key(w,c); break;
+    case A_SABER:
+        if(c==27){ w->saber_topic=-1; dirty=1; }
+        else if(w->saber_topic==-1&&c=='g') saber_game_start(w);
+        else if(w->saber_topic==-2){
+            if(c>='1'&&c<='4') saber_game_select(w,0,c-'1');
+            else if(c>='5'&&c<='8') saber_game_select(w,1,c-'5');
+            else if(c=='r'||c=='R') saber_game_start(w);
+        }
+        else if(w->saber_topic==-1&&c>='1'&&c<='4') saber_start(w,c-'1');
+        else if(w->saber_topic>=0&&w->saber_q<SABER_NQ){
+            if(c>='1'&&c<='3') saber_answer(w,c-'1');
+            else if(c=='\n') saber_next(w);
+        } else if(c=='\n'){ w->saber_topic=-1; dirty=1; }
+        break;
     case A_VIEWER:
         if(c==KEY_DOWN) scroll_by(&w->scroll,1,100000); else if(c==KEY_UP) scroll_by(&w->scroll,-1,100000);
         else if(c==KEY_PGDN) scroll_by(&w->scroll,20,100000); else if(c==KEY_PGUP) scroll_by(&w->scroll,-20,100000);
@@ -1821,7 +2269,13 @@ void gui_key(int c){
 void gui_storage_ready(void){
     (void)kngfs_mount(); fs_track=1;
     { char kv[16]; if(cfg_get("teclado",kv,sizeof kv)){ int l=layout_from_name(kv); if(l>=0) kbd_set_layout(l); } }
+    { char kv[16]; if(cfg_get("zona",kv,sizeof kv)){
+        const char *p=kv; int neg=0, v=0; if(*p=='-'){ neg=1; p++; } else if(*p=='+') p++;
+        if(*p>='0'&&*p<='9'){ while(*p>='0'&&*p<='9') v=v*10+(*p++-'0');
+            if(!*p){ if(neg) v=-v; if(v>=-12&&v<=14) tz=v; } }
+      } if(cfg_get("reloj24",kv,sizeof kv)) show24=(kv[0]!='0'); clk_next=0; }
     { char r[16]; if(cfg_get("resolucion",r,sizeof r)){ int w=0,h=0; const char *q=r; while(*q>='0'&&*q<='9') w=w*10+(*q++-'0'); if(*q=='x') q++; while(*q>='0'&&*q<='9') h=h*10+(*q++-'0'); if(w>=640&&h>=480&&(w!=gw||h!=gh)) set_resolution(w,h); } }
+    saber_loaded=0; saber_load();
     build_wall(); dsk_sync(); dirty=1;
 }
 int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){

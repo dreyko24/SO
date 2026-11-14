@@ -27,6 +27,12 @@ int main(void){
     kbd_set_layout(KBD_US);
     kbd_feed(0xE0); chk(kbd_feed(0x48),0x11,"flecha arriba"); kbd_feed(0xE0); kbd_feed(0xC8);
     kbd_feed(0xE0); chk(kbd_feed(0x51),0x16,"Av Pag"); kbd_feed(0xE0); kbd_feed(0xD1);
+    chk(press(0x44),0x501,"F10 abre otra ventana");
+    chk(press(0x57),0x500,"F11 pantalla completa");
+    kbd_feed(0x1D);
+    chk(press(0x32),0x40D,"Ctrl+M minimiza");
+    chk(press(0x11),0x417,"Ctrl+W cierra");
+    kbd_feed(0x9D);
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

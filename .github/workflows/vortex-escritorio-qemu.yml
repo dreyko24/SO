@@ -1,0 +1,73 @@
+name: vortex-escritorio-qemu
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  escritorio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar emulador y compiladores
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 gcc gcc-multilib binutils grub-pc-bin xorriso mtools cpio python3
+      - name: Construir sistema real de 64 bits e imagen de arranque
+        run: |
+          make -C kernel64 -j2
+          make -C kernel -j2
+          python3 tools/mkrootfs.py --debian kng-extra.cpio
+          mkdir -p g/boot/grub
+          cp kernel64/kng-kernel64.elf kng-extra.cpio g/boot/
+          printf 'set timeout=0\ninsmod all_video\nset gfxpayload=1024x768x32,800x600x32\nmenuentry "Vortex OS" {\n multiboot /boot/kng-kernel64.elf\n module /boot/kng-extra.cpio\n boot\n}\n' > g/boot/grub/grub.cfg
+          grub-mkrescue -o g.iso g
+          cp g.iso VortexOS-QEMU-BIOS.iso
+      - name: Probar GUI mediante mouse/teclado reales emulados
+        run: |
+          python3 tools/ci_gui.py tools/ci/vortex-ventanas.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom g.iso -boot d -vga std -display none -serial stdio -m 2G > gui.log 2>&1
+          grep -q "Iniciando escritorio" gui.log
+          python3 - <<'PY'
+          import pathlib, hashlib
+          d=pathlib.Path('capturas')
+          expected=['aplicaciones','biblioteca_saber','primera_leccion','respuesta','siguiente_pregunta','pantalla_completa','minimizada','restaurada','segunda_instancia','instancia_cerrada','maximizada','tamano_restaurado','inicio_saber','juego_parejas','primera_pareja','juego_terminado']
+          files=[d/(n+'.png') for n in expected]
+          for f in files:
+              assert f.exists() and f.stat().st_size>5000, f'Captura ausente o vacia: {f}'
+          import struct, zlib
+          def pixels(path):
+              png=path.read_bytes(); pos=8; compressed=bytearray(); width=height=0
+              while pos+12<=len(png):
+                  n=struct.unpack_from('>I',png,pos)[0]
+                  typ=png[pos+4:pos+8]; data=png[pos+8:pos+8+n]; pos+=12+n
+                  if typ==b'IHDR': width,height=struct.unpack_from('>II',data)
+                  if typ==b'IDAT': compressed.extend(data)
+              raw=zlib.decompress(compressed); row=1+width*3
+              assert height==768 and width==1024 and len(raw)==height*row, 'PNG inesperado'
+              assert all(raw[y*row]==0 for y in range(height)), 'PNG no compatible'
+              if path.stem=='pantalla_completa':
+                  # Fondo completamente opaco y sin widgets/dock en pantalla completa.
+                  for px,py in [(1000,680),(42,650)]:
+                      i=py*row+1+px*3
+                      assert raw[i:i+3]==bytes([22,24,38]), f'Pantalla completa deja ver el escritorio en {px},{py}'
+              # Una zona interior donde se muestran las ventanas (excluye reloj y cursor del dock).
+              return b''.join(raw[y*row+1+120*3:y*row+1+850*3] for y in range(100,625))
+          snapshots=[pixels(f) for f in files]
+          for i in range(1,len(snapshots)):
+              a,b=snapshots[i-1],snapshots[i]
+              diff=sum(x!=y for x,y in zip(a,b))
+              print(expected[i-1], '->', expected[i], 'bytes cambiados:',diff)
+              assert diff>7000, f'Interaccion sin efecto visible: {expected[i-1]} -> {expected[i]}'
+          print('QEMU: controles y contenidos cambiaron entre los 16 estados esperados')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vortex-iso-arrancable-qemu
+          path: VortexOS-QEMU-BIOS.iso
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vortex-escritorio
+          path: |
+            gui.log
+            capturas/*.png

@@ -1,0 +1,67 @@
+# Prueba real con raton y teclado en QEMU a 1024x768
+esperar 4
+raton 42 74
+# QEMU inicia el raton relativo en el centro y puede perder el primer movimiento
+raton 42 74
+clic
+captura aplicaciones
+raton 210 178
+clic
+captura biblioteca_saber
+raton 210 244
+clic
+captura primera_leccion
+tecla 1
+captura respuesta
+tecla ret
+captura siguiente_pregunta
+tecla f11
+captura pantalla_completa
+tecla f11
+raton 734 95
+clic
+captura minimizada
+raton 42 650
+clic
+captura restaurada
+# Nueva instancia independiente y cierre sin afectar a la original
+tecla f10
+captura segunda_instancia
+tecla ctrl-w
+captura instancia_cerrada
+# Doble clic maximiza, deja libre la barra lateral y restaura geometria
+raton 360 95
+doble
+captura maximizada
+raton 360 43
+doble
+captura tamano_restaurado
+# Volver a la biblioteca, completar el minijuego de asociacion de conceptos
+raton 190 135
+clic
+captura inicio_saber
+raton 230 500
+clic
+captura juego_parejas
+# Fraccion -> Parte igual de un todo (derecha fila 2)
+raton 210 245
+clic
+raton 550 310
+clic
+captura primera_pareja
+# Fotosintesis -> Plantas usan luz (derecha fila 4)
+raton 210 310
+clic
+raton 550 445
+clic
+# Independencia -> Peru 1821 (derecha fila 1)
+raton 210 375
+clic
+raton 550 245
+clic
+# HTTPS -> Cifrado TLS (derecha fila 3)
+raton 210 445
+clic
+raton 550 375
+clic
+captura juego_terminado
