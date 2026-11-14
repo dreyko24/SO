@@ -462,6 +462,46 @@ int main(void){
       closeall();fs_remove(folder);
       puts("VORTEX INTELLIMOUSE SCROLL VENTANA BAJO CURSOR OK");
     }
+    /* Enciclopedia original sin internet: lanzador, indexado, artículos y
+     * rueda para desplazarse entre resultados. */
+    {
+      closeall();workspace_set(0);
+      dock(0);typestr("enciclopedia");gui_key('\n');gui_frame();
+      int top=win_top();
+      if(top<0||wins[top].type!=A_ENCARTA){
+          puts("FALLO abrir enciclopedia desde Actividades");return 1;
+      }
+      Win *e=&wins[top];
+      if(ENC_ARTICLES_N<25||enc_count(e)!=ENC_ARTICLES_N){
+          puts("FALLO catalogo educativo");return 1;
+      }
+      shot("39_vortex_saber_biblioteca");
+      click(e->x+1+260,e->y+TB+146+19);
+      if(e->enc_topic<0||strcmp(ENC_ARTICLES[e->enc_topic].title,"Universo")){
+          puts("FALLO abrir articulo educativo");return 1;
+      }
+      shot("40_vortex_saber_articulo");
+      click(e->x+1+238+35,e->y+TB+94+11+13);
+      if(e->enc_topic!=-1){puts("FALLO volver al indice");return 1;}
+      typestr("inteligencia artificial");
+      if(enc_count(e)!=1){puts("FALLO busqueda a texto completo");return 1;}
+      gui_key('\n');
+      if(e->enc_topic<0||strcmp(ENC_ARTICLES[e->enc_topic].title,"Inteligencia artificial")){
+          puts("FALLO enter abre articulo filtrado");return 1;
+      }
+      gui_key(27);gui_key(27); /* volver y limpiar búsqueda */
+      click(e->x+1+54,e->y+TB+137+3*40+14);
+      if(e->enc_category!=3||enc_count(e)<4){
+          puts("FALLO categoria geografia");return 1;
+      }
+      int oldscroll=e->enc_scroll;
+      gui_mouse_abs(e->x+1+300,e->y+TB+240,0);
+      gui_mouse_wheel(-1);
+      if(e->enc_scroll<=oldscroll){puts("FALLO rueda en enciclopedia");return 1;}
+      shot("41_vortex_saber_geografia");
+      closeall();
+      puts("VORTEX SABER: INDICE, ARTICULOS, BUSQUEDA, CATEGORIAS Y SCROLL OK");
+    }
     /* Ubuntu/GNOME: dock vertical, Actividades y vista de aplicaciones. */
     { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
       if(bx!=DASH_LEFT||bw!=DASH_WIDTH||bh!=NDOCK*DASH_STEP+20||

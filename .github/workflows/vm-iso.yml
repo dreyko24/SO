@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
+      - 'kernel/encyclopedia.h'
+      - 'kernel/ps2_mouse.h'
       - 'kernel/disk.c'
       - 'kernel/fs.c'
       - 'kernel/ui_locale.h'

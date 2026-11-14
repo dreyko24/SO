@@ -5,6 +5,15 @@
 #define VORTEX_UI_LOCALE_H
 typedef struct {const char *es,*en,*qu;} VortexUiText;
 static const VortexUiText vortex_ui_strings[]={
+    {"Enciclopedia","Encyclopedia","Yachay p'anqa"},
+    {"Educacion","Education","Yachay"},
+    {"Vortex Saber","Vortex Knowledge","Vortex Yachay"},
+    {"Explorar","Explore","Maskay"},
+    {"Biblioteca","Library","P'anqa wasi"},
+    {"Volver","Back","Kutiy"},
+    {"Siguiente","Next","Qatiq"},
+    {"Buscar conocimientos...","Search knowledge...","Yachayta maskay..."},
+    {"Enciclopedia sin conexion","Offline encyclopedia","Mana llikawan yachay p'anqa"},
     {"Actividades","Activities","Ruraykuna"},
     {"Tu espacio de trabajo","Your workspace","Llamk'ana kancha"},
     {"General","General","Llapan"},

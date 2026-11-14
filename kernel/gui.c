@@ -15,8 +15,9 @@
 #include "video.h"
 #include "media_demo.h"
 #include "ui_locale.h"
+#include "encyclopedia.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -37,6 +38,8 @@ typedef struct {
     FsNode *file;                                                                /* visor */
     VImage picture; int media_tab; /* multimedia */
     VVideo movie; int movie_frame, movie_play; uint32_t movie_next;
+    int enc_category,enc_topic,enc_scroll,enc_search_len;
+    char enc_search[48];
     char url[192], hist[8][192], ebuf[192]; int nhist, bscroll, editing, elen; HPage page;   /* navegador */
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
@@ -489,6 +492,8 @@ static Win *open_app(int type){
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
     case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
+    case A_ENCARTA:  w->w=770; w->h=575; w->enc_topic=-1;
+                     set_title(w,"Vortex Saber - Enciclopedia");break;
     case A_AUDIO:    w->w=520; w->h=275; set_title(w,"Vortex Musica"); break;
     case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
@@ -1275,6 +1280,7 @@ static void win_min_dimensions(const Win *w,int *minw,int *minh){
     case A_SNAKE:mw=SGW*SCELL+2;mh=TB+1+34+SGH*SCELL;break;
     case A_AUDIO:mw=520;mh=275;break;
     case A_OFFICE:mw=540;mh=TB+1+500;break;
+    case A_ENCARTA:mw=600;mh=480;break;
     case A_VIDEO:mw=480;mh=340;break;
     case A_MEDIA:mw=430;mh=320;break;
     case A_FILES:mw=420;mh=290;break;
@@ -1389,6 +1395,128 @@ static int set_resolution(int w,int h){
     char r[16]=""; cat_int(r,16,w); cat(r,16,"x"); cat_int(r,16,h); cfg_set("resolucion",r);
     dsk_sync(); dirty=1; cursor_dirty=1; return 0;
 }
+/* Vortex Saber: búsqueda offline y maquetación de artículos originales. */
+static int enc_lower(int c){return c>='A'&&c<='Z'?c+32:c;}
+static int enc_contains(const char *text0,const char *query){
+    if(!*query)return 1;
+    for(const unsigned char *t=(const unsigned char*)text0;*t;t++){
+        const unsigned char *a=t,*b=(const unsigned char*)query;
+        while(*a&&*b&&enc_lower(*a)==enc_lower(*b)){a++;b++;}
+        if(!*b)return 1;
+    }
+    return 0;
+}
+static int enc_match_article(const Win *w,int id){
+    const EncArticle *a=&ENC_ARTICLES[id];
+    if(w->enc_category&&a->category!=w->enc_category)return 0;
+    return enc_contains(a->title,w->enc_search)||
+           enc_contains(a->subtitle,w->enc_search)||
+           enc_contains(a->body,w->enc_search);
+}
+static int enc_index(const Win *w,int nth){
+    for(int i=0;i<ENC_ARTICLES_N;i++)if(enc_match_article(w,i)){
+        if(!nth)return i;nth--;
+    }
+    return -1;
+}
+static int enc_count(const Win *w){
+    int count=0;for(int i=0;i<ENC_ARTICLES_N;i++)if(enc_match_article(w,i))count++;
+    return count;
+}
+/* Dibuja lineas con cortes de palabra y devuelve el total para scroll.
+ * La biblioteca inicial utiliza ASCII para mantener el corte de bytes seguro. */
+static int enc_wrap(const char *content,int x,int y,int width,int visible,int skip,int draw){
+    if(!content)return 0;
+    int maxchars=(width-12)/8;
+    if(maxchars>138)maxchars=138;
+    if(maxchars<12)maxchars=12;
+    int line=0;
+    const char *p=content;
+    while(*p&&line<4096){
+        if(*p=='\n'){p++;line++;continue;}
+        int n=0;while(p[n]&&p[n]!='\n'&&n<maxchars)n++;
+        if(p[n]&&p[n]!='\n'&&n==maxchars){
+            int cut=n;while(cut>13&&p[cut]!=' ')cut--;
+            if(cut>13)n=cut;
+        }
+        if(n<=0){p++;continue;}
+        if(draw&&line>=skip&&line<skip+visible){
+            char txt[144];
+            for(int i=0;i<n;i++)txt[i]=p[i];
+            txt[n]=0;
+            text_ui(x,y+(line-skip)*18,txt,C_TXT);
+        }
+        p+=n;
+        while(*p==' ')p++;
+        line++;
+    }
+    return line;
+}
+static int enc_body_height(const Win *w){
+    int h=w->h-TB-1;
+    return k_max(3,(h-265)/18);
+}
+static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
+    /* Cabecera editorial y búsqueda, integrada en la paleta Vortex. */
+    rrect(cx+10,cy+8,cw-20,74,18,light_theme?0xf5e4db:0x3b283c,255);
+    rrect(cx+22,cy+18,43,43,11,ACCENT,255);
+    text_big(cx+33,cy+23,"V",0xffffff);
+    text_ui_bold(cx+77,cy+16,"Vortex Saber",C_TXT);
+    text_ui(cx+77,cy+41,"Enciclopedia sin conexion",C_DIM);
+    int searchx=cx+238,searchw=cw-260;
+    rrect(searchx,cy+22,searchw,34,12,C_TILE,255);
+    const char *prompt=w->enc_search_len?w->enc_search:"Buscar conocimientos...";
+    text_ui(searchx+15,cy+31,prompt,w->enc_search_len?C_TXT:C_DIM);
+    if(w->enc_search_len&&((kticks()/50)&1))
+        fill(searchx+18+text_ui_w(prompt),cy+32,2,16,ACCENT,255);
+    int sx=cx+12,sy=cy+94,sw=191,sh=ch-105;
+    rrect(sx,sy,sw,sh,15,C_PANEL,255);
+    text_ui_bold(sx+14,sy+12,"Explorar",C_TXT);
+    for(int i=0;i<ENC_CATEGORIES_N;i++){
+        int iy=sy+43+i*40;
+        if(i==w->enc_category)rrect(sx+8,iy,sw-16,34,11,ACCENT,238);
+        text_ui_bold(sx+20,iy+9,ENC_CATEGORIES[i],i==w->enc_category?0xffffff:C_TXT);
+    }
+    int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
+    rrect(rx,ry,rw,rh,16,C_TILE,255);
+    if(w->enc_topic<0){
+        int matches=enc_count(w);
+        char count[48]="";cat_int(count,sizeof count,matches);
+        cat(count,sizeof count,matches==1?" articulo":" articulos");
+        text_ui_bold(rx+17,ry+14,w->enc_search_len?"Resultados de busqueda":"Biblioteca",C_TXT);
+        text_ui(rx+rw-130,ry+16,count,C_DIM);
+        int top=ry+52,rows=k_max(1,(rh-74)/57);
+        if(!matches)text_ui(rx+16,top+30,"Sin resultados. Prueba otra palabra.",C_DIM);
+        for(int i=0;i<rows;i++){
+            int index=enc_index(w,w->enc_scroll+i);
+            if(index<0)break;
+            const EncArticle *a=&ENC_ARTICLES[index];
+            int row=top+i*57;
+            rrect(rx+12,row,rw-24,52,11,
+                  (i&1)?C_PANEL:(light_theme?0xffffff:0x393342),255);
+            fill(rx+18,row+11,4,28,ACCENT,220);
+            text_ui_bold(rx+31,row+7,a->title,C_TXT);
+            text_ui(rx+31,row+28,a->subtitle,C_DIM);
+        }
+    }else if(w->enc_topic<ENC_ARTICLES_N){
+        const EncArticle *a=&ENC_ARTICLES[w->enc_topic];
+        rrect(rx+13,ry+11,99,28,9,C_PANEL,255);
+        text_ui_bold(rx+25,ry+18,"Volver",C_TXT);
+        text_ui(rx+133,ry+18,ENC_CATEGORIES[a->category],C_DIM);
+        text_big(rx+20,ry+52,a->title,C_TXT);
+        text_ui(rx+21,ry+88,a->subtitle,C_DIM);
+        fill(rx+20,ry+120,rw-40,2,ACCENT,145);
+        int yy=ry+135;
+        int visible=enc_body_height(w);
+        clip_set(rx+19,yy,rw-35,visible*18);
+        enc_wrap(a->body,rx+21,yy,rw-43,visible,w->enc_scroll,1);
+        clip_set(cx,cy,cw,ch);
+        fill(rx+20,ry+rh-51,rw-40,1,C_BORDER,100);
+        text_ui(rx+24,ry+rh-38,"Lee, investiga y aprende.",C_DIM);
+        rrect(rx+rw-148,ry+rh-44,129,30,10,C_BTN,255);
+        text_ui_bold(rx+rw-131,ry+rh-36,"Siguiente",C_TXT);
+    }
+}
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
     /* Sombra en bandas finas, nunca 12 rectangulos de tamano ventana:
@@ -1447,6 +1575,9 @@ static void draw_window(int wi,int focused){
             } else text(cx+20,cy+20,"El servidor X usa un formato que vortex aun no muestra (se necesita 32 bits).",0xd6dbe8);
         } else { text(cx+20,cy+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8); text(cx+20,cy+44,"Inicia: pantalla   (en la terminal)",C_DIM); }
         break; }
+    case A_ENCARTA:
+        enc_render(w,cx,cy,cw,ch);
+        break;
     case A_FILES:{
         { char t[40]="Archivos - "; cat(t,40,w->dir==fs_root()?"/":w->dir->name); k_strcpy(w->title,t,40); }
         for(int i=0;i<8;i++){ int bw, bx=ftb_x(i,&bw); int off=((i==2||i==3||i==5||i==6||i==7)&&!w->sel)||(i==4&&!clip_path[0]);
@@ -1911,8 +2042,8 @@ static void draw_dock(void){
 
 /* Lanzador Vortex: panel de aplicaciones con categorias y cuadrícula interactiva. */
 typedef struct {const char *label; int app,tab,cat,icon;} AppMenuEntry;
-enum { MC_ALL,MC_MULTIMEDIA,MC_OFICINA,MC_INTERNET,MC_SISTEMA,MC_UTIL,MC_JUEGOS };
-static const char *const APP_CATS[]={"Todas","Multimedia","Oficina","Internet","Sistema","Utilidades","Juegos"};
+enum { MC_ALL,MC_MULTIMEDIA,MC_OFICINA,MC_INTERNET,MC_SISTEMA,MC_UTIL,MC_JUEGOS,MC_EDUCACION };
+static const char *const APP_CATS[]={"Todas","Multimedia","Oficina","Internet","Sistema","Utilidades","Juegos","Educacion"};
 static const AppMenuEntry APPMENU[]={
     {"Navegador",A_BROWSER,0,MC_INTERNET,1},
     {"Archivos",A_FILES,0,MC_SISTEMA,2},
@@ -1927,7 +2058,8 @@ static const AppMenuEntry APPMENU[]={
     {"Ajustes",A_SETTINGS,0,MC_SISTEMA,7},
     {"Monitor",A_MONITOR,0,MC_SISTEMA,8},
     {"Snake",A_SNAKE,0,MC_JUEGOS,6},
-    {"Acerca de",A_ABOUT,0,MC_SISTEMA,15}
+    {"Acerca de",A_ABOUT,0,MC_SISTEMA,15},
+    {"Enciclopedia",A_ENCARTA,0,MC_EDUCACION,16}
 };
 #define APPMENU_N ((int)(sizeof APPMENU/sizeof(APPMENU[0])))
 #define APPMENU_CATS ((int)(sizeof APP_CATS/sizeof APP_CATS[0]))
@@ -2005,6 +2137,14 @@ static void appmenu_tile_icon(const AppMenuEntry *e,int x,int y){
     case 14: /* oficina */
         rrect(x+12,y+8,28,37,5,0x4bc6a9,255);
         for(int j=0;j<4;j++)fill(x+17,y+18+j*6,17,2,0xe8fff8,255);
+        break;
+    case 16: /* Vortex Saber: libro ilustrado original */
+        rrect(x+7,y+9,38,34,7,0xe95420,255);
+        rrect(x+10,y+11,15,29,3,0xffe5ca,255);
+        rrect(x+27,y+11,15,29,3,0xfff3df,255);
+        fill(x+25,y+12,2,28,0x7c3c26,255);
+        for(int j=0;j<3;j++){fill(x+13,y+18+j*6,9,1,0x9d562f,220);
+                             fill(x+30,y+18+j*6,9,1,0x9d562f,220);}
         break;
     default: vortex_logo(x+6,y+8,40,255); break;
     }
@@ -2436,6 +2576,37 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
 static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     switch(w->type){
+    case A_ENCARTA:{
+        if(in_rect(lx,ly,238,22,cw-260,34)){w->enc_topic=-1;dwin(w);return;}
+        for(int i=0;i<ENC_CATEGORIES_N;i++)
+            if(in_rect(lx,ly,20,137+i*40,175,34)){
+                w->enc_category=i;w->enc_topic=-1;w->enc_scroll=0;
+                dwin(w);return;
+            }
+        if(w->enc_topic>=0){
+            if(in_rect(lx,ly,231,105,99,28)){
+                w->enc_topic=-1;w->enc_scroll=0;dwin(w);return;
+            }
+            if(in_rect(lx,ly,cw-160,ch-148,129,30)){
+                /* Siguiente dentro del índice filtrado, con vuelta al inicio. */
+                int pos=-1,n=enc_count(w);
+                for(int k=0;k<n;k++)if(enc_index(w,k)==w->enc_topic){pos=k;break;}
+                int next=enc_index(w,pos<0?0:(pos+1)%k_max(1,n));
+                if(next>=0)w->enc_topic=next;
+                w->enc_scroll=0;dwin(w);return;
+            }
+        }else{
+            int ry=94,top=ry+52,rh=ch-104;
+            int rows=k_max(1,(rh-74)/57);
+            if(ly>=top&&ly<top+rows*57&&lx>=230&&lx<cw-12){
+                int row=(ly-top)/57,idx=enc_index(w,w->enc_scroll+row);
+                if(idx>=0){w->enc_topic=idx;w->enc_scroll=0;dwin(w);}
+                return;
+            }
+        }
+        break;
+    }
+
     case A_FILES: files_click(w,lx,ly,cw,ch); break;
     case A_VIEWER:
         if(w->picture.pixels&&in_rect(lx,ly,cw-167,ch-38,155,28)&&w->file)
@@ -2734,6 +2905,17 @@ void gui_mouse_wheel(int steps){
             increment=56;break;
         case A_VIEWER:
             maximum=100000;increment=5;break;
+        case A_ENCARTA:
+            if(w->enc_topic<0){
+                int h=w->h-TB-1,visible=k_max(1,(h-178)/57);
+                maximum=k_max(0,enc_count(w)-visible);increment=2;
+            }else{
+                int lines=enc_wrap(ENC_ARTICLES[w->enc_topic].body,0,0,
+                    w->w-2-273,0,0,0);
+                maximum=k_max(0,lines-enc_body_height(w));
+                increment=2;
+            }
+            break;
         case A_MEDIA:{
             if(w->media_tab==3)return;
             static const char *paths[]={"/Imagenes","/Musica","/Videos"};
@@ -2843,6 +3025,31 @@ void gui_key(int c){
         if(idx>=0){ if(idx<w->scroll) w->scroll=idx; if(idx>=w->scroll+rows) w->scroll=idx-rows+1; }
         dirty=1;
         break; }
+    case A_ENCARTA:
+        if(c==27){
+            if(w->enc_search_len){w->enc_search_len=0;w->enc_search[0]=0;}
+            else w->enc_topic=-1;
+            w->enc_scroll=0;dwin(w);
+        }else if(c=='\b'||c==0x7f){
+            if(w->enc_search_len)w->enc_search[--w->enc_search_len]=0;
+            w->enc_topic=-1;w->enc_scroll=0;dwin(w);
+        }else if(c=='\n'){
+            int id=enc_index(w,0);
+            if(id>=0){w->enc_topic=id;w->enc_scroll=0;dwin(w);}
+        }else if(c==KEY_DOWN||c==KEY_UP||c==KEY_PGDN||c==KEY_PGUP){
+            int speed=(c==KEY_PGDN||c==KEY_PGUP)?7:2;
+            int dir=(c==KEY_DOWN||c==KEY_PGDN)?1:-1;
+            int max=0;
+            if(w->enc_topic<0)max=k_max(0,enc_count(w)-k_max(1,(w->h-TB-1-178)/57));
+            else max=k_max(0,enc_wrap(ENC_ARTICLES[w->enc_topic].body,0,0,w->w-2-273,0,0,0)-enc_body_height(w));
+            w->enc_scroll=k_max(0,k_min(max,w->enc_scroll+dir*speed));
+            dwin(w);
+        }else if(c>=32&&c<=126&&w->enc_search_len<(int)sizeof(w->enc_search)-1){
+            w->enc_search[w->enc_search_len++]=(char)c;
+            w->enc_search[w->enc_search_len]=0;
+            w->enc_topic=-1;w->enc_scroll=0;dwin(w);
+        }
+        break;
     case A_NOTES: notes_key(w,c); break;
     case A_CALC:
         if(c>='0'&&c<='9') calc_press(w,c);
