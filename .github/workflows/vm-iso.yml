@@ -3,7 +3,7 @@ name: vortex-iso-unica
 # Construccion de Vortex Flow: compositor por regiones, UI proporcional, acceso rapido y 32/64 grafico.
 on:
   push:
-    branches: [cambio-nombre-vortex-os]
+    branches: [main, cambio-nombre-vortex-os, vortex/integracion-total-20261114]
     paths:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
