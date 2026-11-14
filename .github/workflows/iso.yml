@@ -34,10 +34,10 @@ jobs:
         run: |
           test -s out/VortexOS.iso
           (cd out && sha256sum -c VortexOS.iso.sha256)
-      - name: Guardar ISO completa como artefacto de prueba
+      - name: Guardar ISO con Debian como artefacto de prueba
         uses: actions/upload-artifact@v4
         with:
-          name: VortexOS-completo-Debian
+          name: VortexOS-con-Debian-pruebas
           path: |
             out/VortexOS.iso
             out/VortexOS.iso.sha256
