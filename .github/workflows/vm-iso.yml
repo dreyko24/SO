@@ -1,5 +1,6 @@
 name: vortex-iso-unica
 # Unico medio de evaluacion: arranque grafico del kernel propio de 32 y 64 bits.
+# Compilar desde esta revision final del nuevo lanzador, energia, multimedia y SB16.
 on:
   push:
     branches: [cambio-nombre-vortex-os]
