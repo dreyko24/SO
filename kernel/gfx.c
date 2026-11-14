@@ -187,6 +187,53 @@ static void glyph(int x,int y,int ch,uint32_t c){
 }
 int text(int x,int y,const char *s,uint32_t c){ while(*s){ int ch=next_char(&s); glyph(x,y,ch,c); x+=8; } return x; }
 int text_bold(int x,int y,const char *s,uint32_t c){ text(x+1,y,s,c); return text(x,y,s,c); }
+/* Los antiguos widgets se dibujaban en monospace 8px fijo. Para la interfaz
+ * principal usamos la misma fuente antialias con espaciado proporcional:
+ * un 'i' no ocupa lo mismo que una 'W'. La consola conserva 8x16 fijo. */
+static unsigned char ui_left[224],ui_step[224];
+static int ui_font_ready;
+static void ui_font_init(void){
+    if(ui_font_ready)return;
+    for(int ch=32;ch<=255;ch++){
+        const unsigned char *g=font_s[ch-32];
+        int left=8,right=-1;
+        for(int x=0;x<8;x++){
+            int ink=0;
+            for(int y=0;y<16;y++)if(g[y*8+x]>=18){ink=1;break;}
+            if(ink){if(x<left)left=x;if(x>right)right=x;}
+        }
+        if(right<0){ui_left[ch-32]=0;ui_step[ch-32]=4;}
+        else{
+            ui_left[ch-32]=(unsigned char)left;
+            ui_step[ch-32]=(unsigned char)k_min(9,right-left+2);
+        }
+    }
+    ui_font_ready=1;
+}
+int text_ui_w(const char *s){
+    ui_font_init();
+    int w=0;
+    while(*s){
+        int ch=next_char(&s);
+        if(ch<32||ch>255)ch='?';
+        w+=ui_step[ch-32];
+    }
+    return w;
+}
+int text_ui(int x,int y,const char *s,uint32_t c){
+    ui_font_init();
+    while(*s){
+        int ch=next_char(&s);
+        if(ch<32||ch>255)ch='?';
+        glyph(x-ui_left[ch-32],y,ch,c);
+        x+=ui_step[ch-32];
+    }
+    return x;
+}
+int text_ui_bold(int x,int y,const char *s,uint32_t c){
+    text_ui(x+1,y,s,c);
+    return text_ui(x,y,s,c);
+}
 int text_big(int x,int y,const char *s,uint32_t c){
     while(*s){ int ch=next_char(&s); if(ch<32||ch>255) ch='?';
         const unsigned char *g=font_b[ch-32];
