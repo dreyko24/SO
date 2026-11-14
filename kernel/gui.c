@@ -26,7 +26,7 @@ enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CAL
 #define SCELL 20
 #define NOTEMAX 3000
 #define KNGFS_CAP (2*1024*1024)
-#define MAXW 10
+#define MAXW 24
 #define TB 30
 #define BARH 28
 #define TW 80
@@ -58,7 +58,7 @@ typedef struct {
 } Win;
 
 void kserial_puts(const char *s);
-static Win wins[MAXW];
+static Win *wins; /* ventanas en el heap; no inflan la imagen del kernel bajo 4 MB */
 static char ed_suf[96]; static const char *ed_owner;                   /* extension que se conserva al reescribir un nombre (se muestra y se agrega al final) */
 static void fm_edit_done(char *buf,int *len,int max);
 static int open_new;                                               /* open_app: crear otra ventana aunque ya haya una del mismo tipo */
@@ -3987,6 +3987,11 @@ void gui_storage_ready(void){
 int gui_init(uint32_t *fb,int w,int h,int pitch_bytes){
     if(gfx_init(fb,w,h,pitch_bytes)) return -1;
     fb_front=fb; fb_bpp0=pitch_bytes>=w*4?32:24;
+    if(!wins){
+        wins=kmalloc((size_t)MAXW*sizeof *wins);
+        if(!wins) return -1;
+        memset(wins,0,(size_t)MAXW*sizeof *wins);
+    }
     wall=kmalloc((size_t)w*h*4); if(!wall) return -1;
     if(!fs_root()){ fs_init(); }
     vortex_media_examples();
