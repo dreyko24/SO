@@ -234,7 +234,7 @@ int main(void){
       gui_mouse_abs(bx,by,1);gui_frame();
       gui_mouse_abs(W-70,H-15,1);gui_frame();
       gui_mouse_abs(W-70,H-15,0);gui_frame();
-      if(w->x<0||w->x+w->w>W||w->y<BARH||w->y>H-TB-12){
+      if(w->x<0||w->x+w->w>W||w->y<BARH||w->y+w->h>H){
           puts("FALLO ventana desplazada fuera del escritorio");return 1;
       }
       bx=w->x+115;by=w->y+12;
