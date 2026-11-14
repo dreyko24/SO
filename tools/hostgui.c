@@ -81,6 +81,32 @@ int main(void){
       }
       puts("VORTEX ARCHIVO WAV 16-BIT DE PRUEBA OK");
     }
+    /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
+    dock(7);
+    { Win *v=&wins[win_top()];
+      click(v->x+1+12+4*100+48,v->y+TB+10+14);
+      if(set_tab!=4){puts("FALLO pestana apariencia");return 1;}
+      click(v->x+1+20+94,v->y+TB+50+88+17);
+      if(!light_theme){puts("FALLO modo claro");return 1;}
+      { char z[20];if(!cfg_get("tema",z,sizeof z)||strcmp(z,"claro")){puts("FALLO guardar tema");return 1;} }
+      shot("29_modo_claro");
+      click(v->x+1+245+94,v->y+TB+50+88+17);
+      if(light_theme){puts("FALLO modo oscuro");return 1;}
+      shot("30_modo_oscuro");
+      click(v->x+1+174+70,v->y+TB+50+208+17);
+      if(ui_lang!=1||strcmp(vortex_ui_translate("Archivos",ui_lang),"Files")){puts("FALLO ingles");return 1;}
+      shot("31_interfaz_ingles");
+      click(v->x+1+328+70,v->y+TB+50+208+17);
+      if(ui_lang!=2||strcmp(vortex_ui_translate("Archivos",ui_lang),"Willaykipukuna")){puts("FALLO quechua");return 1;}
+      shot("32_interfaz_quechua");
+      click(W-80,14);
+      if(!language_menu_open){puts("FALLO menu idioma superior");return 1;}
+      click(W-180+40,BARH+6+31+16);
+      if(ui_lang!=0||language_menu_open){puts("FALLO menu idioma espanol");return 1;}
+      { char z[20];if(!cfg_get("idioma",z,sizeof z)||strcmp(z,"es")){puts("FALLO guardar idioma");return 1;} }
+      puts("VORTEX TEMA CLARO/OSCURO E IDIOMAS ES/EN/QU OK");
+    }
+    closeall();
     shot("01_escritorio");
     dock(2); T+=100;                       /* Archivos */
     dclick(170,160); shot("02_archivos");
