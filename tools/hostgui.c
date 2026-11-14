@@ -860,6 +860,18 @@ int main(void){
       closeall();
       puts("VORTEX SABER: INDICE, ARTICULOS, BUSQUEDA, CATEGORIAS Y SCROLL OK");
     }
+    /* La distribución del dock también tiene que caber en 800x600. */
+    {
+      int step600=dock_step_for_height(600);
+      int step768=dock_step_for_height(768);
+      if(step600<TILE+4||step600>=TILE+12||
+         9*step600+20>600-BARH-12||
+         step768!=TILE+12){
+         puts("FALLO geometria del dock en resoluciones de 600 y 768px");
+         return 1;
+      }
+      puts("VORTEX DOCK RESPONSIVO: 800x600 / 1024x768 OK");
+    }
     /* Ubuntu/GNOME: dock vertical, Actividades y vista de aplicaciones. */
     { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
       if(bx!=DASH_LEFT||bw!=DASH_WIDTH||bh!=NDOCK*DASH_STEP+20||

@@ -133,7 +133,7 @@ static const uint32_t ACC[6]={0xe95420,0x77216f,0x9141ac,0x26a269,0x3584e4,0xf6a
 #define C_HOVER (light_theme?0xdad6e5:0x51475a)
 #define DASH_LEFT 8
 #define DASH_WIDTH 76
-#define DASH_STEP (TILE+12)
+#define DASH_STEP dock_step_for_height(gh)
 
 /* Localizacion de todos los rótulos que pasan por las primitivas UI.
  * El texto libre del usuario, rutas y resultados de programas no se modifican. */
@@ -2533,6 +2533,13 @@ static void draw_topbar(void){
 }
 #define NDOCK 9
 #define TILE 52
+/* En 800x600 el dock fijo 9*64+20=596 excedía el alto útil.
+ * Conservamos iconos de 52px y reducimos solamente los espacios; las
+ * zonas de clic usan el mismo paso calculado que las zonas pintadas. */
+static int dock_step_for_height(int height){
+    int available=(height-BARH-40)/NDOCK;
+    return k_max(TILE+4,k_min(TILE+12,available));
+}
 /* Ubuntu Dock vertical, centrado en la zona útil; se adapta al alto. */
 static void dock_geom(int *bx,int *by,int *bw,int *bh){
     *bw=DASH_WIDTH;*bh=NDOCK*DASH_STEP+20;
