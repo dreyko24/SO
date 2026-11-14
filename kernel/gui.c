@@ -3231,6 +3231,9 @@ static void settings_click(int lx,int ly,int cw,int ch){
         else if(in_rect(lx,y,20,252,190,24)){
             show24=!show24;cfg_set("reloj24",show24?"si":"no");dirty=1;
         }
+        else if(in_rect(lx,y,cw-172,218,154,24)){
+            run_quiet("hora sincronizar");clk_next=0;dirty=1;
+        }
         else if(in_rect(lx,y,20,322,140,26)) set_layout(KBD_US);
         else if(in_rect(lx,y,170,322,140,26)) set_layout(KBD_LATAM);
         else if(in_rect(lx,y,320,322,140,26)) set_layout(KBD_ES);
