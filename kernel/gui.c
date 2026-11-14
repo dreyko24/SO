@@ -345,7 +345,7 @@ static Win *open_app(int type){
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
-    case A_OFFICE:   w->w=520; w->h=440; set_title(w,"LibreOffice - Oficina"); break;
+    case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
     case A_AUDIO:    w->w=520; w->h=240; set_title(w,"Vortex Musica"); break;
     case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
@@ -1420,14 +1420,15 @@ static void draw_window(int wi,int focused){
         }
         break; }
     case A_OFFICE:{
-        static const char *labels[]={"Writer - Documentos","Calc - Hojas de calculo","Impress - Presentaciones","Draw - Dibujos"};
+        static const char *labels[]={"Writer - Documentos","Calc - Hojas de calculo","Impress - Presentaciones","Draw - Dibujos","Math - Formulas"};
         text_bold(cx+18,cy+18,"Suite LibreOffice",C_TXT);
         int installed=papp_installed(5);
         text(cx+18,cy+46,installed?"Instalado":"No instalado: requiere Vortex 64 + Debian",installed?0x7ee787:0xf59e0b);
-        text(cx+18,cy+68,"Programas Linux compatibles con el kernel propio.",C_DIM);
-        for(int i=0;i<4;i++)button(cx+18,cy+102+i*54,cw-36,43,labels[i],installed);
-        button(cx+18,cy+335,214,32,installed?"Actualizar LibreOffice":"Instalar LibreOffice",0);
-        button(cx+244,cy+335,240,32,"Abrir pantalla X",0);
+        text(cx+18,cy+68,"Programas Debian ejecutados por el kernel propio.",C_DIM);
+        for(int i=0;i<5;i++)button(cx+18,cy+102+i*54,cw-36,43,labels[i],installed);
+        text(cx+18,cy+384,"Necesita Vortex de 64 bits, Debian y pantalla X.",C_DIM);
+        button(cx+18,cy+413,214,32,installed?"Actualizar LibreOffice":"Instalar LibreOffice",0);
+        button(cx+244,cy+413,240,32,"Abrir pantalla X",0);
         break; }
     case A_MONITOR:{
         char b[100]; int f,dr,by; fs_usage(&f,&dr,&by); int tot=(int)(kram_kb()/1024);
@@ -1940,13 +1941,13 @@ static void app_click(Win *w,int lx,int ly){
         break;
     case A_OFFICE:{
         static const char *cmd[]={"abrir libreoffice --writer","abrir libreoffice --calc",
-                                  "abrir libreoffice --impress","abrir libreoffice --draw"};
-        for(int i=0;i<4;i++)if(in_rect(lx,ly,18,102+i*54,cw-36,43)){
+                                  "abrir libreoffice --impress","abrir libreoffice --draw","abrir libreoffice --math"};
+        for(int i=0;i<5;i++)if(in_rect(lx,ly,18,102+i*54,cw-36,43)){
             if(papp_installed(5))run_quiet(cmd[i]);else run_in_terminal("instalar libreoffice");
             dirty=1;return;
         }
-        if(in_rect(lx,ly,18,335,214,32))run_in_terminal(papp_installed(5)?"actualizar":"instalar libreoffice");
-        else if(in_rect(lx,ly,244,335,240,32))run_quiet("pantalla");
+        if(in_rect(lx,ly,18,413,214,32))run_in_terminal(papp_installed(5)?"actualizar":"instalar libreoffice");
+        else if(in_rect(lx,ly,244,413,240,32))run_quiet("pantalla");
         dirty=1;break;
     }
     case A_PROGS:
