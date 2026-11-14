@@ -85,7 +85,12 @@ jobs:
             tail -80 vortex-32.log; echo 'FALLO: no arranco modo grafico de 32 bits'; exit 1;
           }
           echo 'Vortex 32 bits grafico: OK'
-      - name: Guardar la ISO unica y registros
+      - name: Comprobar lanzadores del kit de pruebas
+        run: |
+          bash -n tools/probar-vortex.sh
+          test -s Probar-VortexOS.cmd
+          test -s README.md
+      - name: Guardar la ISO unica, lanzadores y registros
         uses: actions/upload-artifact@v4
         with:
           name: VortexOS-ISO-unica
@@ -94,6 +99,9 @@ jobs:
             out/VortexOS.iso.sha256
             vortex-64.log
             vortex-32.log
+            Probar-VortexOS.cmd
+            tools/probar-vortex.sh
+            README.md
           if-no-files-found: error
           retention-days: 30
       - name: Publicar una unica ISO preliminar descargable
