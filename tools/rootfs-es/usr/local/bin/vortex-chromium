@@ -1,0 +1,11 @@
+#!/bin/sh
+# Chromium de verdad sobre el entorno Linux de Vortex OS.
+# El sistema actual ejecuta como root y todavia no ofrece namespaces de
+# seguridad compatibles: --no-sandbox es temporal e INSEGURO para webs hostiles.
+if [ ! -x /usr/bin/chromium ]; then
+    echo "Chromium no esta instalado: ejecuta instalar chromium" >&2
+    exit 127
+fi
+export DISPLAY="${DISPLAY:-:0}"
+export HOME="${HOME:-/root}"
+exec /usr/bin/chromium --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --no-default-browser-check --password-store=basic "$@"
