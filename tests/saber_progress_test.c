@@ -22,6 +22,21 @@ int main(void){
     saber_put32(old+20,saber_hash(old,20));
     assert(!saber_decode(old,sizeof old,&restored));
     assert(restored.games_won==0&&restored.completed==3);
+    /* Datos reales heredados del Vortex Saber anterior:
+     * seis materias, 3/3, 2/3, etc., y juego de parejas 4/4. */
+    const uint8_t legacy6[]="3212034\n";
+    VortexSaberProgress converted={0};
+    assert(!saber_import_legacy_text(legacy6,8,&converted));
+    assert(converted.completed==5&&converted.best==3&&converted.total_correct==11&&converted.games_won==1);
+    saber_encode(&converted,image);
+    memset(&restored,0,sizeof restored);
+    assert(!saber_decode(image,sizeof image,&restored));
+    assert(restored.completed==5&&restored.total_correct==11&&restored.games_won==1);
+    const uint8_t legacy4[]="32124\n";
+    assert(!saber_import_legacy_text(legacy4,6,&converted));
+    assert(converted.total_correct==8&&converted.completed==4);
+    assert(saber_import_legacy_text(legacy4,4,&converted)<0);
+    assert(saber_import_legacy_text((const uint8_t*)"321X34\n",7,&converted)<0);
     puts("VORTEX SABER PROGRESS: VERSION V1/V2, HASH, JUEGOS Y NIVEL OK");
     return 0;
 }
