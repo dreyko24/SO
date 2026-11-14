@@ -42,6 +42,14 @@ int main(void){
     chk(kbd_feed(0x5b),KBD_ACTIVITIES,"Super abre Actividades");
     chk(kbd_feed(0xe0),0,"prefijo soltar Super");
     chk(kbd_feed(0xdb),0,"soltar Super");
+    chk(kbd_feed(0x1d),0,"Ctrl para espacio");
+    chk(kbd_feed(0x38),0,"Alt para espacio");
+    chk(kbd_feed(0xe0),0,"prefijo derecha");
+    chk(kbd_feed(0x4d),KBD_WORKSPACE_NEXT,"Ctrl+Alt+Derecha");
+    chk(kbd_feed(0xe0),0,"prefijo izquierda");
+    chk(kbd_feed(0x4b),KBD_WORKSPACE_PREV,"Ctrl+Alt+Izquierda");
+    chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt soltado tras espacio");
+    chk(kbd_feed(0x9d),0,"Ctrl soltado tras espacio");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

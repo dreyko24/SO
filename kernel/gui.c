@@ -41,7 +41,7 @@ typedef struct {
     char *doc; int doclen, loading, selall; char err[100];                               /* pagina descargada por http */
     char note[NOTEMAX+1]; int nlen; char nstat[48];                              /* notas */
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
-    int rx, ry, rw, rh, maxed, minimized; uint32_t tclick;                                   /* maximizar / ajustar */
+    int rx, ry, rw, rh, maxed, minimized, workspace; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -51,6 +51,8 @@ static char ed_suf[96]; static const char *ed_owner;                   /* extens
 static void fm_edit_done(char *buf,int *len,int max);
 static int open_new;                                               /* open_app: crear otra ventana aunque ya haya una del mismo tipo */
 static int order[MAXW], nord;
+#define WORKSPACES 2
+static int active_workspace;
 /* Instantanea del orden para que Tab recorra N ventanas sin alternar solo dos. */
 static int switch_active,switch_len,switch_pos,switch_order[MAXW];
 static int xraw_left_alt,xraw_alt_forwarded,xraw_tab_intercept;
@@ -306,8 +308,13 @@ static void wallpaper_default(int i){
     build_wall();dirty=1;
 }
 /* ---------------- ventanas ---------------- */
-static int win_top(void){ for(int k=nord-1;k>=0;k--)if(!wins[order[k]].minimized)return order[k];return -1; }
+static int win_top(void){
+    for(int k=nord-1;k>=0;k--){Win *w=&wins[order[k]];
+        if(w->used&&!w->minimized&&w->workspace==active_workspace)return order[k];}
+    return -1;
+}
 static void focus(int wi){
+    if(wins[wi].workspace!=active_workspace){active_workspace=wins[wi].workspace;dirty=1;}
     if(wins[wi].minimized){wins[wi].minimized=0;dirty=1;}
     if(nord&&order[nord-1]==wi)return;
     if(nord)dwin(&wins[order[nord-1]]);
@@ -317,13 +324,17 @@ static void focus(int wi){
     for(;k<nord-1;k++) order[k]=order[k+1];
     order[nord-1]=wi;
 }
+static void workspace_set(int n){
+    if(n<0||n>=WORKSPACES||n==active_workspace)return;
+    active_workspace=n;appmenu_open=0;switch_active=0;switch_len=0;dirty=1;
+}
 /* Alt+Tab selecciona ventanas nativas o X11, incluso minimizadas.
  * El orden se mantiene fijo hasta soltar Alt. */
 static void switch_window(int backwards){
     if(nord<2)return;
     if(!switch_active){
         switch_len=0;
-        for(int i=nord-1;i>=0;i--)if(wins[order[i]].used)
+        for(int i=nord-1;i>=0;i--)if(wins[order[i]].used&&wins[order[i]].workspace==active_workspace)
             switch_order[switch_len++]=order[i];
         if(switch_len<2)return;
         switch_pos=0;
@@ -462,7 +473,7 @@ static Win *open_app(int type){
     if(!open_new) for(int i=0;i<nord;i++){ Win *e=&wins[order[i]]; if(e->type==type && type!=A_VIEWER){ focus(order[i]); return e; } }
     int wi=-1; for(int i=0;i<MAXW;i++) if(!wins[i].used){ wi=i; break; }
     if(wi<0) return 0;
-    Win *w=&wins[wi]; memset(w,0,sizeof *w); w->used=1; w->type=type;
+    Win *w=&wins[wi];memset(w,0,sizeof *w);w->used=1;w->type=type;w->workspace=active_workspace;
     int off=(nord%5)*28;
     switch(type){
     case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Vortex OS"); break;
@@ -1231,7 +1242,8 @@ static FsNode *fm_row_node(Win *w,int ly,int *n_out){             /* elemento ba
 static void fm_drop(void){                                          /* se solto un archivo arrastrado */
     FsNode *s=fs_resolve_nf(fs_root(),fd_path); if(!s) return;
     FsNode *dst=0; Win *tw=0; int onwin=0;
-    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue; onwin=1;
+    for(int k=nord-1;k>=0;k--){ Win *w=&wins[order[k]]; if(w->minimized||w->workspace!=active_workspace||
+           !in_rect(mx,my,w->x,w->y,w->w,w->h))continue; onwin=1;
         if(w->type==A_FILES&&my>=w->y+TB){ tw=w; dst=w->dir; FsNode *r=fm_row_node(w,my-(w->y+TB),0); if(r&&r->dir&&r!=s) dst=r; }
         break; }
     FsNode *dk=desk_dir();
@@ -1772,8 +1784,8 @@ static int minimized_at(int px,int py){
     if(py<1||py>=BARH)return -1;
     int n=0;
     for(int k=0;k<nord;k++){
-        int wi=order[k];if(!wins[wi].minimized)continue;
-        int x=258+n*105;if(x+101>=gw/2-48)break;
+        int wi=order[k];if(!wins[wi].minimized||wins[wi].workspace!=active_workspace)continue;
+        int x=300+n*105;if(x+101>=gw/2-48)break;
         if(px>=x&&px<x+101)return wi;
         n++;
     }
@@ -1790,10 +1802,18 @@ static void draw_topbar(void){
     circle(24,BARH/2,5,appmenu_open?0xffffff:ACCENT,255);
     text_ui_bold(37,6,"Actividades",appmenu_open?0xffffff:C_TXT);
     text_ui_bold(147,6,"Vortex OS",C_DIM);
+    for(int i=0;i<WORKSPACES;i++){
+        int wx=235+i*29;
+        rrect(wx,4,25,BARH-8,8,i==active_workspace?
+            (light_theme?0xd2c0db:0x584058):C_PANEL,255);
+        if(i==active_workspace)fill(wx+5,BARH-6,15,2,ACCENT,255);
+        char n[2]={(char)('1'+i),0};
+        text_ui_bold(wx+9,6,n,i==active_workspace?C_TXT:C_DIM);
+    }
     { int n=0;
       for(int k=0;k<nord;k++){Win *w=&wins[order[k]];
-        if(!w->minimized)continue;
-        int x=258+n*105;
+        if(!w->minimized||w->workspace!=active_workspace)continue;
+        int x=300+n*105;
         if(x+101>=gw/2-47)break;
         rrect(x,3,101,BARH-6,8,light_theme?0xe2dfed:0x3b3448,255);
         char label[14];k_strcpy(label,w->title,sizeof label);
@@ -2250,12 +2270,12 @@ static void render_region(int x0,int y0,int x1,int y1){
     for(int i=0;i<NDO;i++)if(dobj[i].kind>=0&&rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh))draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
-        if(w->minimized)continue;
+        if(w->minimized||w->workspace!=active_workspace)continue;
         if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh))continue;
         int hidden=0;
         for(int j=k+1;j<nord;j++){
             Win *o=&wins[order[j]];
-            if(o->minimized)continue;
+            if(o->minimized||o->workspace!=active_workspace)continue;
             if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){
                 hidden=1;break;
             }
@@ -2539,6 +2559,8 @@ static void on_press(void){
             if(power_menu_open){power_menu_open=0;power_damage();}
             launcher_damage();return;
         }
+        for(int i=0;i<WORKSPACES;i++)
+            if(in_rect(mx,my,235+i*29,4,25,BARH-8)){workspace_set(i);return;}
         int mi=minimized_at(mx,my);if(mi>=0){focus(mi);return;}
         if(mx>=gw-110&&mx<gw-50){
             language_menu_open=!language_menu_open;
@@ -2550,7 +2572,8 @@ static void on_press(void){
         }return;}
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||w->workspace!=active_workspace||
+           !in_rect(mx,my,w->x,w->y,w->w,w->h))continue;
         focus(wi);
         if(my<w->y+TB){
             if(in_rect(mx,my,w->x+w->w-32,w->y+4,25,23)){win_close(wi);return;}
@@ -2590,7 +2613,8 @@ static void on_rpress(void){                                         /* boton de
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
-        if(w->minimized||!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
+        if(w->minimized||w->workspace!=active_workspace||
+           !in_rect(mx,my,w->x,w->y,w->w,w->h))continue;
         focus(wi); dirty=1;
         if(w->type==A_FILES&&my>=w->y+TB){
             if(w->editing) fm_commit_rename(w);
@@ -2694,6 +2718,8 @@ void gui_key(int c){
         app_search_len=0;app_search[0]=0;
         launcher_damage();return;
     }
+    if(c==KBD_WORKSPACE_PREV){workspace_set(active_workspace-1);return;}
+    if(c==KBD_WORKSPACE_NEXT){workspace_set(active_workspace+1);return;}
     if(c==KBD_SWITCH_END){switch_finish();return;}
     if(c==KBD_SWITCH_NEXT||c==KBD_SWITCH_PREV){switch_window(c==KBD_SWITCH_PREV);return;}
     if(power_sleep){power_sleep=0;dirty=1;return;}

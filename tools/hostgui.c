@@ -197,7 +197,7 @@ int main(void){
       int oldx=w->x,oldy=w->y,oldw=w->w,oldh=w->h;
       click(w->x+w->w-82,w->y+14);
       if(win_top()!=-1||!w->minimized){puts("FALLO minimizar");return 1;}
-      click(278,14); /* area de ventanas minimizadas tras Actividades */
+      click(322,14); /* barra de ventanas minimizadas tras espacios */
       if(win_top()!=wi||w->minimized){puts("FALLO restaurar minimizada");return 1;}
       click(w->x+w->w-51,w->y+14);
       if(!w->maxed||w->x!=0||w->y!=BARH){puts("FALLO maximizar");return 1;}
@@ -412,6 +412,27 @@ int main(void){
       dock(7); { Win *st=&wins[win_top()]; click(st->x+1+170+60,st->y+TB+50+322+13); if(kbd_layout()!=KBD_LATAM){ puts("FALLO boton teclado"); return 1; } } shot("20_ajustes_teclado"); closeall();
       kbd_set_layout(KBD_US); { char kv[16]; cfg_get("teclado",kv,sizeof kv); kbd_set_layout(layout_from_name(kv)); if(kbd_layout()!=KBD_LATAM){ puts("FALLO leer cfg"); return 1; } }
       gui_panic("Falta de pagina","eip",0x1234abcdULL,0x2,0xdeadbeefULL,1); shot("21_panic"); gui_force_redraw(); puts("TECLADO GUI OK"); }
+    /* Espacios de trabajo: cada pantalla conserva sus ventanas y estado. */
+    {
+      closeall();workspace_set(0);
+      Win *a=open_app(A_NOTES);
+      if(!a||win_top()!=(int)(a-wins)){puts("FALLO espacio inicial");return 1;}
+      click(275,14);
+      if(active_workspace!=1||win_top()!=-1||!a->used){
+          puts("FALLO espacio 2 aislado");return 1;}
+      Win *b=open_app(A_FILES);
+      if(!b||b->workspace!=1||win_top()!=(int)(b-wins)){
+          puts("FALLO abrir archivo espacio 2");return 1;}
+      shot("37_gnome_workspace_dos");
+      gui_key(KBD_WORKSPACE_PREV);
+      if(active_workspace!=0||win_top()!=(int)(a-wins)||!b->used){
+          puts("FALLO recuperar espacio 1");return 1;}
+      gui_key(KBD_WORKSPACE_NEXT);
+      if(active_workspace!=1||win_top()!=(int)(b-wins)){
+          puts("FALLO recuperar espacio 2");return 1;}
+      closeall();workspace_set(0);closeall();
+      puts("VORTEX GNOME WORKSPACES INDEPENDIENTES OK");
+    }
     /* Ubuntu/GNOME: dock vertical, Actividades y vista de aplicaciones. */
     { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
       if(bx!=DASH_LEFT||bw!=DASH_WIDTH||bh!=NDOCK*DASH_STEP+20||
