@@ -125,3 +125,18 @@ Se espera `out/VortexOS.iso` tras una compilación ISO exitosa, pero **no se ha 
 ## 8. Instrucción para retomar en un nuevo chat
 
 **Continuar el desarrollo de Vortex OS en `dreyko24/SO`, específicamente rama `vortex/window-management-20261114` y PR #9, leyendo primero este documento y `VORTEX_ESTADO.md`. NO pedir otra vez el repositorio ni autorización fase por fase. Revisar los últimos commits de GitHub, ejecutar o verificar la CI, corregir cualquier fallo, preservar avances previos y seguir implementando hardware, rendimiento, navegador real, seguridad, multimedia y educación. Trabajar con cambios concretos guardados; distinguir lo probado de lo no probado. Antes de que se agote el contexto, actualizar este archivo y facilitar un nuevo informe de traspaso.**
+
+## 9. Adenda de desarrollo (misma sesión, posterior al informe inicial)
+
+El PR #9 ha avanzado más allá del primer conjunto de commits:
+
+- `kernel/browser_launch.h`: la construcción segura del comando de Chromium es ahora una función autocontenida y comprobable sin GUI; preserva URLs HTTP(S), convierte consultas `kng://buscar?q=` a Google y rechaza metacaracteres y buffers insuficientes.
+- `tools/browser_launch_test.c`: diez comprobaciones unitarias **ejecutadas localmente y aprobadas (10/10)** mediante `gcc -std=c11 -O2 -Wall -Wextra -Werror ...`. Junto a las nueve del parser NTP, son diecinueve comprobaciones verificadas localmente. Esto NO es un resultado de la ISO o del navegador real.
+- `tools/rootfs-es/usr/local/bin/vortex-chromium`: lanzador explícito de Chromium con las opciones de compatibilidad con root/Xvfb; `tools/mkdebian.sh` garantiza permiso ejecutable al construir Debian. **Riesgo de seguridad grave conocido:** usa `--no-sandbox` porque el sistema no dispone de sandbox para Chromium; no navegar con contraseñas ni datos confidenciales hasta implementar aislamiento real.
+- `kernel/gui.c`: Chromium usa el nuevo lanzador desde el botón del navegador y el catálogo de aplicaciones, y conserva la URL o consulta actual.
+- `kernel64/sys_extra.inc`: se cambió el reloj POSIX de 64 bits (CLOCK_REALTIME, mtime de archivos) para usar el NTP sincronizado cuando existe; respeta los cambios explícitos por `clock_settime`. Aún falta validación de syscalls con programas reales y hardware.
+- `kernel/net.c`: comandos de terminal `fecha`, `hora` y `hora sincronizar`; el informe de hora muestra Perú UTC-5 y procedencia NTP/RTC. `tools/ntp_stack_test.c` añade pruebas del comando y reintento.
+- `.github/workflows/vortex-integracion.yml`: incorpora pruebas del constructor de comandos, validación de sintaxis de scripts shell, red/NTP, ventanas, calendario y compilación de 32/64 bits; NO se ha podido confirmar ejecución exitosa del workflow.
+- Consultar los commits actuales de la rama, no un SHA estático de este archivo: GitHub confirma que el PR #9 suma numerosos commits y que está por delante de `main`.
+
+**Pendientes inmediatos adicionales:** comprobar que `mkdebian.sh` empaqueta y ejecuta el lanzador, que Chromium abre Google de verdad con CSS/JS/HTTPS en Xvfb, que `sys_clock_gettime` recibe UTC de NTP tras respuesta real, y que el flujo CI completo compila. No fusionar sin esa evidencia.
