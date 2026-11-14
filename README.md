@@ -6,6 +6,17 @@
 
 Construcción normal de la ISO: `bash tools/build-iso.sh` → `out/VortexOS.iso`. Con Debian: `KNG_DEBIAN=1 bash tools/build-iso.sh`. En GitHub Actions existen los flujos de compilación/pruebas `vortex-integracion` y `vortex-escritorio-qemu`. En GitHub Releases, el workflow manual `construir-iso` publica la ISO con Debian si su compilación termina correctamente.
 
+## Prueba integrada de Vortex OS
+
+Los avances de ventanas, NTP, Chromium y Vortex Saber estan integrados en la rama principal `main`. Para probar **la version mas reciente** de la rama principal:
+
+1. Abre [GitHub Actions — vortex-escritorio-qemu](https://github.com/dreyko24/SO/actions/workflows/vortex-escritorio-qemu.yml), selecciona una ejecucion completada en `main` y descarga el artefacto `vortex-iso-arrancable-qemu` si se genero correctamente. Este es un ISO **BIOS de prueba** con kernel de 64 bits, no una imagen general para todo PC; no incluye automaticamente Debian/Chromium.
+2. Extrae `VortexOS-QEMU-BIOS.iso` en la raiz del repositorio o pasa su ruta completa al script correspondiente.
+3. En Windows, con QEMU instalado, ejecuta `Probar-VortexOS.cmd`. En Linux, `bash tools/probar-vortex.sh`. La VM usa 2 GiB de RAM, video VGA estandar, reloj UTC y adaptador de red Intel e1000. No monta ni formatea un disco fisico.
+4. Desde la fuente en Linux/WSL, compila una ISO normal con `bash tools/build-iso.sh`, que genera `out/VortexOS.iso`. Para incluir Debian real y tener posibilidad de instalar Chromium u ofimatica: `KNG_DEBIAN=1 bash tools/build-iso.sh` (requiere dependencias y descarga de Debian).
+
+**Importante:** que se haya guardado un commit o que exista un artefacto no implica validacion completa. Consulta los resultados de los jobs y sus logs. Los controladores USB fisicos, el sonido, la seguridad y la navegacion grafica completa siguen en desarrollo. Evita instalar el sistema en discos con datos: el instalador/formateador puede borrarlos.
+
 ---
 
 ## Documentación técnica original del kernel kng
