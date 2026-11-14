@@ -1336,16 +1336,101 @@ static void draw_window(int wi,int focused){
         if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
         break; }
     case A_PROGS:{
-        text_bold(cx+16,cy+12,"Programas de Linux",C_TXT);
-        text(cx+16,cy+34,"Son los programas reales de Debian. Se instalan con: instalar <nombre>",C_DIM);
-        button(cx+cw-196,cy+8,86,24,"Pantalla X",0); button(cx+cw-100,cy+8,84,24,"Actualizar",1);
-        int cwid=(cw-48)/2;
-        for(int i=0;i<NPAPPS;i++){
-            int x=cx+16+(i%2)*(cwid+16), y=cy+64+(i/2)*76, inst=papp_installed(i);
-            rrect(x,y,cwid,66,10,0x10111b,255);
-            circle(x+32,y+33,17,PAPPS[i].col,255); { char ini[2]={PAPPS[i].name[0],0}; text_bold(x+27,y+25,ini,0xffffff); }
-            text_bold(x+60,y+8,PAPPS[i].name,C_TXT); text(x+60,y+26,PAPPS[i].desc,C_DIM);
-            text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
+        button(cx+14,cy+10,128,26,"Integradas",!w->apps_tab);
+        button(cx+150,cy+10,138,26,"Programas Linux",w->apps_tab);
+        if(!w->apps_tab){
+            text(cx+16,cy+44,"Aplicaciones del sistema: abre una o varias ventanas independientes.",C_DIM);
+            int pw=(cw-48)/2;
+            for(int i=0;i<(int)(sizeof APPS_LOCAL/sizeof *APPS_LOCAL);i++){
+                int xx=cx+16+(i%2)*(pw+16), yy=cy+74+(i/2)*58;
+                uint32_t col=i==0?0x60a5fa:(i%2?ACCENT:0x14b8a6);
+                rrect(xx,yy,pw,50,10,0x10111b,255);
+                circle(xx+26,yy+25,14,col,255);
+                char initial[2]={APPS_LOCAL_NOMBRES[i][0],0};
+                text_bold(xx+22,yy+17,initial,0xffffff);
+                text_bold(xx+50,yy+16,APPS_LOCAL_NOMBRES[i],C_TXT);
+            }
+        }else{
+            text(cx+16,cy+44,"Aplicaciones reales del entorno Debian (requieren instalacion).",C_DIM);
+            button(cx+cw-196,cy+8,86,24,"Pantalla X",0);
+            button(cx+cw-100,cy+8,84,24,"Actualizar",1);
+            int cwid=(cw-48)/2;
+            for(int i=0;i<NPAPPS;i++){
+                int xx=cx+16+(i%2)*(cwid+16), yy=cy+64+(i/2)*76, inst=papp_installed(i);
+                rrect(xx,yy,cwid,66,10,0x10111b,255);
+                circle(xx+32,yy+33,17,PAPPS[i].col,255);
+                { char ini[2]={PAPPS[i].name[0],0}; text_bold(xx+27,yy+25,ini,0xffffff); }
+                text_bold(xx+60,yy+8,PAPPS[i].name,C_TXT);
+                text(xx+60,yy+26,PAPPS[i].desc,C_DIM);
+                text(xx+60,yy+44,inst?"Instalado - clic para abrir":"Clic para instalar",inst?0x7ee787:0xf59e0b);
+            }
+        }
+        break; }
+    case A_SABER:{
+        saber_load();
+        int xp=0; for(int i=0;i<NSABER;i++) xp+=saber_best[i]*25;
+        if(w->saber_topic<0){
+            text_big(cx+18,cy+14,"Vortex Saber",C_TXT);
+            char xpstr[100]="Nivel "; cat_int(xpstr,sizeof xpstr,1+xp/100);
+            cat(xpstr,sizeof xpstr,"  -  "); cat_int(xpstr,sizeof xpstr,xp);
+            cat(xpstr,sizeof xpstr," XP");
+            text_bold(cx+20,cy+46,xpstr,0x7ee787);
+            text(cx+20,cy+68,"Lee, responde y mejora tu mejor resultado en cada tema.",C_DIM);
+            int pw=(cw-56)/2;
+            for(int i=0;i<NSABER;i++){
+                int xx=cx+18+(i%2)*(pw+20), yy=cy+104+(i/2)*138;
+                rrect(xx,yy,pw,122,12,0x10111b,255);
+                rrect(xx,yy,5,122,3,SABER[i].color,255);
+                circle(xx+34,yy+32,18,SABER[i].color,255);
+                if(i==0){ text_bold(xx+29,yy+23,"x",0xffffff); }
+                else if(i==1){ circle(xx+34,yy+32,9,0xffffff,80); }
+                else if(i==2){ text_bold(xx+29,yy+23,"H",0xffffff); }
+                else { text_bold(xx+29,yy+23,"T",0xffffff); }
+                text_bold(xx+62,yy+18,SABER[i].nombre,C_TXT);
+                text(xx+18,yy+62,"Lectura y 3 preguntas",C_DIM);
+                for(int j=0;j<SABER_NQ;j++) circle(xx+21+j*18,yy+101,5,j<saber_best[i]?0x7ee787:C_BORDER,255);
+                text(xx+100,yy+92,saber_best[i]==3?"Dominado":saber_best[i]?"En progreso":"Empezar",C_TXT);
+            }
+            text(cx+20,cy+402,xp>=200?"Logro: aprendiz constante":xp>=75?"Logro: primera evaluacion":"Logro pendiente: completa una evaluacion",C_TXT);
+            text(cx+20,cy+430,kngfs_active()?"Progreso persistente: disco activado":"Para conservar datos al reiniciar, activa el disco en Ajustes.",C_DIM);
+        } else {
+            const SaberLeccion *z=&SABER[w->saber_topic];
+            button(cx+16,cy+10,96,27,"Biblioteca",0);
+            text_bold(cx+130,cy+14,z->nombre,C_TXT);
+            char estado[80]="Aciertos: "; cat_int(estado,sizeof estado,w->saber_hits);
+            cat(estado,sizeof estado," / "); cat_int(estado,sizeof estado,SABER_NQ);
+            text(cx+cw-16-text_w(estado),cy+14,estado,C_DIM);
+            if(w->saber_q>=SABER_NQ){
+                text_big(cx+30,cy+110,"Evaluacion completada",C_TXT);
+                char nota[80]="Respuestas correctas: "; cat_int(nota,sizeof nota,w->saber_hits);
+                cat(nota,sizeof nota," de 3"); text_bold(cx+30,cy+180,nota,0x7ee787);
+                text(cx+30,cy+224,w->saber_hits==3?"Excelente: has dominado este tema.":"Repasa la lectura y vuelve a intentarlo.",C_DIM);
+                text(cx+30,cy+266,"Tu mejor puntuacion se guarda en Documentos.",C_DIM);
+                button(cx+30,cy+328,225,40,"Volver a la biblioteca",1);
+                button(cx+270,cy+328,175,40,"Repetir leccion",0);
+            } else {
+                text_bold(cx+20,cy+55,"Lectura",z->color);
+                rrect(cx+18,cy+80,cw-36,100,10,0x10111b,255);
+                for(int j=0;j<3;j++) text(cx+30,cy+90+j*26,z->lectura[j],C_TXT);
+                char qp[40]="Pregunta "; cat_int(qp,sizeof qp,w->saber_q+1);
+                cat(qp,sizeof qp," de 3"); text_bold(cx+20,cy+192,qp,z->color);
+                text(cx+20,cy+215,z->pregunta[w->saber_q],C_TXT);
+                for(int j=0;j<3;j++){
+                    int yy=cy+246+j*43;
+                    int answered=w->saber_answer>=0;
+                    uint32_t col=answered&&j==z->correcta[w->saber_q]?0x155e37:
+                        answered&&j==w->saber_answer?0x7f1d1d:C_BTN;
+                    rrect(cx+20,yy,cw-40,36,8,col,255);
+                    char txt[108]; txt[0]=(char)('1'+j); txt[1]=')'; txt[2]=' '; txt[3]=0;
+                    cat(txt,sizeof txt,z->opcion[w->saber_q][j]); text_bold(cx+34,yy+9,txt,0xffffff);
+                }
+                if(w->saber_answer>=0){
+                    int good=w->saber_answer==z->correcta[w->saber_q];
+                    text_bold(cx+20,cy+379,good?"Respuesta correcta":"Respuesta incorrecta",good?0x7ee787:0xff8888);
+                    text(cx+20,cy+400,z->explicacion[w->saber_q],C_DIM);
+                    button(cx+cw-172,cy+436,150,32,w->saber_q==SABER_NQ-1?"Resultados":"Siguiente",1);
+                }else text(cx+20,cy+392,"Selecciona 1, 2 o 3 para comprobar tu respuesta.",C_DIM);
+            }
         }
         break; }
     case A_MONITOR:{
@@ -1790,10 +1875,43 @@ static void app_click(Win *w,int lx,int ly){
         if(w->sover||!w->sstart) snake_key(w,' ');
         break;
     case A_PROGS:
-        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
-        else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
-        else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){ int x=16+(i%2)*(cwid+16), y=64+(i/2)*76;
-            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dirty=1; break; } } }
+        if(in_rect(lx,ly,14,10,128,26)){ w->apps_tab=0; dirty=1; break; }
+        if(in_rect(lx,ly,150,10,138,26)){ w->apps_tab=1; dirty=1; break; }
+        if(!w->apps_tab){
+            int pw=(cw-48)/2;
+            for(int i=0;i<(int)(sizeof APPS_LOCAL/sizeof *APPS_LOCAL);i++){
+                int xx=16+(i%2)*(pw+16), yy=74+(i/2)*58;
+                if(in_rect(lx,ly,xx,yy,pw,50)){ open_app(APPS_LOCAL[i]); break; }
+            }
+        }else{
+            if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dirty=1; }
+            else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
+            else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){
+                int xx=16+(i%2)*(cwid+16), yy=64+(i/2)*76;
+                if(in_rect(lx,ly,xx,yy,cwid,66)){
+                    if(papp_installed(i)){ char cmd[80]="abrir "; cat(cmd,sizeof cmd,PAPPS[i].cmd); run_quiet(cmd); }
+                    else run_in_terminal(PAPPS[i].inst);
+                    dirty=1; break;
+                }
+            } }
+        }
+        break;
+    case A_SABER:
+        if(w->saber_topic<0){
+            int pw=(cw-56)/2;
+            for(int i=0;i<NSABER;i++){
+                int xx=18+(i%2)*(pw+20), yy=104+(i/2)*138;
+                if(in_rect(lx,ly,xx,yy,pw,122)){ saber_start(w,i); break; }
+            }
+        } else if(in_rect(lx,ly,16,10,96,27)){ w->saber_topic=-1; dirty=1; }
+        else if(w->saber_q>=SABER_NQ){
+            if(in_rect(lx,ly,30,328,225,40)){ w->saber_topic=-1; dirty=1; }
+            else if(in_rect(lx,ly,270,328,175,40)) saber_start(w,w->saber_topic);
+        } else {
+            if(w->saber_answer<0){
+                for(int j=0;j<3;j++) if(in_rect(lx,ly,20,246+j*43,cw-40,36)){ saber_answer(w,j); break; }
+            } else if(in_rect(lx,ly,cw-172,436,150,32)) saber_next(w);
+        }
         break;
     default: break;
     }
@@ -1974,6 +2092,14 @@ void gui_key(int c){
         else if(c=='%') calc_press(w,'%');
         break;
     case A_SNAKE: snake_key(w,c); break;
+    case A_SABER:
+        if(c==27){ w->saber_topic=-1; dirty=1; }
+        else if(w->saber_topic<0&&c>='1'&&c<='4') saber_start(w,c-'1');
+        else if(w->saber_topic>=0&&w->saber_q<SABER_NQ){
+            if(c>='1'&&c<='3') saber_answer(w,c-'1');
+            else if(c=='\n') saber_next(w);
+        } else if(c=='\n'){ w->saber_topic=-1; dirty=1; }
+        break;
     case A_VIEWER:
         if(c==KEY_DOWN) scroll_by(&w->scroll,1,100000); else if(c==KEY_UP) scroll_by(&w->scroll,-1,100000);
         else if(c==KEY_PGDN) scroll_by(&w->scroll,20,100000); else if(c==KEY_PGUP) scroll_by(&w->scroll,-20,100000);
