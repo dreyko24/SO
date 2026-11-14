@@ -99,7 +99,7 @@ int main(void){
     {
       char url[192];
       browser_google_query("vortex os peru",url,sizeof url);
-      if(strcmp(url,"https://www.google.com/search?q=vortex%20os%20peru")||
+      if(strcmp(url,"https://www.google.com/search?q=vortex+os+peru")||
          !browser_safe_target(url)||
          browser_safe_target("https://google.com/;reboot")||
          browser_safe_target("https://google.com/$(halt)")||

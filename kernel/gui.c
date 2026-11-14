@@ -481,6 +481,7 @@ static void render(void);
 static void run_in_terminal(const char *cmd){ Win *t=open_app(A_TERM); if(!t||t->busy) return; for(const char *q=cmd;*q;q++) gui_key((unsigned char)*q); gui_key('\n'); }
 void gui_open_installer(void){ run_in_terminal("instalar-sistema"); }
 static void run_quiet(const char *cmd){ char l[160]; k_strcpy(l,cmd,sizeof l); term_target=0; kcon_hook=0; kshell_exec(l); }
+static void urlenc(char *o,int max,const char *q);
 /* Puente a un navegador moderno REAL de Debian, si esta instalado.
  * El renderizador nativo solo soporta una parte de HTML/CSS sin JS/TLS.
  * No se delega a una pagina fingida: la app real se ejecuta en X11.
