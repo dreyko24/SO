@@ -151,7 +151,18 @@ int main(void){
     { FsNode *z=fs_resolve(fs_root(),"/Documentos/z.txt"); if(!z||z->size!=8||memcmp(z->data,"CAMBIADO",8)||fs_resolve(fs_root(),"/temporal.txt")||fs_resolve(fs_root(),"/Escritorio/b.txt")){ puts("FALLO persistencia"); return 1; } puts("DISCO OK"); }
     dock(8); shot("18_monitor"); closeall();
     /* escritorio modular: arrastrar icono y widget, abrir con doble clic */
-    { int ox=22+38, oy=BARH+18+30; gui_mouse_abs(ox,oy,0); gui_frame(); gui_mouse_abs(ox,oy,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,0); gui_frame(); T+=100;
+    { click(dobj[4].x+42,dobj[4].y+80);
+      if(nord<1||wins[win_top()].type!=A_FILES){puts("FALLO acceso rapido Archivos");return 1;}
+      closeall();
+      click(dobj[4].x+165,dobj[4].y+80);
+      if(nord<1||wins[win_top()].type!=A_MEDIA){puts("FALLO acceso rapido Galeria");return 1;}
+      closeall();
+      click(dobj[5].x+62,dobj[5].y+62);
+      if(nord<1||wins[win_top()].type!=A_MONITOR){puts("FALLO tarjeta Monitor");return 1;}
+      closeall();
+      puts("VORTEX PANEL ACCESOS RAPIDOS INTERACTIVO OK");
+    }
+    { int ox=dobj[0].x+dobj[0].w/2, oy=dobj[0].y+25; gui_mouse_abs(ox,oy,0); gui_frame(); gui_mouse_abs(ox,oy,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,0); gui_frame(); T+=100;
       if(dobj[0].x<200){ puts("FALLO arrastrar icono"); return 1; }
       dclick(ox+300,oy+200); if(nord<1||wins[win_top()].type!=A_BROWSER){ puts("FALLO abrir icono"); return 1; } }
     shot("14_escritorio_modular");
