@@ -26,6 +26,6 @@ if errorlevel 1 (
     )
 )
 echo [VORTEX] Probando ISO: "%ISO%"
-echo [VORTEX] RAM 2 GB, video std, red Intel e1000, reloj UTC, BIOS.
-"%QEMU%" -name "Vortex OS - prueba" -m 2048 -smp 2 -boot d -drive "file=%ISO%,media=cdrom,if=ide,readonly=on" -vga std -nic user,model=e1000 -rtc base=utc -no-reboot
+echo [VORTEX] RAM 4 GB, video std, red Intel e1000, audio AC97, USB UHCI, reloj UTC, BIOS.
+"%QEMU%" -name "Vortex OS - prueba" -m 4096 -smp 2 -boot d -drive "file=%ISO%,media=cdrom,if=ide,readonly=on" -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot
 exit /b %errorlevel%
