@@ -11,7 +11,15 @@ static uint32_t T=1000;
 uint32_t kticks(void){ return T; }
 int kgetc(void){ return -1; }
 void (*kcon_hook)(char);
+int kattach_pid;
+char kshell_cwd[96];
+void (*kproc_done)(int pid,int code);
+void kinput_event(int type,int code,int value){
+    (void)type; (void)code; (void)value;
+}
+void kproc_key(int c){ (void)c; }
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
+void kserial_puts(const char *s){ (void)s; } /* puerto serie no existe en el simulador */
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
     if(!strcmp(l,"info")) out("kng-kernel 0.5 (i386, Multiboot)\nParte de Königreich OS.\n");
@@ -21,6 +29,9 @@ void kshell_exec(char *l){
 void kreboot(void){ puts("[reboot]"); }
 void khalt(void){ puts("[halt]"); }
 int krtc(int *h,int *m){ *h=15; *m=45; return 0; }   /* 15:45 UTC -> 10:45 en UTC-5 */
+uint64_t krtc_epoch(void){ return 1794650400ull; } /* RTC simulado */
+uint64_t net_utc_epoch(void){ return krtc_epoch(); }
+int net_time_synced(void){ return 0; }
 uint32_t kram_kb(void){ return 262144; }
 /* ---- red simulada para la interfaz: http_get "descarga" tras unos cuadros ---- */
 #include "../kernel/net.h"
@@ -63,7 +74,7 @@ static void shot(const char *name){
 static void click(int x,int y){ gui_mouse_abs(x,y,0); gui_frame(); gui_mouse_abs(x,y,1); gui_frame(); gui_mouse_abs(x,y,0); gui_frame(); T+=5; }
 static void dclick(int x,int y){ click(x,y); T+=3; click(x,y); }
 static void typestr(const char *s){ for(;*s;s++){ gui_key(*s=='\\'?'\n':*s); } }
-static void dock(int i){ int bw=9*52+8*14+28, bx=(W-bw)/2, by=H-(52+16)-10; click(bx+14+i*66+26,by+8+26); }
+static void dock(int i){ int x,y; dock_icon_pos(i,&x,&y); click(x+TILE/2,y+TILE/2); } /* Geometria REAL del dock lateral Vortex */
 static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) break; Win *w=&wins[top]; click(w->x+w->w-20,w->y+TB/2); } }
 int main(void){
     fb=calloc(W*H,4);
