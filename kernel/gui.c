@@ -3118,11 +3118,22 @@ static void settings_click(int lx,int ly,int cw,int ch){
     for(int i=0;i<5;i++) if(in_rect(lx,ly,12+i*100,10,96,28)){ set_tab=i; fmt_confirm=0; dirty=1; return; }
     int y=ly-50;
     if(set_tab==0){
-        for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54; if(dx*dx+dy*dy<=18*18){ acc_i=i; dirty=1; return; } }
+        for(int i=0;i<6;i++){ int dx=lx-(20+i*44+14), dy=y-54;
+            if(dx*dx+dy*dy<=18*18){
+                acc_i=i;char digit[2]={(char)('0'+acc_i),0};
+                cfg_set("acento",digit);dirty=1;return;
+            }
+        }
         for(int i=0;i<3;i++) if(in_rect(lx,y,20+i*112,114,96,60)){ if(wall_i!=i) wallpaper_default(i); dirty=1; return; }
-        if(in_rect(lx,y,20,218,28,24)){ if(tz>-12) tz--; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,56,218,28,24)){ if(tz<14) tz++; clk_next=0; dirty=1; }
-        else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; dirty=1; }
+        if(in_rect(lx,y,20,218,28,24)||in_rect(lx,y,56,218,28,24)){
+            if(in_rect(lx,y,20,218,28,24)){if(tz>-12)tz--;}
+            else if(tz<14)tz++;
+            char tz_value[12]="";cat_int(tz_value,sizeof tz_value,tz);
+            cfg_set("zona_horaria",tz_value);clk_next=0;dirty=1;
+        }
+        else if(in_rect(lx,y,20,252,190,24)){
+            show24=!show24;cfg_set("reloj24",show24?"si":"no");dirty=1;
+        }
         else if(in_rect(lx,y,20,322,140,26)) set_layout(KBD_US);
         else if(in_rect(lx,y,170,322,140,26)) set_layout(KBD_LATAM);
         else if(in_rect(lx,y,320,322,140,26)) set_layout(KBD_ES);
@@ -3830,6 +3841,11 @@ void gui_key(int c){
 void gui_storage_ready(void){
     (void)vortexfs_mount(); fs_track=1;
     { char theme[16];if(cfg_get("tema",theme,sizeof theme))light_theme=!k_strcmp(theme,"claro"); }
+    { char accent[12];if(cfg_get("acento",accent,sizeof accent)&&accent[0]>='0'&&
+       accent[0]<='5'&&!accent[1])acc_i=accent[0]-'0'; }
+    { char clock_format[12];if(cfg_get("reloj24",clock_format,sizeof clock_format))
+        show24=k_strcmp(clock_format,"no")!=0;
+    }
     { char zone[12];if(cfg_get("zona_horaria",zone,sizeof zone)){
         int sign=1,val=0;const char *q=zone;
         if(*q=='-'){sign=-1;q++;}else if(*q=='+')q++;

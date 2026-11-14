@@ -342,6 +342,33 @@ int main(void){
       { char z[20];if(!cfg_get("idioma",z,sizeof z)||strcmp(z,"es")){puts("FALLO guardar idioma");return 1;} }
       click(v->x+1+12+48,v->y+TB+10+14);
       if(set_tab!=0){puts("FALLO regreso a ajustes generales");return 1;}
+      /* La apariencia, huso horario y formato de hora deben permanecer
+       * en el archivo de configuración, no ser cambios visuales efímeros. */
+      click(v->x+1+20+2*44+14,v->y+TB+50+54);
+      { char z[16];if(acc_i!=2||!cfg_get("acento",z,sizeof z)||strcmp(z,"2")){
+           puts("FALLO guardar color de acento");return 1;
+        }
+      }
+      click(v->x+1+56+11,v->y+TB+50+218+10);
+      { char z[16];if(tz!=-4||!cfg_get("zona_horaria",z,sizeof z)||strcmp(z,"-4")){
+           puts("FALLO guardar zona horaria");return 1;
+        }
+      }
+      click(v->x+1+20+11,v->y+TB+50+218+10);
+      { char z[16];if(tz!=-5||!cfg_get("zona_horaria",z,sizeof z)||strcmp(z,"-5")){
+           puts("FALLO restaurar Peru UTC-5");return 1;
+        }
+      }
+      int saved_format=show24;
+      click(v->x+1+60,v->y+TB+50+252+12);
+      { char z[16];if(show24==saved_format||!cfg_get("reloj24",z,sizeof z)||
+          strcmp(z,show24?"si":"no")){
+           puts("FALLO guardar formato de reloj");return 1;
+        }
+      }
+      click(v->x+1+60,v->y+TB+50+252+12);
+      shot("50_ajustes_persistencia");
+      puts("VORTEX CONFIG: ACENTO, ZONA HORARIA Y FORMATO HORARIO PERSISTENTES OK");
       puts("VORTEX TEMA CLARO/OSCURO E IDIOMAS ES/EN/QU OK");
     }
     closeall();
