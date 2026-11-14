@@ -18,6 +18,7 @@
 #include "encyclopedia.h"
 #include "saber_progress.h"
 #include "clock_calendar.h"
+#include "timeutil.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA, A_CALENDAR };
 #define SGW 20
@@ -2429,11 +2430,13 @@ static void draw_window(int wi,int focused){
               if(tz==-5)cat(b,62,"  (America/Lima)");
               text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
+            button(cx+cw-172,oy+218,154,24,"Sincronizar NTP",0);
             { char date[60]="Fecha local: ";
               cat_int(date,sizeof date,clk_d);cat(date,sizeof date,"/");
               cat_int(date,sizeof date,clk_mon);cat(date,sizeof date,"/");
               cat_int(date,sizeof date,clk_y);
               text(cx+224,oy+256,date,C_DIM);
+              text(cx+cw-162,oy+285,net_time_synced()?"Hora NTP":"Hora RTC",net_time_synced()?0x26a269:C_DIM);
             }
             text_bold(cx+20,oy+296,"Teclado",C_TXT);
             for(int i=0;i<3;i++) button(cx+20+i*150,oy+322,140,26,kbd_layout_name(i),kbd_layout()==i);
@@ -3112,7 +3115,17 @@ void gui_frame(void){
     browser_poll();
     if(t>=clk_next){
         int y,mo,d,h,m;clk_next=t+100;
-        if(!krtc_full(&y,&mo,&d,&h,&m)){
+        int clock_ok=0;
+        if(net_time_synced()){
+            /* Unix UTC cabe en uint32_t durante la vida util del NTP actual.
+             * Evitar divisiones de 64 bits en el kernel i386 sin libgcc. */
+            uint32_t sec=(uint32_t)net_utc_epoch();
+            uint32_t day=sec/86400u, tod=sec%86400u;
+            vortex_date_from_days((int)day,&y,&mo,&d);
+            h=(int)(tod/3600u);m=(int)((tod%3600u)/60u);
+            clock_ok=1;
+        }else clock_ok=!krtc_full(&y,&mo,&d,&h,&m);
+        if(clock_ok){
             VortexCalendar local;
             if(!vortex_calendar_shift(y,mo,d,h,m,tz,&local) &&
               (local.year!=clk_y||local.month!=clk_mon||local.day!=clk_d||
