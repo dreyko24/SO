@@ -60,27 +60,32 @@ static void drop_data(FsNode *n){
 int fs_write(FsNode *n,const char *data,int len){
     if(!n||n->dir||len<0||len==0x7fffffff||(len&&!data))return -1;
     char *d=kmalloc((size_t)len+1);if(!d)return -1;
-    memcpy(d,data,(size_t)len); d[len]=0;
+    if(len)memcpy(d,data,(size_t)len); d[len]=0;
     drop_data(n); n->data=d; n->size=len; n->cap=len+1; touch(n); hl_sync(n); gen++; return 0;
 }
 void fs_adopt(FsNode *n,const char *data,int len){ drop_data(n); n->data=(char*)data; n->size=len; n->cap=len; n->ro=1; gen++; }
 static int ensure_cap(FsNode *n,int need){
-    if(need<0||need>=0x7fffffff)return -1; /* reservar NUL sin overflow */
+    /* Un archivo adoptado como solo lectura se copia ENTERO al escribir,
+     * incluso si la nueva escritura se hace cerca del comienzo. */
+    if(!n||need<0||n->size<0||need>=0x7fffffff||n->size>=0x7fffffff)return -1;
+    int required=need>n->size?need:n->size;
     if(n->shm){if(need<=n->cap)return 0;}
     else if(!n->ro&&need+1<=n->cap)return 0;
-    int nc=need+1;
+    int nc=required+1;
     if(!n->ro&&!n->shm&&n->cap>0){
-        /* Cálculo en 64 bits: cap*2 y need+need/4 podían desbordar int. */
         uint64_t grow=(uint64_t)(unsigned)n->cap*2u;
         if(n->cap>(64<<20))grow=(uint64_t)(unsigned)nc+(unsigned)nc/4u;
         if(grow>(uint64_t)0x7fffffff)grow=0x7fffffff;
         if((uint64_t)(unsigned)nc<grow)nc=(int)grow;
     }
     if(nc<64)nc=64;
-    char *d=kmalloc((size_t)nc); if(!d) return -1;
-    if(n->size) memcpy(d,n->data,(size_t)(n->size<nc?n->size:nc));
+    if(n->size&&(!n->data||n->size>=nc))return -1;
+    char *d=kmalloc((size_t)nc);if(!d)return -1;
+    if(n->size)memcpy(d,n->data,(size_t)n->size);
     memset(d+n->size,0,(size_t)(nc-n->size));
-    int osize=n->size; drop_data(n); n->data=d; n->size=osize; n->cap=nc; return 0;
+    int oldsize=n->size;
+    drop_data(n);n->data=d;n->size=oldsize;n->cap=nc;
+    return 0;
 }
 int fs_write_at(FsNode *n,int off,const char *src,int len){
     if(!n||n->dir||off<0||len<0||len>0x7ffffffe - off||(len&&!src))return -1;

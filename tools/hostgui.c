@@ -286,6 +286,23 @@ int main(void){
       fs_remove(fs_resolve(fs_root(),"/z"));
       puts("VORTEXFS SERIALIZACION: TRUNCADO, LONGITUD, TRAVERSAL, PROFUNDIDAD OK");
     }
+    /* Un fichero adoptado no debe truncarse si se modifica al comienzo. */
+    {
+      static char original[4096];
+      for(int i=0;i<4096;i++)original[i]=(char)('A'+i%26);
+      FsNode *f=fs_create(fs_root(),"archivo-cow","",0);
+      if(!f){puts("FALLO crear archivo copy-on-write");return 1;}
+      fs_adopt(f,original,4096);
+      if(fs_write_at(f,1,"Z",1)||f->size!=4096||f->ro||
+         f->cap<4097||f->data[0]!='A'||f->data[1]!='Z'||
+         f->data[2000]!=original[2000]||
+         f->data[4095]!=original[4095]||f->data[4096]){
+          puts("FALLO copy-on-write truncado o fuera de rango");return 1;
+      }
+      if(original[1]=='Z'){puts("FALLO modifico buffer de solo lectura");return 1;}
+      fs_remove(f);
+      puts("VORTEXFS COPY-ON-WRITE COMPLETO OK");
+    }
     /* La copia de carpetas debe ser todo o nada ante OOM. */
     {
       FsNode *r=fs_root(),*orig=fs_mkdir(r,"origen-oom");
