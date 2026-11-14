@@ -58,6 +58,33 @@ El boton de energia de la barra ofrece **Apagar**, **Suspender** y **Reiniciar**
 2. Doble clic en `Construir-ISO.cmd` (o `wsl bash tools/build-iso.sh`). Resultado: `out/VortexOS.iso`. Para incluir Debian como la version publicada: `VORTEX_DEBIAN=1 bash tools/build-iso.sh`.
 
 ## Probarla
+
+**La rama `main` contiene el Vortex OS unificado**, no una copia recortada del
+escritorio. Concentra el kernel propio de 32/64 bits, ventanas con varios espacios
+de trabajo, navegador externo Chromium/Firefox, reloj NTP con zona Lima, Vortex
+Saber de 31 artículos, imágenes, WAV, AVI y almacenamiento USB UHCI. Las
+limitaciones de dispositivos modernos se detallan más abajo.
+
+Descarga el artefacto **`VortexOS-ISO-unica`** de un workflow exitoso en
+[Actions — vortex-iso-unica](https://github.com/dreyko24/SO/actions/workflows/vm-iso.yml).
+Extrae `out/VortexOS.iso` y verifica el SHA-256 del mismo ZIP. También puedes
+compilarlo en Ubuntu/WSL con `VORTEX_DEBIAN=1 bash tools/build-iso.sh`.
+
+Para iniciar la ISO sin tocar discos reales, desde el repositorio:
+
+- Windows: `Probar-VortexOS.cmd "ruta\\a\\VortexOS.iso"` (QEMU instalado).
+- Linux: `bash tools/probar-vortex.sh ruta/a/VortexOS.iso`.
+- Ambos lanzadores usan QEMU, 4 GiB de RAM, red Intel e1000, audio PCI AC'97,
+  bus USB UHCI, vídeo VGA estándar y reloj base UTC. Selecciona 64 bits
+  gráfico en GRUB. No formatees un disco real para probar.
+
+Pruebas reproducibles de componentes: `bash tools/verificar-vortex.sh`.
+Hora: terminal `fecha` o `hora`, y `hora sincronizar`; si NTP no responde
+se usa el RTC y la interfaz indica su origen. La sincronización NTP no sustituye
+una fuente segura autenticada. El lanzador Chromium actual requiere el modo Debian
+y usa `--no-sandbox` por limitaciones de aislamiento: no usar contraseñas ni
+datos privados en esta versión experimental.
+
 - Máquina virtual preferentemente **BIOS/Legacy** para compatibilidad de entrada (UEFI probado en QEMU), 256 MB de RAM o más sin Debian; ratón PS/2 y tarjeta **Intel e1000** (o RTL8139) en **NAT**.
   - VirtualBox: Red → Adaptador 1 → NAT, tipo "Intel PRO/1000 MT Desktop". VMware: e1000. QEMU: `-device e1000,netdev=n0 -netdev user,id=n0`.
 - Menú de GRUB: **Vortex OS - 64 bits (gráfico)** y **Vortex OS - 32 bits (gráfico)**. Ambas opciones están en un único archivo ISO.
