@@ -1299,8 +1299,7 @@ static void draw_window(int wi,int focused){
             if(dh>ah){dh=ah;dw=w->picture.w*ah/w->picture.h;}
             if(dw<1)dw=1;if(dh<1)dh=1;
             int dx=cx+(cw-dw)/2,dy=cy+10+(ah-dh)/2;
-            for(int y=0;y<dh;y++){int sy=y*w->picture.h/dh;const uint32_t *src=w->picture.pixels+sy*w->picture.w;
-                for(int x=0;x<dw;x++)px_blend(dx+x,dy+y,src[x*w->picture.w/dw],255);}
+            blit_scaled32(dx,dy,dw,dh,w->picture.pixels,w->picture.w,w->picture.h);
             char info[60]="Imagen ";cat_int(info,60,w->picture.w);cat(info,60," x ");cat_int(info,60,w->picture.h);
             text(cx+12,cy+ch-31,info,C_DIM);button(cx+cw-167,cy+ch-38,155,28,"Usar de fondo",0);
         }else if(w->file && w->file->data){
@@ -1345,9 +1344,9 @@ static void draw_window(int wi,int focused){
             if(dh>ah){dh=ah;dw=w->movie.w*ah/w->movie.h;}
             if(dw<1)dw=1;if(dh<1)dh=1;
             int px=cx+(cw-dw)/2,py=cy+8+(ah-dh)/2;
-            for(int y=0;y<dh;y++){int sy=y*w->movie.h/dh;
-                for(int x=0;x<dw;x++)px_blend(px+x,py+y,
-                   vvideo_rgb(&w->movie,w->movie_frame,x*w->movie.w/dw,sy),255);}
+            blit_bgr_scaled(px,py,dw,dh,
+                w->movie.data+w->movie.offset[w->movie_frame],
+                w->movie.w,w->movie.h,w->movie.bpp,w->movie.topdown);
             char b[100]="Cuadro ";cat_int(b,100,w->movie_frame+1);cat(b,100," de ");cat_int(b,100,w->movie.frames);cat(b,100,"   AVI RGB ");
             cat_int(b,100,w->movie.w);cat(b,100," x ");cat_int(b,100,w->movie.h);
             text(cx+16,cy+ch-57,b,C_TXT);
@@ -1913,8 +1912,15 @@ void gui_frame(void){
      for(int j=0;j<nord;j++){Win *w=&wins[order[j]];
         if(w->type!=A_VIDEO||!w->movie_play||!w->movie.frames)continue;
         if((int)(t-w->movie_next)<0)continue;
-        if(w->movie_frame+1<w->movie.frames){w->movie_frame++;
-            w->movie_next=t+k_max(1,100/w->movie.fps);
+        if(w->movie_frame+1<w->movie.frames){
+            /* Reloj de 100 Hz: saltar cuadros si la GPU virtual no llega a
+             * la tasa original, sin ralentizar el video completo. */
+            int step=k_max(1,100/w->movie.fps);
+            unsigned skips=1+(unsigned)(t-w->movie_next)/(unsigned)step;
+            if(skips>60)skips=60;
+            int next=w->movie_frame+(int)skips;
+            if(next>=w->movie.frames)next=w->movie.frames-1;
+            w->movie_frame=next;w->movie_next+=skips*(unsigned)step;
             dwin(w);
         }else{w->movie_play=0;dwin(w);}
      }
