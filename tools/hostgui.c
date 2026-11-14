@@ -59,6 +59,8 @@ const char *http_final_url(void){ return fk_url; }
 void http_cancel(void){ fk_state=0; fk_wait=0; }
 void net_info(char *o,int max){ k_strcpy(o,"Red: Intel e1000  IP 192.168.7.50",max); }
 int net_state(void){ return 2; }
+uint64_t net_utc_epoch(void){return 1794650400ull+(uint64_t)(kticks()/100u);}
+int net_time_synced(void){return 0;} /* GUI host sigue usando el RTC simulado */
 #include "../kernel/gfx.c"
 #include "../kernel/fs.c"
 #define HOSTDISK 1
