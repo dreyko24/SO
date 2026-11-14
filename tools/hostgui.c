@@ -75,7 +75,7 @@ static void shot(const char *name){
 static void click(int x,int y){ gui_mouse_abs(x,y,0); gui_frame(); gui_mouse_abs(x,y,1); gui_frame(); gui_mouse_abs(x,y,0); gui_frame(); T+=5; }
 static void dclick(int x,int y){ click(x,y); T+=3; click(x,y); }
 static void typestr(const char *s){ for(;*s;s++){ gui_key(*s=='\\'?'\n':*s); } }
-static void dock(int i){ int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);click(bx+14+i*66+26,by+8+26); }
+static void dock(int i){int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);click(bx+bw/2,by+12+i*DASH_STEP+TILE/2);}
 static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) break; Win *w=&wins[top]; click(w->x+w->w-20,w->y+TB/2); } }
 int main(void){
     fb=calloc(W*H,4);
@@ -412,6 +412,19 @@ int main(void){
       dock(7); { Win *st=&wins[win_top()]; click(st->x+1+170+60,st->y+TB+50+322+13); if(kbd_layout()!=KBD_LATAM){ puts("FALLO boton teclado"); return 1; } } shot("20_ajustes_teclado"); closeall();
       kbd_set_layout(KBD_US); { char kv[16]; cfg_get("teclado",kv,sizeof kv); kbd_set_layout(layout_from_name(kv)); if(kbd_layout()!=KBD_LATAM){ puts("FALLO leer cfg"); return 1; } }
       gui_panic("Falta de pagina","eip",0x1234abcdULL,0x2,0xdeadbeefULL,1); shot("21_panic"); gui_force_redraw(); puts("TECLADO GUI OK"); }
+    /* Ubuntu/GNOME: dock vertical, Actividades y vista de aplicaciones. */
+    { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+      if(bx!=DASH_LEFT||bw!=DASH_WIDTH||bh!=NDOCK*DASH_STEP+20||
+         by<BARH||by+bh>H){puts("FALLO dock vertical");return 1;}
+      closeall();click(53,14);
+      if(!appmenu_open){puts("FALLO abrir Actividades desde barra GNOME");return 1;}
+      shot("35_actividades_gnome_ubuntu");
+      click(53,14);
+      if(appmenu_open){puts("FALLO cerrar Actividades");return 1;}
+      if(dobj[0].x<=bx+bw){puts("FALLO iconos tapados por dock");return 1;}
+      shot("36_escritorio_ubuntu_gnome");
+      puts("VORTEX GNOME ACTIVIDADES Y UBUNTU DOCK OK");
+    }
     /* La barra conserva el nombre del SO. El primer boton del dock
      * debe abrir Aplicaciones y ofrecer acceso real a LibreOffice. */
     closeall();

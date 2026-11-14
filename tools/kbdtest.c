@@ -38,6 +38,10 @@ int main(void){
     chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt liberado");
     chk(press(0x0f),'\t',"Tab tras soltar Alt");
     chk(with_altgr(0x0f),'\t',"AltGr+Tab no cambia ventanas");
+    chk(kbd_feed(0xe0),0,"prefijo tecla Super");
+    chk(kbd_feed(0x5b),KBD_ACTIVITIES,"Super abre Actividades");
+    chk(kbd_feed(0xe0),0,"prefijo soltar Super");
+    chk(kbd_feed(0xdb),0,"soltar Super");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

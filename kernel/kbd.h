@@ -8,6 +8,7 @@ enum { KBD_US=0, KBD_LATAM=1, KBD_ES=2 };
 #define KBD_SWITCH_NEXT 0x500
 #define KBD_SWITCH_PREV 0x501
 #define KBD_SWITCH_END  0x502
+#define KBD_ACTIVITIES  0x503
 void        kbd_set_layout(int l);
 int         kbd_layout(void);
 const char *kbd_layout_name(int l);

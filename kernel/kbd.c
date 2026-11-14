@@ -54,6 +54,7 @@ int kbd_feed(uint8_t b){
         e0=0;
         if(sc==0x38){ altgr=!rel; return 0; }                         /* AltGr */
         if(sc==0x1D){ ctrl=!rel; return 0; }                          /* Ctrl derecho */
+        if(sc==0x5B){ return rel?0:KBD_ACTIVITIES; }                    /* Super izquierdo -> Actividades */
         if(rel) return 0;
         switch(sc){ case 0x48: return 0x11; case 0x50: return 0x12; case 0x4B: return 0x13;
                     case 0x4D: return 0x14; case 0x49: return 0x15; case 0x51: return 0x16; case 0x53: return 0x7F; }

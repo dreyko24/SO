@@ -5,6 +5,8 @@
 #define VORTEX_UI_LOCALE_H
 typedef struct {const char *es,*en,*qu;} VortexUiText;
 static const VortexUiText vortex_ui_strings[]={
+    {"Actividades","Activities","Ruraykuna"},
+    {"Tu espacio de trabajo","Your workspace","Llamk'ana kancha"},
     {"General","General","Llapan"},
     {"Datos","Storage","Waqaychay"},
     {"Pantalla","Display","Rikuchiq"},
