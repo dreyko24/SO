@@ -1,0 +1,22 @@
+name: vortex-avi-parser
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+    paths:
+      - 'kernel/video.c'
+      - 'kernel/video.h'
+      - 'tests/video_avi_test.c'
+      - '.github/workflows/avi-parser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reproductor AVI con sanitizadores
+        run: |
+          gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/video_avi_test.c kernel/video.c -o /tmp/vortex-video-test
+          /tmp/vortex-video-test
