@@ -28,7 +28,10 @@ static inline int vortex_fat32_layout(const uint8_t *s,uint32_t capacity,
        !total||total>partition_sectors)return -1;
     uint64_t overhead=(uint64_t)reserved+(uint64_t)fats*fsize;
     if(overhead>=total)return -1;
-    uint64_t clusters=((uint64_t)total-overhead)/spc;
+    /* overhead < total (u32): la division puede hacerse en 32 bits y
+     * evita depender de __udivdi3 en el kernel freestanding i386. */
+    uint32_t data_sectors=total-(uint32_t)overhead;
+    uint64_t clusters=data_sectors/spc;
     uint64_t fat_entries=(uint64_t)fsize*128u;
     if(!clusters||clusters>0x0ffffff5u||clusters+2u>fat_entries||
        root<2||(uint64_t)root>=clusters+2u)return -1;
