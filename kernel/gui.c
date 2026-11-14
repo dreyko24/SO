@@ -26,7 +26,7 @@ enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CAL
 #define SCELL 20
 #define NOTEMAX 3000
 #define KNGFS_CAP (2*1024*1024)
-#define MAXW 24
+#define MAXW 10
 #define TB 30
 #define BARH 28
 #define TW 80
