@@ -20,10 +20,14 @@ int gfx_init(uint32_t *f, int w, int h, int pitch_bytes){
     memset(bb,0,(size_t)w*h*4); clip_base(0,0,w,h); return 0;
 }
 void gfx_present_rect(int x,int y,int w,int h){
+    /* La animacion/suspension puede invalidar la posicion previa del
+     * cursor. Un rectangulo completamente fuera de pantalla no se copia. */
+    if(w<=0||h<=0||x>=gw||y>=gh||x+w<=0||y+h<=0)return;
     if(x<0){ w+=x; x=0; }
     if(y<0){ h+=y; y=0; }
     if(x+w>gw) w=gw-x;
     if(y+h>gh) h=gh-y;
+    if(w<=0||h<=0)return;
     if(fbpp==24){
         for(int j=0;j<h;j++){ uint8_t *d=(uint8_t*)front+(size_t)(y+j)*fpitchb+(size_t)x*3; const uint32_t *s2=bb+(y+j)*gw+x;
             for(int i=0;i<w;i++){ uint32_t c=s2[i]; d[0]=(uint8_t)c; d[1]=(uint8_t)(c>>8); d[2]=(uint8_t)(c>>16); d+=3; } }
