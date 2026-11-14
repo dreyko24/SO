@@ -1,10 +1,23 @@
 name: construir-iso
 # Construye el ISO completo (con Debian real) y lo publica en "Releases" del repositorio para descargarlo.
 # Se ejecuta a mano: GitHub > Actions > construir-iso > Run workflow.
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'kernel/**'
+      - 'kernel64/**'
+      - 'tools/**'
+      - '.github/workflows/iso.yml'
+concurrency:
+  group: vortex-iso-main
+  cancel-in-progress: true
 jobs:
   iso:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +30,19 @@ jobs:
           key: debian-${{ hashFiles('tools/mkdebian.sh', 'tools/rootfs-es/**') }}
       - name: Construir ISO
         run: KNG_DEBIAN=1 bash tools/build-iso.sh
+      - name: Verificar integridad de la ISO de Vortex OS
+        run: |
+          test -s out/VortexOS.iso
+          (cd out && sha256sum -c VortexOS.iso.sha256)
+      - name: Guardar ISO completa como artefacto de prueba
+        uses: actions/upload-artifact@v4
+        with:
+          name: VortexOS-completo-Debian
+          path: |
+            out/VortexOS.iso
+            out/VortexOS.iso.sha256
+          if-no-files-found: error
+          retention-days: 7
       - name: Publicar en Releases
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
