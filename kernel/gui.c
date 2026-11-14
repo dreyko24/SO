@@ -52,19 +52,34 @@ static int open_new;                                               /* open_app: 
 static int order[MAXW], nord;
 static int mx, my, mb, drag=-1, dragdx, dragdy, hover=-1;
 static int dirty=1, cursor_dirty=1, cur_x=-100, cur_y=-100;
-static int dr0x, dr0y, dr1x, dr1y;                           /* rectangulo sucio pendiente (vacio si dr1x<=dr0x) */
+/* Regiones danadas independientes. Unificar toda la pantalla por dos iconos
+ * distantes costaba varios MB por cada evento; conservar hasta 12 rectangulos. */
+#define DAMAGE_MAX 12
+typedef struct {int x0,y0,x1,y1;} Damage;
+static Damage damage[DAMAGE_MAX];
+static int ndamage;
 static void dmark(int x,int y,int w,int h){
-    if(w<=0||h<=0) return;
-    if(x<0){ w+=x; x=0; }
-    if(y<0){ h+=y; y=0; }
-    if(x+w>gw) w=gw-x;
-    if(y+h>gh) h=gh-y;
-    if(w<=0||h<=0) return;
-    if(dr1x<=dr0x){ dr0x=x; dr0y=y; dr1x=x+w; dr1y=y+h; return; }
-    if(x<dr0x) dr0x=x;
-    if(y<dr0y) dr0y=y;
-    if(x+w>dr1x) dr1x=x+w;
-    if(y+h>dr1y) dr1y=y+h;
+    if(w<=0||h<=0||dirty)return;
+    if(x<0){w+=x;x=0;}
+    if(y<0){h+=y;y=0;}
+    if(x>=gw||y>=gh)return;
+    if(x+w>gw)w=gw-x;
+    if(y+h>gh)h=gh-y;
+    if(w<=0||h<=0)return;
+    Damage r={x,y,x+w,y+h};
+    for(int i=0;i<ndamage;){
+        Damage *q=&damage[i];
+        /* Combinar cuando se toquen: evita dibujar dos veces sombras. */
+        if(r.x0<=q->x1+1&&r.x1+1>=q->x0&&
+           r.y0<=q->y1+1&&r.y1+1>=q->y0){
+            r.x0=k_min(r.x0,q->x0);r.y0=k_min(r.y0,q->y0);
+            r.x1=k_max(r.x1,q->x1);r.y1=k_max(r.y1,q->y1);
+            damage[i]=damage[--ndamage];i=0;continue;
+        }
+        ++i;
+    }
+    if(ndamage==DAMAGE_MAX){dirty=1;ndamage=0;return;}
+    damage[ndamage++]=r;
 }
 static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
 static uint32_t *wall;
@@ -1860,36 +1875,58 @@ static void cursor_draw(void){
 /* ---------------- render ---------------- */
 static int rect_in(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax>=bx&&ay>=by&&ax+aw<=bx+bw&&ay+ah<=by+bh; }
 static int rect_hit(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by; }
-static void render(void){
-    int x0=0,y0=0,x1=gw,y1=gh;
-    if(!dirty){ x0=dr0x; y0=dr0y; x1=dr1x; y1=dr1y; }
-    dr0x=dr0y=dr1x=dr1y=0;
-    if(x1<=x0||y1<=y0){ dirty=0; return; }
-    int rw=x1-x0, rh=y1-y0;
+static void render_region(int x0,int y0,int x1,int y1){
+    int rw=x1-x0,rh=y1-y0;
+    if(rw<=0||rh<=0)return;
     clip_base(x0,y0,rw,rh);
     if(power_sleep){
         fill(x0,y0,rw,rh,0x040710,255);
         vortex_logo(gw/2-34,gh/2-116,68,255);
         text_big(gw/2-90,gh/2-28,"Vortex OS",0xf5f5ff);
         text(gw/2-175,gh/2+28,"Reposo de pantalla. Pulsa una tecla o haz clic.",0xa9b4d3);
-        gfx_present_rect(x0,y0,rw,rh);clip_base(0,0,gw,gh);
-        cur_x=-100;dirty=0;cursor_dirty=0;return;
+        gfx_present_rect(x0,y0,rw,rh);
+        clip_base(0,0,gw,gh);return;
     }
-    for(int j=y0;j<y1;j++) memcpy(bb+j*gw+x0,wall+j*gw+x0,(size_t)rw*4);
-    for(int i=0;i<NDO;i++) if(dobj[i].kind>=0 && rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh)) draw_dobj(&dobj[i]);
+    for(int j=y0;j<y1;j++)memcpy(bb+j*gw+x0,wall+j*gw+x0,(size_t)rw*4);
+    for(int i=0;i<NDO;i++)if(dobj[i].kind>=0&&rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh))draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
-        if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
-        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
-        if(!hidden) draw_window(order[k],k==nord-1);
+        if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh))continue;
+        int hidden=0;
+        for(int j=k+1;j<nord;j++){
+            Win *o=&wins[order[j]];
+            if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){
+                hidden=1;break;
+            }
+        }
+        if(!hidden)draw_window(order[k],k==nord-1);
     }
-    draw_topbar(); draw_dock(); appmenu_draw(); power_menu_draw();
-    if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
-        rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
+    draw_topbar();draw_dock();appmenu_draw();power_menu_draw();
+    if(fd_on){
+        char g[FS_NAME+4];k_strcpy(g,fd_name,sizeof g);g[26]=0;
+        int tw=text_w(g)+44;
+        rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200);
+        rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90);
+        draw_doc(fd_gx+8,fd_gy+3);text(fd_gx+34,fd_gy+6,g,0xffffff);
+    }
     mu_draw();
     gfx_present_rect(x0,y0,rw,rh);
     clip_base(0,0,gw,gh);
-    cur_x=-100; cursor_draw(); dirty=0; cursor_dirty=0;
+}
+static void render(void){
+    /* El puntero se compone directamente en frontbuffer: retirarlo antes
+     * de repintar regiones, y volver a dibujarlo una sola vez al final. */
+    if(cur_x>=0)cursor_restore();
+    if(dirty){ndamage=0;render_region(0,0,gw,gh);}
+    else{
+        /* Copia local: el estado de danado no se arrastra entre cuadros. */
+        Damage regions[DAMAGE_MAX];int count=ndamage;
+        for(int i=0;i<count;i++)regions[i]=damage[i];
+        ndamage=0;
+        for(int i=0;i<count;i++)render_region(regions[i].x0,regions[i].y0,regions[i].x1,regions[i].y1);
+    }
+    dirty=0;cursor_dirty=0;cur_x=-100;
+    if(!power_sleep)cursor_draw();
 }
 static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==A_FILES&&wins[top].editing){ static int p; int q=(kticks()/50)&1; if(q!=p){ p=q; dwin(&wins[top]); } } return dren>=0; }
 void gui_frame(void){
@@ -1927,7 +1964,7 @@ void gui_frame(void){
      }
     }
     snake_tick(t); vortexfs_tick();
-    if(dirty||dr1x>dr0x) render();
+    if(dirty||ndamage>0) render();
     else if(cursor_dirty){ cursor_restore(); cursor_draw(); cursor_dirty=0; }
 }
 
