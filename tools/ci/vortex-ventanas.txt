@@ -1,5 +1,7 @@
 # Prueba real con raton y teclado en QEMU a 1024x768
-esperar 2
+esperar 4
+raton 42 74
+# QEMU inicia el raton relativo en el centro y puede perder el primer movimiento
 raton 42 74
 clic
 captura aplicaciones
