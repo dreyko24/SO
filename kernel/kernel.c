@@ -187,9 +187,9 @@ static void pit_init(void){
 
 /* ---------- Teclado PS/2 (set 1; distribuciones en kbd.c) ---------- */
 #define KB_N 128
-static volatile unsigned char kb_buf[KB_N]; static volatile int kb_h, kb_t;
-static void kb_push(unsigned char c){ int n=(kb_h+1)%KB_N; if(n!=kb_t){ kb_buf[kb_h]=c; kb_h=n; } }
-static void kb_irq(void){ int c=kbd_feed(inb(0x60)); if(c&&c<0x400) kb_push((unsigned char)c); }   /* traduccion en kbd.c (US/Latam/ES) */
+static volatile unsigned short kb_buf[KB_N]; static volatile int kb_h, kb_t;
+static void kb_push(unsigned short c){ int n=(kb_h+1)%KB_N; if(n!=kb_t){ kb_buf[kb_h]=c; kb_h=n; } }
+static void kb_irq(void){ int c=kbd_feed(inb(0x60)); if(c) kb_push((unsigned short)c); } /* mantiene atajos >255 en kernel 32 */
 
 /* ---------- Raton PS/2 (IRQ12) ---------- */
 struct mev { int dx, dy, b; };
@@ -936,6 +936,6 @@ void kmain(uint32_t magic, struct mb_info *mi){
         if(c<0){ net_poll(); reap(); __asm__ volatile("hlt"); continue; }
         if(c=='\n'){ putc('\n'); line[n]=0; run(line); n=0; kprintf("vortex> "); }
         else if(c=='\b'){ if(n>0){ n--; putc('\b'); } }
-        else if(c>=32 && n<127){ line[n++]=(char)c; putc((char)c); }
+        else if(c>=32 && c<256 && n<127){ line[n++]=(char)c; putc((char)c); }
     }
 }

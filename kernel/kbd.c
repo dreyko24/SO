@@ -24,7 +24,7 @@ static const Key ES[]={
  {0x1A,'`','^','['},{0x1B,'+','*',']'},{0x27,0xF1,0xD1,0},{0x28,DEAD_ACUTE,DEAD_DIAER,'{'},{0x2B,0xE7,0xC7,'}'},
  {0x33,',',';',0},{0x34,'.',':',0},{0x35,'-','_',0},{0x56,'<','>',0},{0,0,0,0}};
 
-static int layout, shift, caps, altgr, e0, dead, ctrl;
+static int layout, shift, caps, altgr, e0, dead, ctrl, alt;
 void kbd_set_layout(int l){ layout=(l>=0&&l<=2)?l:0; dead=0; }
 int  kbd_layout(void){ return layout; }
 const char *kbd_layout_name(int l){ return l==KBD_LATAM?"Latinoamerica":l==KBD_ES?"Espana":"US"; }
@@ -61,7 +61,9 @@ int kbd_feed(uint8_t b){
     }
     if(sc==0x2A||sc==0x36){ shift=!rel; return 0; }
     if(sc==0x1D){ ctrl=!rel; return 0; }                              /* Ctrl izquierdo */
+    if(sc==0x38){ int was=alt; alt=!rel; return was&&rel?KBD_SWITCH_END:0; }
     if(rel) return 0;
+    if(sc==0x0F&&alt) return shift?KBD_SWITCH_PREV:KBD_SWITCH_NEXT; /* Alt+Tab / Mayus+Alt+Tab */
     if(sc==0x3A){ caps=!caps; return 0; }
     int c=lookup(sc); if(!c) return 0;
     if(ctrl&&((c>='a'&&c<='z')||(c>='A'&&c<='Z'))) return 0x400|(c&31);    /* Ctrl+letra: codigo aparte para no chocar con las flechas */

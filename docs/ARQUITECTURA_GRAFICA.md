@@ -47,3 +47,22 @@ Para repetir la auditoría: workflow GitHub Actions `vortex-escritorio-host` / `
 - **Calidad:** medir interacción humana (latencia clic→pantalla), tiempos de cuadro y CPU en VM real; perfilar la interfaz en resolución alta; realizar pruebas de regresión periódicas sin vender una captura como equivalencia funcional a Windows/macOS.
 
 Las pruebas automatizadas no son prueba de que las funciones ausentes ya estén implementadas. El objetivo es elevar **rendimiento, presentación y estabilidad de la base**, antes de incorporar más aplicaciones nuevas.
+
+## Atajos de multitarea (Vortex Flow, revisión posterior a 98fce05)
+
+El teclado PS/2 distingue **Alt izquierdo** de **AltGr derecho**. Alt+Tab
+recorre todas las ventanas en el orden de la pila, incluida una minimizada;
+Mayús+Alt+Tab recorre en sentido inverso. Mientras Alt está pulsado, se
+muestra una banda de tareas y la secuencia conserva el orden original: no
+oscila solo entre las dos ventanas superiores. Al soltar Alt termina el ciclo.
+
+Los códigos `KBD_SWITCH_*` se conservan como valores de 16 bits en las
+colas de teclado de ambos kernels. Antes la cola de 32 bits guardaba
+`unsigned char` y descartaba los códigos especiales, incluidos Ctrl+letra.
+La consola de texto filtra códigos mayores que 255 para evitar caracteres
+espurios. La ventana X recibe el resto de eventos PS/2 sin que Alt+Tab
+se envíe como tecla a Linux.
+
+**Pruebas:** `tools/kbdtest.c` cubre make/break, AltGr, reversa y repetición,
+y `tools/hostgui.c` comprueba tres aplicaciones, el foco, la secuencia y
+la restauración de ventanas minimizadas bajo AddressSanitizer.

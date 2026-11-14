@@ -4,6 +4,10 @@
 #define KBD_H
 #include "vortex.h"
 enum { KBD_US=0, KBD_LATAM=1, KBD_ES=2 };
+/* Atajos del gestor: fuera de 8 bits, caracteres Unicode y Ctrl+letra. */
+#define KBD_SWITCH_NEXT 0x500
+#define KBD_SWITCH_PREV 0x501
+#define KBD_SWITCH_END  0x502
 void        kbd_set_layout(int l);
 int         kbd_layout(void);
 const char *kbd_layout_name(int l);

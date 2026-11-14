@@ -27,6 +27,17 @@ int main(void){
     kbd_set_layout(KBD_US);
     kbd_feed(0xE0); chk(kbd_feed(0x48),0x11,"flecha arriba"); kbd_feed(0xE0); kbd_feed(0xC8);
     kbd_feed(0xE0); chk(kbd_feed(0x51),0x16,"Av Pag"); kbd_feed(0xE0); kbd_feed(0xD1);
+    /* Alt izquierdo cambia de ventana. AltGr no activa el atajo. */
+    chk(press(0x0f),'\t',"Tab sin Alt");
+    chk(kbd_feed(0x38),0,"Alt down");
+    chk(press(0x0f),KBD_SWITCH_NEXT,"Alt+Tab");
+    chk(press(0x0f),KBD_SWITCH_NEXT,"Alt+Tab repetido");
+    kbd_feed(0x2a);
+    chk(press(0x0f),KBD_SWITCH_PREV,"Mayus+Alt+Tab");
+    kbd_feed(0xaa);
+    chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt liberado");
+    chk(press(0x0f),'\t',"Tab tras soltar Alt");
+    chk(with_altgr(0x0f),'\t',"AltGr+Tab no cambia ventanas");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

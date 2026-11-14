@@ -81,6 +81,33 @@ int main(void){
       }
       puts("VORTEX ARCHIVO WAV 16-BIT DE PRUEBA OK");
     }
+    /* Multitarea por teclado: ciclo completo, retroceso, y estado
+     * intacto al volver a una ventana minimizada. */
+    {
+      closeall();
+      Win *a=open_app(A_BROWSER),*b=open_app(A_FILES),*c=open_app(A_NOTES);
+      if(!a||!b||!c){puts("FALLO crear ventanas Alt+Tab");return 1;}
+      int ai=(int)(a-wins),bi=(int)(b-wins),ci=(int)(c-wins);
+      if(win_top()!=ci||nord!=3){puts("FALLO foco inicial");return 1;}
+      kbd_feed(0x38);
+      gui_key(kbd_feed(0x0f));kbd_feed(0x8f);
+      if(win_top()!=bi||!switch_active){puts("FALLO Alt+Tab primera");return 1;}
+      gui_key(kbd_feed(0x0f));kbd_feed(0x8f);
+      if(win_top()!=ai){puts("FALLO Alt+Tab tercera ventana");return 1;}
+      kbd_feed(0x2a);gui_key(kbd_feed(0x0f));kbd_feed(0x8f);kbd_feed(0xaa);
+      if(win_top()!=bi){puts("FALLO Mayus+Alt+Tab");return 1;}
+      shot("33_conmutador_alt_tab");
+      gui_key(kbd_feed(0xb8));
+      if(switch_active||win_top()!=bi){puts("FALLO soltar Alt");return 1;}
+      win_minimize(b);
+      if(!b->minimized||win_top()==bi){puts("FALLO minimizar ventana de prueba");return 1;}
+      kbd_feed(0x38);
+      for(int i=0;i<3&&win_top()!=bi;i++){gui_key(kbd_feed(0x0f));kbd_feed(0x8f);}
+      gui_key(kbd_feed(0xb8));
+      if(win_top()!=bi||b->minimized){puts("FALLO restaurar por Alt+Tab");return 1;}
+      closeall();
+      puts("VORTEX MULTITAREA ALT+TAB, MAYUS Y RESTAURACION OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];

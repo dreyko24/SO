@@ -51,6 +51,9 @@ static char ed_suf[96]; static const char *ed_owner;                   /* extens
 static void fm_edit_done(char *buf,int *len,int max);
 static int open_new;                                               /* open_app: crear otra ventana aunque ya haya una del mismo tipo */
 static int order[MAXW], nord;
+/* Instantanea del orden para que Tab recorra N ventanas sin alternar solo dos. */
+static int switch_active,switch_len,switch_pos,switch_order[MAXW];
+static int xraw_left_alt,xraw_alt_forwarded,xraw_tab_intercept;
 static int mx, my, mb, drag=-1, dragdx, dragdy, hover=-1;
 static int dirty=1, cursor_dirty=1, cur_x=-100, cur_y=-100;
 /* Regiones danadas independientes. Unificar toda la pantalla por dos iconos
@@ -292,8 +295,39 @@ static void focus(int wi){
     for(;k<nord-1;k++) order[k]=order[k+1];
     order[nord-1]=wi;
 }
+/* Alt+Tab selecciona ventanas nativas o X11, incluso minimizadas.
+ * El orden se mantiene fijo hasta soltar Alt. */
+static void switch_window(int backwards){
+    if(nord<2)return;
+    if(!switch_active){
+        switch_len=0;
+        for(int i=nord-1;i>=0;i--)if(wins[order[i]].used)
+            switch_order[switch_len++]=order[i];
+        if(switch_len<2)return;
+        switch_pos=0;
+        int top=win_top();
+        for(int i=0;i<switch_len;i++)if(switch_order[i]==top){switch_pos=i;break;}
+        switch_active=1;
+    }
+    for(int n=0;n<switch_len;n++){
+        switch_pos=(switch_pos+(backwards?switch_len-1:1))%switch_len;
+        int wi=switch_order[switch_pos];
+        if(!wins[wi].used)continue;
+        int was=win_top();
+        if(was>=0&&wins[was].type==A_XSCR&&xraw_alt_forwarded){
+            kinput_event(1,56,0);kinput_event(0,0,0);xraw_alt_forwarded=0;
+        }
+        focus(wi);
+        appmenu_open=0;power_menu_open=0;language_menu_open=0;
+        dirty=1;return;
+    }
+}
+static void switch_finish(void){
+    if(switch_active){switch_active=0;switch_len=0;dirty=1;}
+}
 static void doc_free(Win *w);
 static void win_close(int wi){
+    switch_finish();
     dwin(&wins[wi]);
     if(nord)dwin(&wins[order[nord-1]]);
     if(wins[wi].type==A_TERM&&wins[wi].busy){ char kc[32]="matar "; cat_int(kc,sizeof kc,wins[wi].bpid); kshell_exec(kc); wins[wi].busy=0; }
@@ -1878,7 +1912,8 @@ static void appmenu_draw(void){
         text_ui_bold(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:C_TXT);
     }
     int left=x+156,top=y+122,cw=(w-177)/4,rh=(h-134)/4;
-    int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search))count++;
+    int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&
+        (app_match(APPMENU[i].label,app_search)||app_match(vortex_ui_translate(APPMENU[i].label,ui_lang),app_search)))count++;
     if(!count)text_ui(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
     for(int n=0;n<APPMENU_N;n++){
         int idx=appmenu_index(n);if(idx<0)break;
@@ -2067,6 +2102,26 @@ static void cursor_draw(void){
 /* ---------------- render ---------------- */
 static int rect_in(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax>=bx&&ay>=by&&ax+aw<=bx+bw&&ay+ah<=by+bh; }
 static int rect_hit(int ax,int ay,int aw,int ah,int bx,int by,int bw,int bh){ return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by; }
+/* Vista de tareas mientras Alt permanece pulsado, sin copiar logos de otros SO. */
+static void switch_draw(void){
+    if(!switch_active||switch_len<2)return;
+    int slots=k_min(switch_len,5), width=slots*144+24;
+    int x=(gw-width)/2,y=gh/2-73;
+    if(x<4)x=4;
+    rrect(x+5,y+5,width,145,15,0x000000,92);
+    rrect(x,y,width,145,15,light_theme?0xe3ebf8:0x162238,251);
+    text_ui_bold(x+16,y+10,"Cambiar de ventana  -  Alt+Tab",C_TXT);
+    int start=switch_pos>=slots?switch_pos-slots+1:0;
+    for(int i=0;i<slots;i++){
+        int n=start+i, wi=switch_order[n], tx=x+12+i*144;
+        Win *w=&wins[wi];
+        int selected=n==switch_pos;
+        rrect(tx,y+37,136,91,9,selected?ACCENT:(light_theme?0xc4d4e9:0x293a54),selected?238:255);
+        char label[24];k_strcpy(label,w->title,sizeof label);
+        text_ui(tx+8,y+49,label,selected?0xffffff:C_TXT);
+        text(tx+8,y+79,w->minimized?"Minimizada":"Abierta",selected?0xffffff:C_DIM);
+    }
+}
 static void render_region(int x0,int y0,int x1,int y1){
     int rw=x1-x0,rh=y1-y0;
     if(rw<=0||rh<=0)return;
@@ -2095,7 +2150,7 @@ static void render_region(int x0,int y0,int x1,int y1){
                 hidden=1;break;
             }
         }
-        if(!hidden)draw_window(order[k],k==nord-1);
+        if(!hidden)draw_window(order[k],order[k]==win_top());
     }
     draw_topbar();draw_dock();appmenu_draw();power_menu_draw();language_menu_draw();
     if(fd_on){
@@ -2106,6 +2161,7 @@ static void render_region(int x0,int y0,int x1,int y1){
         draw_doc(fd_gx+8,fd_gy+3);text(fd_gx+34,fd_gy+6,g,0xffffff);
     }
     mu_draw();
+    switch_draw();
     gfx_present_rect(x0,y0,rw,rh);
     clip_base(0,0,gw,gh);
 }
@@ -2473,14 +2529,20 @@ static void mouse_set(int x,int y,int b){
     if(pressed) on_press();
     if(rpressed) on_rpress();
 }
-void gui_rawkey(int byte){                                       /* bytes crudos del teclado PS/2 (set 1): se entregan tal cual si la ventana activa es la pantalla X */
+void gui_rawkey(int byte){                                       /* teclas crudas para X11, salvo el atajo global Alt+Tab */
     static int e0;
     if(byte==0xE0){ e0=1; return; }
-    int top=win_top(); int down=!(byte&0x80), sc=byte&0x7F, code=sc;
+    int top=win_top(); int down=!(byte&0x80), sc=byte&0x7F, code=sc, extended=e0;
     if(e0){ e0=0; switch(sc){ case 0x1C: code=96; break; case 0x1D: code=97; break; case 0x35: code=98; break; case 0x38: code=100; break; case 0x47: code=102; break; case 0x48: code=103; break;
             case 0x49: code=104; break; case 0x4B: code=105; break; case 0x4D: code=106; break; case 0x4F: code=107; break; case 0x50: code=108; break; case 0x51: code=109; break;
             case 0x52: code=110; break; case 0x53: code=111; break; case 0x5B: code=125; break; case 0x5C: code=126; break; default: return; } }
-    if(top<0||wins[top].type!=A_XSCR) return;
+    if(!extended&&sc==0x38)xraw_left_alt=down;
+    if(!extended&&sc==0x0F){
+        if(down&&xraw_left_alt)xraw_tab_intercept=1;
+        if(xraw_tab_intercept){if(!down)xraw_tab_intercept=0;return;}
+    }
+    if(top<0||wins[top].type!=A_XSCR)return;
+    if(!extended&&sc==0x38)xraw_alt_forwarded=down;
     kinput_event(1,code,down); kinput_event(0,0,0);
 }
 void gui_mouse_abs(int x,int y,int b){ mouse_set(x,y,b); }
@@ -2489,6 +2551,8 @@ void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
 static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
+    if(c==KBD_SWITCH_END){switch_finish();return;}
+    if(c==KBD_SWITCH_NEXT||c==KBD_SWITCH_PREV){switch_window(c==KBD_SWITCH_PREV);return;}
     if(power_sleep){power_sleep=0;dirty=1;return;}
     if(power_menu_open&&c==27){power_menu_open=0;power_damage();return;}
     if(language_menu_open&&c==27){language_menu_open=0;dirty=1;return;}
