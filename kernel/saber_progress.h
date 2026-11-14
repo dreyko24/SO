@@ -42,6 +42,6 @@ static int saber_read_count(uint32_t mask){
 }
 static int saber_level(const VortexSaberProgress *p){
     uint32_t points=p->total_correct+saber_read_count(p->articles)*2u;
-    int level=1+(int)(points/18u);return level>10?10:level;
+    int level=1+(int)(points/12u);return level>10?10:level;
 }
 #endif
