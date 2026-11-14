@@ -5,6 +5,7 @@
 #include "usb_storage.h"
 #include "fs.h"
 #include "vortex.h"
+#include "fat32_layout.h"
 #ifdef HOSTGUI
 static int ready;
 int usb_storage_probe(void){return 0;}
@@ -42,6 +43,7 @@ static u8 setup[8] __attribute__((aligned(16)));
 static u8 payload[4096] __attribute__((aligned(16)));
 static u32 scsi_tag=0x10736u,block_count,part,first_data,fat_sector,root_cluster;
 static u32 fat_size,reserved,sectors_per_cluster,nfats,last_fat_lba=0xffffffffu;
+static u32 volume_end,cluster_count;
 static u8 fatcache[512];
 static int imported,depth_count;
 static u32 rd32(const u8 *x){return (u32)x[0]|((u32)x[1]<<8)|(u32)x[2]<<16|(u32)x[3]<<24;}
@@ -204,44 +206,49 @@ static int enumerate(void){
     u8 cd[10]={0x25};u8 cap[8];
     if(bot(cd,10,cap,8))return -11;
     block_count=((u32)cap[0]<<24)|((u32)cap[1]<<16)|((u32)cap[2]<<8)|cap[3];
-    block_count++;u32 bs=((u32)cap[4]<<24)|((u32)cap[5]<<16)|((u32)cap[6]<<8)|cap[7];
-    if(bs!=512||block_count<128)return -12;
+    u32 last=block_count;
+    u32 bs=((u32)cap[4]<<24)|((u32)cap[5]<<16)|((u32)cap[6]<<8)|cap[7];
+    if(bs!=512||last==0xffffffffu||last<127)return -12;
+    block_count=last+1u;
     return 0;
 }
 static int fatmount(void){
-    u8 s[512];
-    if(readsector(0,s))return -1;
-    part=0;
+    u8 s[512];if(readsector(0,s))return -1;
+    part=0;u32 part_sectors=block_count;
     if(s[510]==0x55&&s[511]==0xAA){
         for(int i=0;i<4;i++){const u8 *e=s+446+i*16;
-            if(e[4]==0x0b||e[4]==0x0c){u32 p=rd32(e+8),cnt=rd32(e+12);
-                if(p&&p<block_count&&cnt<=block_count-p){part=p;break;}}
+            if(e[4]==0x0b||e[4]==0x0c){
+                u32 p=rd32(e+8),cnt=rd32(e+12);
+                if(p&&p<block_count&&cnt&&cnt<=block_count-p){
+                    part=p;part_sectors=cnt;break;
+                }
+            }
         }
         if(part&&readsector(part,s))return -2;
     }
-    if(s[510]!=0x55||s[511]!=0xaa||rd16(s+11)!=512)return -3;
-    sectors_per_cluster=s[13];reserved=rd16(s+14);nfats=s[16];fat_size=rd32(s+36);
-    root_cluster=rd32(s+44);
-    if(!sectors_per_cluster||(sectors_per_cluster&(sectors_per_cluster-1))||
-       sectors_per_cluster>128||!reserved||nfats<1||nfats>2||!fat_size||
-       root_cluster<2||root_cluster>0x0ffffff6u||rd16(s+17)!=0)return -4;
-    fat_sector=part+reserved;
-    first_data=fat_sector+nfats*fat_size;
-    if(first_data>=block_count)return -5;
+    VortexFat32Layout v;
+    if(vortex_fat32_layout(s,block_count,part,part_sectors,&v))return -3;
+    sectors_per_cluster=v.sectors_per_cluster;
+    reserved=rd16(s+14);nfats=s[16];fat_size=v.fat_sectors;
+    root_cluster=v.root_cluster;volume_end=v.volume_end;cluster_count=v.cluster_count;
+    fat_sector=v.fat_lba;first_data=v.first_data;
     last_fat_lba=0xffffffffu;
-    kprintf("[vortex-usb] BPB part=%u root=%u spc=%u fat=%u first=%u sectors=%u\n",part,root_cluster,sectors_per_cluster,fat_sector,first_data,block_count);
+    kprintf("[vortex-usb] BPB part=%u root=%u spc=%u fat=%u first=%u end=%u\n",
+            part,root_cluster,sectors_per_cluster,fat_sector,first_data,volume_end);
     return 0;
 }
 static u32 fatnext(u32 cluster){
+    if(cluster<2||(u64)cluster>=(u64)cluster_count+2u||cluster/128u>=fat_size)
+        return 0x0fffffffu;
     u32 lba=fat_sector+cluster/128u;
-    if(lba>=block_count)return 0x0fffffffu;
+    if(lba>=volume_end)return 0x0fffffffu;
     if(lba!=last_fat_lba){if(readsector(lba,fatcache))return 0x0fffffffu;last_fat_lba=lba;}
     return rd32(fatcache+(cluster%128u)*4u)&0x0fffffffu;
 }
 static int cluster_lba(u32 cl,u32 *out){
-    if(cl<2||cl>0x0ffffff6u)return -1;
+    if(cl<2||(u64)cl>=(u64)cluster_count+2u)return -1;
     u64 lba=(u64)first_data+(u64)(cl-2u)*sectors_per_cluster;
-    if(lba+sectors_per_cluster>block_count)return -1;
+    if(lba+sectors_per_cluster>volume_end)return -1;
     *out=(u32)lba;return 0;
 }
 static int goodname(const char *s){
