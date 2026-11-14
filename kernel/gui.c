@@ -8,6 +8,7 @@
 #include "net.h"
 #include "disk.h"
 #include "zip.h"
+#include "timeutil.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_SABER };
 #define DOCK_SIDE (gh<620?148:88) /* zona que se reserva a la barra lateral al maximizar */
@@ -1801,11 +1802,7 @@ void gui_frame(void){
                 unsigned int sec32=(unsigned int)seconds; /* 0..86399: evitar libgcc __udivmoddi4 en 32 bits */
                 int h=(int)(sec32/3600u), m=(int)((sec32%3600u)/60u);
                 /* Conversion de dias UTC al calendario gregoriano, con cambio de dia correcto en Peru. */
-                int z=days+719468, era=(z>=0?z:z-146096)/146097;
-                int doe=z-era*146097, yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
-                int yy=yoe+era*400, doy=doe-(365*yoe+yoe/4-yoe/100);
-                int mp=(5*doy+2)/153, dd=doy-(153*mp+2)/5+1;
-                int mo=mp+(mp<10?3:-9); yy+=mo<=2;
+                int yy,mo,dd; vortex_date_from_days(days,&yy,&mo,&dd);
                 if(h!=clk_h||m!=clk_m||yy!=clk_y||mo!=clk_mon||dd!=clk_day){
                     clk_h=h; clk_m=m; clk_y=yy; clk_mon=mo; clk_day=dd;
                     dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230);
