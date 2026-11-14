@@ -114,6 +114,18 @@ int main(void){
       }
       puts("VORTEX ARCHIVO WAV 16-BIT DE PRUEBA OK");
     }
+    /* El video de prueba debe reproducirse a velocidad normal, no al
+     * antiguo ritmo de 4 FPS que parecia un error de rendimiento. */
+    { FsNode *vdir=fs_resolve(fs_root(),"/Videos");
+      FsNode *file=vdir?fs_find(vdir,"Prueba-de-video.avi"):0;
+      static VVideo demo;
+      if(!file||!file->data||vvideo_open((const unsigned char*)file->data,file->size,&demo)||
+         demo.fps!=25||demo.frames!=75||
+         vvideo_rgb(&demo,0,42,30)==vvideo_rgb(&demo,1,42,30)){
+          puts("FALLO AVI demo: debe tener 25 FPS, 75 cuadros animados");return 1;
+      }
+      puts("VORTEX VIDEO DEMO: 25 FPS, 75 CUADROS, 3 SEGUNDOS OK");
+    }
     /* El motor nativo no afirma implementar TLS ni JS. La Web completa
      * utiliza Chromium de Debian, con URL validada y busqueda en Google. */
     {

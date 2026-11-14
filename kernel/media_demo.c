@@ -51,7 +51,7 @@ static void sample_wav16(FsNode *dir){
 }
 static void sample_avi(FsNode *dir){
     if(!dir||fs_find(dir,"Prueba-de-video.avi"))return;
-    enum {W=96,H=64,FRAMES=12,FRAME=W*H*3};
+    enum {W=96,H=64,FPS=25,FRAMES=FPS*3,FRAME=W*H*3};
     unsigned total=12+12+(8+56)+(12+(8+56)+(8+40))+(12+FRAMES*(8+FRAME));
     unsigned char *b=kmalloc(total);if(!b)return;
     memset(b,0,total);
@@ -59,12 +59,12 @@ static void sample_avi(FsNode *dir){
     unsigned p=12;
     puttag(b+p,"LIST");put32(b+p+4,4+8+56+12+8+56+8+40);puttag(b+p+8,"hdrl");p+=12;
     puttag(b+p,"avih");put32(b+p+4,56);
-    put32(b+p+8,250000);put32(b+p+24,FRAMES);put32(b+p+32,1);
+    put32(b+p+8,1000000u/FPS);put32(b+p+24,FRAMES);put32(b+p+32,1);
     put32(b+p+40,W);put32(b+p+44,H);p+=8+56;
     puttag(b+p,"LIST");put32(b+p+4,4+8+56+8+40);puttag(b+p+8,"strl");p+=12;
     puttag(b+p,"strh");put32(b+p+4,56);
     puttag(b+p+8,"vids");puttag(b+p+12,"DIB ");
-    put32(b+p+28,1);put32(b+p+32,4);put32(b+p+40,FRAMES);
+    put32(b+p+28,1);put32(b+p+32,FPS);put32(b+p+40,FRAMES);
     put32(b+p+44,FRAME);p+=8+56;
     puttag(b+p,"strf");put32(b+p+4,40);
     put32(b+p+8,40);put32(b+p+12,W);put32(b+p+16,H);
@@ -73,9 +73,15 @@ static void sample_avi(FsNode *dir){
     for(int f=0;f<FRAMES;f++){
         puttag(b+p,"00db");put32(b+p+4,FRAME);p+=8;
         for(int y=0;y<H;y++)for(int x=0;x<W;x++){
-            int i=(y*W+x)*3;b[p+i]=(unsigned char)(x*2+f*15);
-            b[p+i+1]=(unsigned char)(y*3+f*9);
-            b[p+i+2]=(unsigned char)((x+y+f*13)&255);
+            /* Movimiento suave y continuo a 25 FPS: barra luminosa que
+             * atraviesa el gradiente, en vez de saltar colores cada 250 ms. */
+            int center=(f*3)%(W+32)-16;
+            int distance=x-center;if(distance<0)distance=-distance;
+            int light=distance<12?(12-distance)*9:0;
+            int i=(y*W+x)*3;
+            b[p+i]=(unsigned char)((x*2+f*2+light)&255);
+            b[p+i+1]=(unsigned char)((y*3+f+light/2)&255);
+            b[p+i+2]=(unsigned char)((x+y+f*2+light)&255);
         }
         p+=FRAME;
     }
