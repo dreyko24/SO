@@ -3,6 +3,7 @@ on:
   push:
     branches: [main, cambio-nombre-vortex-os, vortex/integracion-total-20261114, vortex/ventanas-dinamicas-20261114]
   workflow_dispatch:
+  pull_request:
 concurrency:
   group: vortex-host-${{ github.ref }}
   cancel-in-progress: true
@@ -34,6 +35,10 @@ jobs:
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/gfx_dimensions_test.c kernel/gfx.c -o /tmp/vortex-gfx-test
           /tmp/vortex-gfx-test
+      - name: Validar escalado de video e imagenes contra referencia pixel a pixel
+        run: |
+          gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/gfx_scaler_test.c kernel/gfx.c -o /tmp/vortex-gfx-scaler-test
+          /tmp/vortex-gfx-scaler-test
       - name: Pruebas de escritorio con AddressSanitizer
         run: OUTDIR=$PWD/host-capturas python3 tools/hostgui.py
       - name: Guardar capturas host
