@@ -1631,6 +1631,7 @@ static void draw_window(int wi,int focused){
               else { cat(b,sizeof b,"UTC"); if(tz>=0) cat(b,sizeof b,"+"); cat_int(b,sizeof b,tz); }
               text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
+            button(cx+cw-184,oy+252,166,24,"Sincronizar hora NTP",0);
             { char fecha[80]="Fecha local (UTC): "; if(clk_y){ cat2(fecha,sizeof fecha,clk_day); cat(fecha,sizeof fecha,"/"); cat2(fecha,sizeof fecha,clk_mon);
               cat(fecha,sizeof fecha,"/"); cat_int(fecha,sizeof fecha,clk_y); }
               else cat(fecha,sizeof fecha,"fecha no disponible");
@@ -1984,6 +1985,7 @@ static void settings_click(int lx,int ly,int cw,int ch){
             clk_next=0; dirty=1;
         }
         else if(in_rect(lx,y,20,252,190,24)){ show24=!show24; cfg_set("reloj24",show24?"1":"0"); dirty=1; }
+        else if(in_rect(lx,y,cw-184,252,166,24)){ run_quiet("hora sincronizar"); clk_next=0; dirty=1; }
         else if(in_rect(lx,y,20,340,140,26)) set_layout(KBD_US);
         else if(in_rect(lx,y,170,340,140,26)) set_layout(KBD_LATAM);
         else if(in_rect(lx,y,320,340,140,26)) set_layout(KBD_ES);
