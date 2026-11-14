@@ -44,10 +44,10 @@ int main(void){
     CHECK(files->used,"otras aplicaciones continuan abiertas");
     char launch[160];
     CHECK(!browser_chromium_command("https://www.google.com/maps",launch,sizeof launch) &&
-          !strcmp(launch,"abrir chromium https://www.google.com/maps"),
+          !strcmp(launch,"abrir vortex-chromium https://www.google.com/maps"),
           "abrir Chromium con URL https original");
     CHECK(!browser_chromium_command("kng://buscar?q=historia+del+peru",launch,sizeof launch) &&
-          !strcmp(launch,"abrir chromium https://www.google.com/search?q=historia+del+peru"),
+          !strcmp(launch,"abrir vortex-chromium https://www.google.com/search?q=historia+del+peru"),
           "conservar una busqueda de Google");
     CHECK(browser_chromium_command("https://example.com/;reboot",launch,sizeof launch)<0,
           "bloquear caracteres de control de comandos en URL");
