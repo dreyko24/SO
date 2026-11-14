@@ -4,6 +4,7 @@
  * Memoria DMA: arreglos estaticos en la imagen del kernel (identidad: direccion virtual = fisica, por debajo de 4 GB). */
 #include "net.h"
 #include "ntp.h"
+#include "timeutil.h"
 
 typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32;
 
@@ -917,6 +918,24 @@ static void wget_step(void){
 }
 int net_cmd(char *l){
     while(*l==' ') l++;
+    if(!k_strcmp(l,"hora sincronizar")){
+        if(net_st!=2){ kprintf("NTP: red no disponible; se mantiene el reloj RTC.\n"); return 1; }
+        ntp.phase=0; ntp.next=0;
+        kprintf("NTP: nueva sincronizacion solicitada (UTC).\n");
+        return 1;
+    }
+    if(!k_strcmp(l,"hora")||!k_strcmp(l,"fecha")){
+        uint64_t now=net_utc_epoch();
+        if(now>1577836800ull&&now<4294967295ull){
+            u32 local=(u32)now-18000u; /* America/Lima: UTC-5, sin horario de verano */
+            int y,m,d; vortex_date_from_days((int)(local/86400u),&y,&m,&d);
+            u32 sec=local%86400u;
+            kprintf("Peru (UTC-5): %d/%d/%d %d:%d:%d  fuente %s\n",
+                    d,m,y,(int)(sec/3600u),(int)((sec%3600u)/60u),(int)(sec%60u),
+                    net_time_synced()?"NTP":"RTC");
+        } else kprintf("Hora no disponible (RTC invalido o fuera del rango).\n");
+        return 1;
+    }
     if(!k_strcmp(l,"red")||!k_strcmp(l,"ip")||!k_strcmp(l,"ifconfig")){
         if(!nic){ kprintf("Sin tarjeta de red compatible (soportadas: Intel e1000, Realtek RTL8139).\n"); return 1; }
         char m[20]; macstr(m);
