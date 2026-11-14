@@ -1,0 +1,44 @@
+name: vortex-audio-sb16
+on:
+  push:
+    branches: [cambio-nombre-vortex-os]
+  workflow_dispatch:
+concurrency:
+  group: vortex-audio-sb16-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sb16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas para kernel y QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 gcc gcc-multilib binutils python3 grub-pc-bin grub-efi-amd64-bin xorriso mtools cpio
+      - name: Compilar kernels con backend Sound Blaster 16
+        run: |
+          make -C kernel64
+          make -C kernel
+          python3 tools/mkrootfs.py --debian vortex-extra.cpio
+      - name: Arrancar reproductor sobre Sound Blaster 16 emulado
+        run: |
+          set -euo pipefail
+          mkdir -p g/boot/grub
+          cp kernel64/vortex-kernel64.elf vortex-extra.cpio g/boot/
+          printf 'set timeout=0\ninsmod all_video\nmenuentry "Vortex OS" {\n set gfxpayload=1024x768x32\n multiboot /boot/vortex-kernel64.elf\n module /boot/vortex-extra.cpio\n boot\n}\n' > g/boot/grub/grub.cfg
+          grub-mkrescue -o test-sb16.iso g >/tmp/grub-sb16.log 2>&1 || { cat /tmp/grub-sb16.log; exit 1; }
+          python3 tools/ci_gui.py tools/ci/gui-reproductores.txt --             qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait             -cdrom test-sb16.iso -boot d -vga std -display none -serial stdio -m 2G             -audiodev wav,id=s0,path=vortex-sb16.wav -device sb16,audiodev=s0 > sb16.log 2>&1
+          grep -Fq '[vortex-audio] SB16 detectado' sb16.log || { cat sb16.log; echo 'Fallo: falta SB16'; exit 1; }
+          grep -Fq '[vortex-audio] WAV PCM por SB16' sb16.log || { tail -100 sb16.log; echo 'Fallo: WAV no reproducido'; exit 1; }
+          test -s vortex-sb16.wav
+          echo 'Prueba de salida WAV SB16 superada en QEMU'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: VortexOS-SB16
+          path: |
+            vortex-sb16.wav
+            sb16.log
+            capturas/*.png
+          if-no-files-found: ignore
