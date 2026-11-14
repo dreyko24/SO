@@ -1539,7 +1539,25 @@ static int set_resolution(int w,int h){
     dsk_sync(); dirty=1; cursor_dirty=1; return 0;
 }
 /* Vortex Saber: búsqueda offline y maquetación de artículos originales. */
-static int enc_lower(int c){return c>='A'&&c<='Z'?c+32:c;}
+/* Búsqueda amigable con teclado de español/Latam (Latin-1): comparar
+ * palabras con y sin tildes, conservando la grafía original del artículo. */
+static int enc_lower(int c){
+    if(c>='A'&&c<='Z')return c+32;
+    switch(c){
+    case 0xc0:case 0xc1:case 0xc2:case 0xc3:case 0xc4:case 0xc5:
+    case 0xe0:case 0xe1:case 0xe2:case 0xe3:case 0xe4:case 0xe5:return 'a';
+    case 0xc8:case 0xc9:case 0xca:case 0xcb:
+    case 0xe8:case 0xe9:case 0xea:case 0xeb:return 'e';
+    case 0xcc:case 0xcd:case 0xce:case 0xcf:
+    case 0xec:case 0xed:case 0xee:case 0xef:return 'i';
+    case 0xd2:case 0xd3:case 0xd4:case 0xd5:case 0xd6:
+    case 0xf2:case 0xf3:case 0xf4:case 0xf5:case 0xf6:return 'o';
+    case 0xd9:case 0xda:case 0xdb:case 0xdc:
+    case 0xf9:case 0xfa:case 0xfb:case 0xfc:return 'u';
+    case 0xd1:case 0xf1:return 'n';
+    default:return c;
+    }
+}
 static int enc_contains(const char *text0,const char *query){
     if(!*query)return 1;
     for(const unsigned char *t=(const unsigned char*)text0;*t;t++){
@@ -3825,7 +3843,8 @@ void gui_key(int c){
             else max=k_max(0,enc_wrap(ENC_ARTICLES[w->enc_topic].body,0,0,w->w-2-273,0,0,0)-enc_body_height(w));
             w->enc_scroll=k_max(0,k_min(max,w->enc_scroll+dir*speed));
             dwin(w);
-        }else if(c>=32&&c<=126&&w->enc_search_len<(int)sizeof(w->enc_search)-1){
+        }else if(c>=32&&c<=255&&c!=127&&
+                 w->enc_search_len<(int)sizeof(w->enc_search)-1){
             w->enc_search[w->enc_search_len++]=(char)c;
             w->enc_search[w->enc_search_len]=0;
             w->enc_topic=-1;w->enc_scroll=0;dwin(w);

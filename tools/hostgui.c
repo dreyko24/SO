@@ -771,6 +771,13 @@ int main(void){
       closeall();fs_remove(im);
       puts("VORTEX VISOR PNG: ZOOM REVERSIBLE 25%-400% OK");
     }
+    /* La búsqueda española acepta mayúsculas, tildes y eñes Latin-1. */
+    if(!enc_contains("Historia del Peru","PER\xfa")||
+       !enc_contains("Geografia","Geograf\xeda")||
+       !enc_contains("Lengua quechua","lengua")||
+       enc_contains("Peru","Chile")){
+        puts("FALLO busqueda educativa con acentos y mayusculas");return 1;
+    }
     /* Enciclopedia: cabecera no debe solapar el buscador y debe funcionar
      * tanto con ventana estándar como en anchura mínima. */
     if(77+text_ui_w("Enciclopedia sin conexion")+14>300){
