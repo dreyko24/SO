@@ -32,7 +32,10 @@ void kshell_exec(char *l){
 }
 void kreboot(void){ puts("[reboot]"); }
 void khalt(void){ puts("[halt]"); }
-int krtc(int *h,int *m){ *h=15; *m=45; return 0; }   /* 15:45 UTC -> 10:45 en UTC-5 */
+int krtc(int *h,int *m){*h=15;*m=45;return 0;}
+int krtc_full(int *y,int *mo,int *d,int *h,int *m){
+    *y=2026;*mo=11;*d=14;*h=15;*m=45;return 0;
+}
 uint32_t kram_kb(void){ return 262144; }
 /* ---- red simulada para la interfaz: http_get "descarga" tras unos cuadros ---- */
 #include "../kernel/net.h"
@@ -80,6 +83,11 @@ static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) 
 int main(void){
     fb=calloc(W*H,4);
     if(gui_init(fb,W,H,W*4)){ puts("gui_init fallo"); return 1; }
+    { T+=101;gui_frame();
+      if(clk_y!=2026||clk_mon!=11||clk_d!=14||clk_h!=10||clk_m!=45){
+          puts("FALLO fecha Lima convertida desde UTC");return 1;
+      }
+    }
     { FsNode *m=fs_resolve(fs_root(),"/Musica");FsNode *f=m?fs_find(m,"Prueba-de-audio-16bits.wav"):0;
       if(!f||f->size!=88244||memcmp(f->data,"RIFF",4)||memcmp(f->data+8,"WAVE",4)){
           puts("FALLO archivo WAV PCM 16-bit de prueba");return 1;

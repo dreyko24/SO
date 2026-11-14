@@ -904,6 +904,37 @@ int krtc(int *h,int *m){
     *h=hh%24; *m=mm%60; return 0;
 }
 
+/* Fecha UTC estable del RTC: leer el segundo dos veces para evitar
+ * una fecha mezclada durante el cambio de minuto o medianoche. */
+int krtc_full(int *year,int *month,int *day,int *hour,int *minute){
+    if(!year||!month||!day||!hour||!minute)return -1;
+    for(int attempt=0;attempt<5;attempt++){
+        int poll=0;while((cmos(0x0A)&0x80)&&++poll<10000);
+        if(poll>=10000)continue;
+        uint8_t s0=cmos(0),mi=cmos(2),hr=cmos(4),dd=cmos(7);
+        uint8_t mo=cmos(8),yy=cmos(9),cent=cmos(0x32),status=cmos(0x0B);
+        uint8_t s1=cmos(0);
+        if(s0!=s1||(cmos(0x0A)&0x80))continue;
+        int bcd=!(status&4),pm=hr&0x80;
+        if(bcd){
+            mi=(uint8_t)((mi>>4)*10+(mi&15));
+            dd=(uint8_t)((dd>>4)*10+(dd&15));
+            mo=(uint8_t)((mo>>4)*10+(mo&15));
+            yy=(uint8_t)((yy>>4)*10+(yy&15));
+            cent=(uint8_t)((cent>>4)*10+(cent&15));
+        }
+        hr&=0x7f;
+        if(bcd)hr=(uint8_t)((hr>>4)*10+(hr&15));
+        if(!(status&2)){hr%=12;if(pm)hr+=12;}
+        int y=(cent>=19&&cent<=30?cent*100:(yy>=70?1900:2000))+yy;
+        if(y<1970||y>9999||mo<1||mo>12||hr>23||mi>59||
+           dd<1||dd>31)return -1;
+        *year=y;*month=mo;*day=dd;*hour=hr;*minute=mi;
+        return 0;
+    }
+    return -1;
+}
+
 void kmain(uint32_t magic, struct mb_info *mi){
     serial_init(); clear();
     uint32_t fb_addr=0,fb_pitch=0,fb_w=0,fb_h=0,fb_ok=0;                  /* se copia ya: la estructura Multiboot puede ser pisada despues */

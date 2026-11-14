@@ -16,6 +16,7 @@
 #include "media_demo.h"
 #include "ui_locale.h"
 #include "encyclopedia.h"
+#include "clock_calendar.h"
 
 enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA };
 #define SGW 20
@@ -107,7 +108,8 @@ extern const unsigned char vortex_demo_png_start[],vortex_demo_png_end[];
 static void cfg_set(const char *key,const char *val);
 static int cfg_get(const char *key,char *val,int max);
 static int set_tab, fmt_confirm; static uint32_t *fb_front; static int fb_bpp0=32;
-static int clk_h=12, clk_m=0; static uint32_t clk_next;
+static int clk_h=12,clk_m=0,clk_y=0,clk_mon=0,clk_d=0;
+static uint32_t clk_next;
 /* Naranja Ubuntu + berenjena GNOME; la marca y el compositor siguen siendo Vortex. */
 static const uint32_t ACC[6]={0xe95420,0x77216f,0x9141ac,0x26a269,0x3584e4,0xf6a800};
 #define ACCENT ACC[acc_i]
@@ -1951,10 +1953,18 @@ static void draw_window(int wi,int focused){
                 rrect(tx2,ty,96,60,5,0x000000,255);
                 { uint32_t *th=get_thumb(i); if(th) for(int yy=2;yy<58;yy++) for(int xx=2;xx<94;xx++) px_blend(tx2+xx,ty+yy,th[yy*THW+xx],255); } }
             text(cx+20,oy+180,wall_i==-1?"Fondo personalizado activo":"Clic derecho en una imagen > Usar de fondo",C_DIM);
-            text_bold(cx+20,oy+192,"Hora",C_TXT);
+            text_bold(cx+20,oy+192,"Fecha y hora",C_TXT);
             button(cx+20,oy+218,28,24,"-",0); button(cx+56,oy+218,28,24,"+",0);
-            { char b[40]="Zona horaria: UTC"; if(tz>=0) cat(b,40,"+"); cat_int(b,40,tz); text(cx+98,oy+222,b,C_TXT); }
+            { char b[62]="Zona horaria: UTC"; if(tz>=0) cat(b,62,"+"); cat_int(b,62,tz);
+              if(tz==-5)cat(b,62,"  (America/Lima)");
+              text(cx+98,oy+222,b,C_TXT); }
             button(cx+20,oy+252,190,24,show24?"Reloj de 24 horas: si":"Reloj de 24 horas: no",0);
+            { char date[60]="Fecha local: ";
+              cat_int(date,sizeof date,clk_d);cat(date,sizeof date,"/");
+              cat_int(date,sizeof date,clk_mon);cat(date,sizeof date,"/");
+              cat_int(date,sizeof date,clk_y);
+              text(cx+224,oy+256,date,C_DIM);
+            }
             text_bold(cx+20,oy+296,"Teclado",C_TXT);
             for(int i=0;i<3;i++) button(cx+20+i*150,oy+322,140,26,kbd_layout_name(i),kbd_layout()==i);
             text(cx+20,oy+354,"Tambien: escribe  teclado latam | es | us  en la terminal",C_DIM);
@@ -2067,7 +2077,15 @@ static void draw_topbar(void){
         text(x+6,6,label,C_TXT);n++;
       }
     }
-    char t[16]="";int h=clk_h;
+    char t[40]="";
+    if(clk_d>=1&&clk_mon>=1){
+        static const char *const mon_es[]={"ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"};
+        static const char *const mon_en[]={"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+        cat_int(t,sizeof t,clk_d);cat(t,sizeof t," ");
+        cat(t,sizeof t,ui_lang==1?mon_en[clk_mon-1]:mon_es[clk_mon-1]);
+        cat(t,sizeof t,"  ");
+    }
+    int h=clk_h;
     if(!show24){int am=h>=12;h=h%12;if(!h)h=12;
         if(h<10)cat(t,16," ");cat_int(t,16,h);cat(t,16,":");
         if(clk_m<10)cat(t,16,"0");cat_int(t,16,clk_m);cat(t,16,am?" PM":" AM");
@@ -2592,7 +2610,19 @@ static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==
 void gui_frame(void){
     uint32_t t=kticks();
     browser_poll();
-    if(t>=clk_next){ int h,m; clk_next=t+100; if(!krtc(&h,&m)){ h=((h+tz)%24+24)%24; if(h!=clk_h||m!=clk_m){ clk_h=h; clk_m=m; dmark(0,0,gw,BARH); dmark(gw-240,BARH,240,230); } } }
+    if(t>=clk_next){
+        int y,mo,d,h,m;clk_next=t+100;
+        if(!krtc_full(&y,&mo,&d,&h,&m)){
+            VortexCalendar local;
+            if(!vortex_calendar_shift(y,mo,d,h,m,tz,&local) &&
+              (local.year!=clk_y||local.month!=clk_mon||local.day!=clk_d||
+               local.hour!=clk_h||local.minute!=clk_m)){
+                clk_y=local.year;clk_mon=local.month;clk_d=local.day;
+                clk_h=local.hour;clk_m=local.minute;
+                dmark(0,0,gw,BARH);dmark(gw-240,BARH,240,230);
+            }
+        }
+    }
     { int top=win_top(); static int ph; if(top>=0){ Win *tw=&wins[top];
         if(tw->type==A_TERM||tw->type==A_NOTES||(tw->type==A_BROWSER&&tw->editing)){ int p=(t/50)&1; if(p!=ph){ ph=p; dwin(tw); } } } }
     { static uint32_t nm; if(t>=nm){ nm=t+100; for(int i=0;i<nord;i++) if(wins[order[i]].type==A_MONITOR) dwin(&wins[order[i]]); } }
@@ -3278,6 +3308,12 @@ void gui_key(int c){
 void gui_storage_ready(void){
     (void)vortexfs_mount(); fs_track=1;
     { char theme[16];if(cfg_get("tema",theme,sizeof theme))light_theme=!k_strcmp(theme,"claro"); }
+    { char zone[12];if(cfg_get("zona_horaria",zone,sizeof zone)){
+        int sign=1,val=0;const char *q=zone;
+        if(*q=='-'){sign=-1;q++;}else if(*q=='+')q++;
+        for(;*q>='0'&&*q<='9';q++)val=val*10+(*q-'0');
+        if(!*q&&val<=14&&sign*val>=-12)tz=sign*val;
+      } }
     { char loc[16];if(cfg_get("idioma",loc,sizeof loc)){
         if(!k_strcmp(loc,"en"))ui_lang=1;
         else if(!k_strcmp(loc,"qu"))ui_lang=2;
