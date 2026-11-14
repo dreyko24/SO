@@ -35,7 +35,7 @@ if [ -f build/debian.cpio.gz ]; then
   DEBIAN=1
 else DEBIAN=0; echo "[aviso] sin Debian (para incluirlo:  VORTEX_DEBIAN=1 bash tools/build-iso.sh )."; fi
 python3 tools/check-mb.py build/iso/boot/*.elf
-# Menu de arranque: los 4 modos (64/32 bits, grafico/texto) siempre; con Debian, ademas las entradas con Debian.
+# Menú de la ISO única: exactamente 64 bits gráfico y 32 bits gráfico.
 # Resolucion: primero 1920x1080 y, si la tarjeta no la tiene, la siguiente de la lista. En UEFI se usa la del firmware.
 VIDEO='if [ "$grub_platform" = efi ]; then set gfxpayload=keep; elif [ -n "$vortex_res" ]; then set gfxpayload=$vortex_res; else set gfxpayload=1920x1080x32,1600x900x32,1366x768x32,1280x1024x32,1280x720x32,1024x768x32,800x600x32,1920x1080x24,1366x768x24,1280x1024x24,1024x768x24,800x600x24; fi'
 TEXTO='set gfxpayload=text'
@@ -49,23 +49,19 @@ entrada(){ # titulo kernel modulos video
   echo 'set default=0'
   echo 'insmod all_video'
   echo 'insmod gzio'
+  # Una sola ISO: el usuario escoge el kernel gráfico de 64 o 32 bits.
+  # La capa Debian (si está presente) se carga solo en modo 64 bits.
   if [ "$DEBIAN" = 1 ]; then
-    entrada "Vortex OS - 64 bits con Debian (grafico)" vortex-kernel64.elf "$DEB" "$VIDEO"
-    entrada "Vortex OS - 64 bits con Debian (modo texto)" vortex-kernel64-text.elf "$DEB" "$TEXTO"
+    entrada "Vortex OS - 64 bits (grafico)" vortex-kernel64.elf "$DEB" "$VIDEO"
+  else
+    entrada "Vortex OS - 64 bits (grafico)" vortex-kernel64.elf "$R64" "$VIDEO"
   fi
-  entrada "Vortex OS - 64 bits (grafico)" vortex-kernel64.elf "$R64" "$VIDEO"
   entrada "Vortex OS - 32 bits (grafico)" vortex-kernel.elf "" "$VIDEO"
-  entrada "Vortex OS - 64 bits (modo texto)" vortex-kernel64-text.elf "$R64" "$TEXTO"
-  entrada "Vortex OS - 32 bits (modo texto)" vortex-kernel-text.elf "" "$TEXTO"
-  echo 'submenu "Resolucion de pantalla (elige una y vuelve al menu)" {'
-  for r in 1920x1080x32 1600x900x32 1366x768x32 1280x1024x32 1280x720x32 1024x768x32 800x600x32; do
-    printf '  menuentry "%s" { set vortex_res=%s; export vortex_res; configfile /boot/grub/grub.cfg }\n' "$r" "$r"
-  done
-  echo '}'
-  echo 'menuentry "Apagar" { halt }'
 } > build/iso/boot/grub/grub.cfg
+# La ISO de evaluación no modifica el disco. Para activar el instalador
+# experimental (tercera entrada) se requiere VORTEX_INSTALADOR=1 explícito.
 # Instalador: imagen de disco arrancable (MBR + GRUB BIOS/UEFI + FAT32) que vortex copia al disco duro de la PC.
-if [ "$VORTEX_SIN_INSTALADOR" != 1 ] && bash tools/mkdisk.sh; then
+if [ "$VORTEX_INSTALADOR" = 1 ] && bash tools/mkdisk.sh; then
   DEBIAN=$DEBIAN python3 - <<'PY'
 import os
 p='build/iso/boot/grub/grub.cfg'; s=open(p).read()
@@ -80,7 +76,7 @@ i=s.index("menuentry"); s=s[:i]+e+s[i:]
 open(p,'w').write(s)
 PY
   echo "[iso] con instalador en el disco duro"
-else echo "[aviso] ISO sin instalador (falta sudo/losetup/dosfstools o VORTEX_SIN_INSTALADOR=1)"; rm -f build/iso/boot/disco.img.gz; fi
+else echo "[iso] imagen para VM: sin instalador peligroso (opcional VORTEX_INSTALADOR=1)"; rm -f build/iso/boot/disco.img.gz; fi
 # ISO hibrida: arranca con BIOS/Legacy y, si esta instalado grub-efi-amd64-bin, tambien en PCs solo UEFI.
 # (En UEFI sin "CSM/Legacy" algunos PC no emulan teclado/raton PS/2: si no responden, activa Legacy/CSM en la BIOS.)
 if [ -d /usr/lib/grub/x86_64-efi ]; then
