@@ -184,12 +184,14 @@ int main(void){
     dock(0);
     if(!appmenu_open){puts("FALLO menu Aplicaciones del dock");return 1;}
     shot("22_menu_aplicaciones");
-    { int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    { int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+      appmenu_cat=MC_ALL;
       int target=-1;
       for(int i=0;i<APPMENU_N;i++)
         if(!strcmp(APPMENU[i].label,"LibreOffice")){target=i;break;}
       if(target<0){puts("FALLO LibreOffice ausente del menu");return 1;}
-      int px=bx+40,py=by-APPMENU_N*28-42+28+target*28+14;
+      int cw=(w-177)/4,rh=(h-87)/4;
+      int px=x+156+(target%4)*cw+cw/2,py=y+77+(target/4)*rh+rh/2;
       click(px,py);
       if(nord<1||wins[win_top()].type!=A_OFFICE){
           puts("FALLO abrir LibreOffice desde Aplicaciones");return 1;}
@@ -197,6 +199,28 @@ int main(void){
       puts("VORTEX APPS Y LIBREOFFICE GUI OK");
     }
     closeall();
+    dock(0); if(!appmenu_open){puts("FALLO launcher cerrado");return 1;}
+    { int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+      click(x+48,y+76+MC_MULTIMEDIA*42+16);
+      if(appmenu_cat!=MC_MULTIMEDIA||!appmenu_open){puts("FALLO categoria multimedia");return 1;}
+      shot("24_launcher_categorias");
+      int n=appmenu_index(0);
+      if(n<0||APPMENU[n].app!=A_MEDIA){puts("FALLO apps multimedia");return 1;}
+      click(x+156+(w-177)/8,y+77+(h-87)/8);
+      if(nord<1||wins[win_top()].type!=A_MEDIA){puts("FALLO lanzar galeria desde categoria");return 1;}
+      closeall();
+      puts("VORTEX LAUNCHER CATEGORIAS OK");
+    }
+    click(W-26,14);
+    if(!power_menu_open){puts("FALLO menu energia");return 1;}
+    shot("25_menu_energia");
+    click(W-128,BARH+18+48+22);
+    if(!power_sleep){puts("FALLO suspender pantalla");return 1;}
+    shot("26_reposo_pantalla");
+    click(W/2,H/2);
+    if(power_sleep){puts("FALLO reanudar pantalla");return 1;}
+    shot("27_reanudado");
+    puts("VORTEX ENERGIA Y REPOSO OK");
     /* escritorio lleno */
     dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
