@@ -33,6 +33,20 @@ Capturas de la interfaz: carpeta `docs/` (generadas con el mismo código de la i
 
 Estos avances **no implican** compatibilidad universal con memorias USB de PCs modernas, con todos los formatos multimedia, ni ejecucion grafica de LibreOffice verificada en hardware fisico. Consulta `docs/AUDITORIA_FUNCIONAL_VORTEX.md`.
 
+## Vortex Flow — nueva base visual y de rendimiento
+
+La apariencia anterior y la lentitud percibida en VMware exigian intervenir la **interfaz y el compositor**, no agregar mas aplicaciones sobre el mismo entorno. Los cambios en `kernel/gui.c` y `kernel/gfx.c` incluyen:
+
+- Escritorio redistribuido en cuadricula, tarjetas de acciones reales para Archivos, Galeria y Monitor, logotipo suavizado.
+- Busqueda en el lanzador: escribe el nombre de una aplicacion y pulsa **Enter**; las categorias siguen funcionando con el raton.
+- Tipografia antialias con ancho proporcional en la interfaz (la terminal conserva columnas fijas); superficies mas sencillas y menos transparencias costosas.
+- Compositor con **regiones danadas independientes** (hasta 12), sin repintar toda la pantalla por cada clic, sombra de ventanas reducida y cursor separado del repintado.
+- USB sin busquedas caras cada pocos segundos cuando no hay nada conectado a un puerto UHCI y raton sin escritura bloqueante de diagnostico al puerto serie en uso habitual.
+
+**Medicion reproducible:** la prueba del lanzador a 1024×768 proceso 521.454 pixeles en comparacion con 786.432 pixeles del cuadro entero. Esta es una medida de trabajo de composicion, **no FPS de VMware ni garantia de rapidez en una GPU real**. El banco host registra tiempo de arrastre de ventanas. Ver [arquitectura grafica, medidas y limitaciones](docs/ARQUITECTURA_GRAFICA.md).
+
+El compositor sigue siendo por software y **todavia no existe controlador grafico acelerado VMware SVGA ni codecs de video actuales**. Para lograr fluidez y experiencia a nivel de sistemas comerciales esas piezas siguen siendo trabajo real pendiente, no una funcion declarada completa.
+
 ## Una sola ISO para 32 y 64 bits graficos
 
 La ISO unica publicada como `VortexOS.iso` contiene **solamente dos entradas en GRUB**: `Vortex OS - 64 bits (grafico)` y `Vortex OS - 32 bits (grafico)`. La ISO de GitHub Releases incluye Debian 12 para el modo de 64 bits; LibreOffice se instala despues. La misma imagen permite usar ambos kernels propios, sin instalar el SO en un disco. Documentacion para VMware: [docs/VMWARE.md](docs/VMWARE.md).
