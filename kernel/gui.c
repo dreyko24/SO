@@ -318,6 +318,7 @@ static void wallpaper_default(int i){
     build_wall();dirty=1;
 }
 /* ---------------- ventanas ---------------- */
+static void dock_damage(void); /* invalida dock lateral, no el antiguo borde inferior */
 static int win_top(void){
     for(int k=nord-1;k>=0;k--){Win *w=&wins[order[k]];
         if(w->used&&!w->minimized&&w->workspace==active_workspace)return order[k];}
@@ -381,7 +382,7 @@ static void win_close(int wi){
     if((wins[wi].type==A_AUDIO||wins[wi].type==A_VIDEO)&&wins[wi].file)fs_node_unref(wins[wi].file);
     vimage_release(&wins[wi].picture);
     nord--; wins[wi].used=0;
-    dmark(0,gh-108,gw,108);
+    dock_damage();
 }
 static void set_title(Win *w,const char *t){ k_strcpy(w->title,t,sizeof w->title); }
 static void crect(Win *w,int *x,int *y,int *cw,int *ch){
@@ -553,7 +554,7 @@ static Win *open_app(int type){
     if(w->x+w->w>gw) w->x=k_max(0,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
     order[nord++]=wi;
-    dwin(w); dmark(0,gh-108,gw,108);
+    dwin(w); dock_damage();
     if(type==A_BROWSER)nav(w,"vortex://inicio",0);
     if(type==A_ENCARTA)enc_progress_load(w);
     return w;
@@ -1377,7 +1378,7 @@ static void win_drag_resize(Win *w,int px,int py){
     if(resize_edges&RE_TOP)t=k_max(BARH,k_min(b-minh,resize_y+dy));
     if(resize_edges&RE_BOTTOM)b=k_min(gh,k_max(t+minh,resize_y+resize_h+dy));
     if(l==w->x&&t==w->y&&r-l==w->w&&b-t==w->h)return;
-    dwin(w);w->x=l;w->y=t;w->w=r-l;w->h=b-t;dwin(w);
+    dwin(w);w->x=l;w->y=t;w->w=r-l;w->h=b-t;dwin(w);dock_damage();
 }
 /* El dock ocupa una reserva lateral al maximizar; nunca cubre la app. */
 static int desktop_work_x(void){
@@ -2351,6 +2352,11 @@ static void dock_geom(int *bx,int *by,int *bw,int *bh){
     *bx=DASH_LEFT;*by=BARH+(gh-BARH-*bh)/2;
     if(*by<BARH+6)*by=BARH+6;
 }
+static void dock_damage(void){
+    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
+    /* Incluye el globo contextual a la derecha del dock. */
+    dmark(bx-10,by-42,bw+235,bh+55);
+}
 static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
 static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
@@ -3269,8 +3275,7 @@ static void mouse_set(int x,int y,int b){
             for(int k=0;k<3;k++) if((b^omb)&bit[k]){ kinput_event(1,code[k],(b&bit[k])?1:0); kinput_event(0,0,0); } } } }
     int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){
         hover=d;
-        int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-        dmark(bx-10,by-40,bw+20,bh+52);
+        dock_damage();
     }
     if(resize_win>=0){
         if(b&1)win_drag_resize(&wins[resize_win],mx,my);
