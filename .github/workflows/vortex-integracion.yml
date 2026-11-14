@@ -32,7 +32,7 @@ jobs:
           sh -n tools/mkdebian.sh
       - name: Gestor real de ventanas, dock y pantalla completa
         run: |
-          gcc -std=gnu11 -O1 -g -w -fsanitize=address,undefined -fno-omit-frame-pointer tools/window_state_test.c -o /tmp/vortex-window-test
+          gcc -std=gnu11 -O1 -g -w -fsanitize=address,undefined -fno-omit-frame-pointer tools/window_state_test.c kernel/zip.c -o /tmp/vortex-window-test
           ASAN_OPTIONS=detect_leaks=0 /tmp/vortex-window-test
       - name: Fecha y zona horaria America/Lima
         run: |
