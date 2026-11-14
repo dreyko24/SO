@@ -2351,7 +2351,11 @@ static void mouse_set(int x,int y,int b){
         if(released){ if(fd_on) fm_drop(); fd_cand=0; fd_on=0; fd_gx=-1000; dirty=1; }
     }
     if(mu_open){ int h=mu_item_at(mx,my); if(h!=mu_hover){ mu_hover=h; dmark(mu_x-6,mu_y-6,mu_w+12,mu_h+12); } }
-    if(pressed||rpressed){ char d[48]="[raton] "; cat_int(d,48,mx); cat(d,48,","); cat_int(d,48,my); cat(d,48,pressed?" izq\n":" der\n"); kserial_puts(d); }   /* para las pruebas automaticas */
+#ifdef VORTEX_TRACE_MOUSE
+    /* El UART es lento en una VM; no bloquear la respuesta al clic
+     * enviando decenas de caracteres por serie en compilaciones normales. */
+    if(pressed||rpressed){ char d[48]="[raton] "; cat_int(d,48,mx); cat(d,48,","); cat_int(d,48,my); cat(d,48,pressed?" izq\n":" der\n"); kserial_puts(d); }
+#endif
     if(pressed) on_press();
     if(rpressed) on_rpress();
 }
