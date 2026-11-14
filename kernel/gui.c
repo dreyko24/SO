@@ -1845,11 +1845,22 @@ static void power_menu_draw(void){
 
 static int ddrag=-1, ddx, ddy, dmoved, dlast=-1; static uint32_t dlastt;
 static void dobj_init(void){
+    /* Escritorio Flow: cuadricula de acceso rapido, no columna interminable
+     * de iconos. Se conserva doble clic, arrastre y persistencia. */
     static const int ik[4]={1,2,4,6};
-    for(int i=0;i<4;i++){ dobj[i].kind=ik[i]; dobj[i].w=76; dobj[i].h=84; dobj[i].x=22; dobj[i].y=BARH+18+i*96; }
-    dobj[4].kind=100; dobj[4].w=210; dobj[4].h=92; dobj[4].x=gw-232; dobj[4].y=BARH+18;
-    dobj[5].kind=101; dobj[5].w=210; dobj[5].h=108; dobj[5].x=gw-232; dobj[5].y=BARH+124;
-    for(int i=6;i<NDO;i++) dobj[i].kind=-1;
+    for(int i=0;i<4;i++){
+        dobj[i].kind=ik[i];dobj[i].w=86;dobj[i].h=92;
+        dobj[i].x=24+(i%2)*102;dobj[i].y=BARH+93+(i/2)*115;
+    }
+    dobj[4].kind=100;dobj[4].w=220;dobj[4].h=104;dobj[4].x=gw-242;dobj[4].y=BARH+25;
+    dobj[5].kind=101;dobj[5].w=220;dobj[5].h=114;dobj[5].x=gw-242;dobj[5].y=BARH+141;
+    for(int i=6;i<NDO;i++)dobj[i].kind=-1;
+}
+static void home_header(void){
+    if(wall_i<0)return;/* fondo personal: mantener visible la fotografia */
+    fill(27,BARH+49,3,24,ACCENT,220);
+    text_big(43,BARH+45,"Escritorio",0xf5f8ff);
+    text_ui(43,BARH+76,"Tus accesos frecuentes",0xa5b5ce);
 }
 static void draw_dobj(const DObj *o){
     if(o->kind==200){
@@ -1869,17 +1880,26 @@ static void draw_dobj(const DObj *o){
         return;
     }
     if(o->kind>=0 && o->kind<8){
-        draw_icon(o->kind,o->x+12,o->y);
-        int lw=text_ui_w(DOCK_LBL[o->kind]); rrect(o->x+o->w/2-lw/2-5,o->y+TILE+6,lw+10,20,6,0x0b1428,185);
-        text_ui(o->x+o->w/2-lw/2,o->y+TILE+8,DOCK_LBL[o->kind],0xffffff);
+        rrect(o->x-4,o->y-3,o->w+8,o->h+7,15,0x0e1b2e,180);
+        rrect(o->x-3,o->y-2,o->w+6,o->h+5,14,0xffffff,11);
+        draw_icon(o->kind,o->x+(o->w-TILE)/2,o->y+3);
+        int lw=text_ui_w(DOCK_LBL[o->kind]);
+        text_ui(o->x+(o->w-lw)/2,o->y+TILE+14,DOCK_LBL[o->kind],0xf2f6ff);
     } else if(o->kind==100){
-        rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
-        char t[16]=""; int h=clk_h; if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m);
-        { int tw=k_strlen(t)*12; text_big(o->x+(o->w-tw)/2,o->y+22,t,0xffffff); text_big(o->x+(o->w-tw)/2+1,o->y+22,t,0xffffff); }
-        { char z[40]="Zona horaria UTC"; if(tz>=0) cat(z,40,"+"); cat_int(z,40,tz); text(o->x+(o->w-text_w(z))/2,o->y+62,z,C_DIM); }
+        rrect(o->x,o->y,o->w,o->h,16,0x0c182c,238);
+        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,0x21304b,231);
+        fill(o->x+14,o->y+13,3,22,ACCENT,240);
+        text_ui_bold(o->x+26,o->y+14,"Acceso rapido",0xf7f9ff);
+        text_ui(o->x+16,o->y+40,"Tu espacio, a un clic",0xb6c5dd);
+        rrect(o->x+12,o->y+66,92,28,8,0x3b4772,255);
+        rrect(o->x+115,o->y+66,93,28,8,0x594989,255);
+        text_ui_bold(o->x+28,o->y+72,"Archivos",0xffffff);
+        text_ui_bold(o->x+136,o->y+72,"Galeria",0xffffff);
     } else if(o->kind==101){
-        rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
-        text_ui_bold(o->x+14,o->y+10,"Sistema",0xffffff);
+        rrect(o->x,o->y,o->w,o->h,16,0x0c182c,238);
+        rrect(o->x+1,o->y+1,o->w-2,o->h-2,15,0x21304b,231);
+        fill(o->x+14,o->y+13,3,22,0x29cbb0,240);
+        text_ui_bold(o->x+26,o->y+14,"Sistema",0xffffff);
         char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text_ui(o->x+14,o->y+34,b,C_TXT);
         b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text_ui(o->x+14,o->y+54,b,C_TXT);
         b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text_ui(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
@@ -1963,6 +1983,7 @@ static void render_region(int x0,int y0,int x1,int y1){
         clip_base(0,0,gw,gh);return;
     }
     for(int j=y0;j<y1;j++)memcpy(bb+j*gw+x0,wall+j*gw+x0,(size_t)rw*4);
+    home_header();
     for(int i=0;i<NDO;i++)if(dobj[i].kind>=0&&rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh))draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
@@ -2308,8 +2329,14 @@ static void mouse_set(int x,int y,int b){
                  if(nx!=o->x||ny!=o->y){ dmark(o->x-6,o->y-6,o->w+12,o->h+12); o->x=nx; o->y=ny; dmark(o->x-6,o->y-6,o->w+12,o->h+12); dmoved=1; } }
         if(released){ int i=ddrag; ddrag=-1;
             if(dmoved && o->kind==200) dsk_drop(i);
+            if(!dmoved && (o->kind==100||o->kind==101)){
+                if(o->kind==101)open_app(A_MONITOR);
+                else if(mx<o->x+o->w/2)open_app(A_FILES);
+                else {Win *v=open_app(A_MEDIA);if(v){v->media_tab=0;dwin(v);}}
+                dlast=-1;
+            }
             if(!dmoved && ((o->kind>=0 && o->kind<8)||o->kind==200)){ uint32_t t=kticks();
-                if(dlast==i && t-dlastt<50){ if(o->kind==200) dsk_open(i); else open_app(DOCK_APP[o->kind]); dirty=1; dlast=-1; } else { dlast=i; dlastt=t; } } }
+                if(dlast==i && t-dlastt<50){ if(o->kind==200) dsk_open(i); else open_app(DOCK_APP[o->kind]); dlast=-1; } else { dlast=i; dlastt=t; } } }
     }
     if(fd_cand){                                                    /* arrastrar un archivo desde el gestor */
         if(b&1){
