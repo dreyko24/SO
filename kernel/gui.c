@@ -1115,6 +1115,7 @@ static int set_resolution(int w,int h){
 }
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
+    if(!w->fullscreen){
     { int X0=x-8,Y0=y-6,X1=x+w->w+8,Y1=y+w->h+14;                                     /* sombra suave, solo fuera de la ventana */
       for(int bnd=0;bnd<4;bnd++){
           if(bnd==0) clip_set(X0,Y0,X1-X0,y-Y0); else if(bnd==1) clip_set(X0,y+w->h,X1-X0,Y1-(y+w->h));
@@ -1133,6 +1134,15 @@ static void draw_window(int wi,int focused){
     circle(x+w->w-20,y+TB/2,7,focused?0xe5534b:0x4a4d63,255);                     /* boton cerrar */
     line(x+w->w-23,y+TB/2-3,x+w->w-17,y+TB/2+3,1,0xffffff,focused?255:120);
     line(x+w->w-17,y+TB/2-3,x+w->w-23,y+TB/2+3,1,0xffffff,focused?255:120);
+    circle(x+w->w-44,y+TB/2,7,focused?0x42b983:0x4a4d63,255);
+    rrect(x+w->w-47,y+TB/2-3,6,6,1,0xffffff,focused?255:130);
+    circle(x+w->w-68,y+TB/2,7,focused?0xe3b341:0x4a4d63,255);
+    fill(x+w->w-71,y+TB/2+2,6,1,0xffffff,255);
+    circle(x+w->w-92,y+TB/2,7,focused?ACCENT:0x4a4d63,255);
+    line(x+w->w-95,y+TB/2-3,x+w->w-89,y+TB/2-3,1,0xffffff,255);
+    line(x+w->w-95,y+TB/2-3,x+w->w-95,y+TB/2+3,1,0xffffff,255);
+    line(x+w->w-89,y+TB/2+3,x+w->w-89,y+TB/2-3,1,0xffffff,255);
+    } /* marco de ventana normal */
 
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
     clip_set(cx,cy,cw,ch);
@@ -1358,8 +1368,8 @@ static void draw_window(int wi,int focused){
         break; }
     }
     clip_reset();
-    { int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-40,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+    if(!w->fullscreen){ int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
+      clip_set(x+1,y+1,w->w-116,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
 /* ---------------- barra superior y dock ---------------- */
@@ -1376,9 +1386,19 @@ static void draw_topbar(void){
 }
 #define NDOCK 10
 #define TILE 52
-static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
-static const int DOCK_APP[NDOCK]={A_ABOUT,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
-static const char *DOCK_LBL[NDOCK]={"Inicio","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static int dock_cols(void){ return gh<620?2:1; }
+static int dock_gap(void){ int rows=(NDOCK+dock_cols()-1)/dock_cols(); int g=(gh-BARH-24-rows*TILE)/(rows+1); return k_max(2,k_min(12,g)); }
+static void dock_geom(int *bx,int *by,int *bw,int *bh){
+    int cols=dock_cols(), rows=(NDOCK+cols-1)/cols;
+    *bw=cols*TILE+(cols+1)*8; *bh=rows*TILE+(rows+1)*dock_gap();
+    *bx=8; *by=BARH+8;
+}
+static void dock_icon_pos(int i,int *x,int *y){
+    int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); (void)bw; (void)bh;
+    *x=bx+8+(i%dock_cols())*(TILE+8); *y=by+dock_gap()+(i/dock_cols())*(TILE+dock_gap());
+}
+static const int DOCK_APP[NDOCK]={A_PROGS,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_SABER};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Vortex Saber"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0x1a1d33,255);
     clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
@@ -1403,19 +1423,26 @@ static void draw_icon(int i,int x,int y){
     case 7:{ static const short C8[8]={1000,707,0,-707,-1000,-707,0,707}, S8[8]={0,707,1000,707,0,-707,-1000,-707};
             for(int k=0;k<8;k++) circle(cx+17*C8[k]/1000,cy+17*S8[k]/1000,4,0x14b8a6,255);
             circle(cx,cy,15,0x14b8a6,255); circle(cx,cy,6,0x1a1d33,255); break; }
-    case 9: rrect(x+9,y+9,15,15,4,0xf97316,255); rrect(x+28,y+9,15,15,4,0x60a5fa,255); rrect(x+9,y+28,15,15,4,0x4ade80,255); rrect(x+28,y+28,15,15,4,0xe9c46a,255); break;
+    case 9: rrect(x+11,y+10,14,30,3,0x60a5fa,255); rrect(x+27,y+10,14,30,3,0x14b8a6,255); fill(x+25,y+13,2,27,0xffffff,230); fill(x+14,y+16,7,2,0xffffff,190); fill(x+30,y+16,7,2,0xffffff,190); break;
     case 8: rrect(x+9,y+10,34,32,5,0x0d0e16,255); fill(x+14,y+30,5,9,0x4ade80,255); fill(x+23,y+22,5,17,0x60a5fa,255); fill(x+32,y+16,5,23,0xf59e0b,255); break;
     }
 }
 static void draw_dock(void){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    rrect(bx,by,bw,bh,18,0x05060c,150); rrect(bx,by,bw,bh,18,0xffffff,16);
+    rrect(bx,by,bw,bh,18,0x05060c,215); rrect(bx,by,bw,bh,18,0xffffff,16);
+    int top=win_top();
     for(int i=0;i<NDOCK;i++){
-        int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
+        int x,y; dock_icon_pos(i,&x,&y);
         if(hover==i) rrect(x-3,y-3,TILE+6,TILE+6,15,ACCENT,70);
         draw_icon(i,x,y);
-        for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
-        if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
+        for(int k=0;k<nord;k++) if(wins[order[k]].used&&wins[order[k]].type==DOCK_APP[i]){
+            circle(x+TILE/2,y+TILE-4,3,wins[order[k]].minimized?0xfbbf24:0xffffff,255); break;
+        }
+        /* Con una ventana maximizada no mostrar un tooltip encima de su contenido. */
+        if(hover==i&&(top<0||!wins[top].maxed)){
+            int lw=text_w(DOCK_LBL[i])+16, xx=bx+bw+8;
+            rrect(xx,y+14,lw,22,6,0x05060c,230); text(xx+8,y+17,DOCK_LBL[i],0xffffff);
+        }
     }
 }
 
@@ -1538,11 +1565,11 @@ static void render(void){
     for(int i=0;i<NDO;i++) if(dobj[i].kind>=0 && rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh)) draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
         Win *w=&wins[order[k]];
-        if(!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
-        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
-        if(!hidden) draw_window(order[k],k==nord-1);
+        if(w->minimized||!rect_hit(w->x-14,w->y-10,w->w+28,w->h+32,x0,y0,rw,rh)) continue;
+        int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(!o->minimized && rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
+        if(!hidden) draw_window(order[k],order[k]==win_top());
     }
-    draw_topbar(); draw_dock();
+    { int top=win_top(); if(top<0||!wins[top].fullscreen){ draw_topbar(); draw_dock(); } }
     if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
         rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
     mu_draw();
@@ -1569,10 +1596,13 @@ void gui_frame(void){
 /* ---------------- entrada ---------------- */
 static int in_rect(int px,int py,int x,int y,int w,int h){ return px>=x&&px<x+w&&py>=y&&py<y+h; }
 static int dock_hit(int px,int py){
+    int top=win_top(); if(top>=0&&wins[top].fullscreen) return -1;
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
-    if(!in_rect(px,py,bx,by-6,bw,bh+6)) return -1;
-    for(int i=0;i<NDOCK;i++) if(in_rect(px,py,bx+14+i*(TILE+14)-7,by,TILE+14,bh)) return i;
-    return -2;                                                       /* sobre el dock, pero entre iconos */
+    if(!in_rect(px,py,bx,by,bw,bh)) return -1;
+    for(int i=0;i<NDOCK;i++){ int x,y; dock_icon_pos(i,&x,&y);
+        if(in_rect(px,py,x-3,y-3,TILE+6,TILE+6)) return i;
+    }
+    return -2;
 }
 static void files_click(Win *w,int lx,int ly,int cw,int ch){
     int wi=(int)(w-wins);
@@ -1672,18 +1702,20 @@ static void on_press(void){
     int d=dock_hit(mx,my);
     if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
+    { int top=win_top(); if(my<BARH&&(top<0||!wins[top].fullscreen)){ if(mx>gw-48) open_app(A_SETTINGS); return; } }
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
         focus(wi);
-        if(my<w->y+TB){
-            int dx=mx-(w->x+w->w-20), dy=my-(w->y+TB/2);
-            if(dx*dx+dy*dy<=100){ win_close(wi); return; }
+        if(!w->fullscreen&&my<w->y+TB){
+            if(mx>=w->x+w->w-32){ win_close(wi); return; }
+            if(mx>=w->x+w->w-56){ win_toggle_max(w); return; }
+            if(mx>=w->x+w->w-80){ win_minimize(w); return; }
+            if(mx>=w->x+w->w-104){ win_toggle_fullscreen(w); return; }
             { uint32_t t=kticks(); int rs=win_resizable(w);
               if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
               w->tclick=t;
-              if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
+              if(w->maxed){ win_restore(w); w->x=k_max(DOCK_SIDE,mx-w->w/2); dirty=1; }
               drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return; }
         }
         app_click(w,mx-(w->x+1),my-(w->y+TB));
@@ -1723,14 +1755,14 @@ static void mouse_set(int x,int y,int b){
             if(lx!=xw->xlx||ly!=xw->xly){ xw->xlx=lx; xw->xly=ly; kinput_event(3,0,lx); kinput_event(3,1,ly); kinput_event(0,0,0); }
             static const int bit[3]={1,2,4}, code[3]={0x110,0x111,0x112};
             for(int k=0;k<3;k++) if((b^omb)&bit[k]){ kinput_event(1,code[k],(b&bit[k])?1:0); kinput_event(0,0,0); } } } }
-    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; { int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); dmark(bx-10,by-40,bw+20,bh+52); } }
+    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; dirty=1; }
     if(drag>=0){
-        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
+        if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=k_max(DOCK_SIDE,mx-dragdx); w->y=k_max(BARH,my-dragdy); dwin(w); }
         if(released){ Win *w=&wins[drag]; drag=-1;
             if(win_resizable(w)){
-                if(my<=BARH+3){ win_set_max(w,0,BARH,gw,gh-BARH-86); }
-                else if(mx<=3){ win_set_max(w,0,BARH,gw/2,gh-BARH-86); }
-                else if(mx>=gw-4){ win_set_max(w,gw/2,BARH,gw-gw/2,gh-BARH-86); } } }
+                if(my<=BARH+3){ win_set_max(w,DOCK_SIDE,BARH,gw-DOCK_SIDE,gh-BARH); }
+                else if(mx<=3){ win_set_max(w,DOCK_SIDE,BARH,(gw-DOCK_SIDE)/2,gh-BARH); }
+                else if(mx>=gw-4){ int ww=(gw-DOCK_SIDE)/2; win_set_max(w,DOCK_SIDE+ww,BARH,gw-DOCK_SIDE-ww,gh-BARH); } } }
     }
     if(ddrag>=0){
         DObj *o=&dobj[ddrag];
