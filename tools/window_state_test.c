@@ -10,6 +10,12 @@ static int failures;
 int main(void){
     fb=calloc(W*H,sizeof *fb);
     if(!fb || gui_init(fb,W,H,W*4)){ fprintf(stderr,"No se pudo iniciar GUI\n"); return 2; }
+    FsNode *welcome=fs_resolve(fs_root(),"/Documentos/bienvenida.txt");
+    FsNode *version=fs_resolve(fs_root(),"/Sistema/version.txt");
+    CHECK(welcome&&welcome->data&&strstr(welcome->data,"Bienvenido a Vortex OS")!=0,
+          "el sistema de archivos inicial identifica Vortex OS");
+    CHECK(version&&version->data&&strstr(version->data,"Vortex OS")!=0,
+          "la version del sistema identifica Vortex OS");
     Win *files=open_app(A_FILES), *notes=open_app(A_NOTES);
     CHECK(files&&notes&&files!=notes,"dos aplicaciones independientes");
     if(!files||!notes) return 2;
