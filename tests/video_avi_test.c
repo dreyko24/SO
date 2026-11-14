@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../kernel/video.h"
-static void p16(unsigned char *p,unsigned x){p[0]=(u8)x;p[1]=(u8)(x>>8);}
+static void p16(unsigned char *p,unsigned x){p[0]=(unsigned char)x;p[1]=(unsigned char)(x>>8);}
 static void p32(unsigned char *p,uint32_t x){p16(p,x);p16(p+2,x>>16);}
 static void ck(int x,const char *s){if(!x){fprintf(stderr,"AVI FAILED: %s\n",s);exit(1);}}
 static void sample(unsigned char *p,int bits,int top){
