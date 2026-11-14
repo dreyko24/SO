@@ -66,3 +66,17 @@ se envíe como tecla a Linux.
 **Pruebas:** `tools/kbdtest.c` cubre make/break, AltGr, reversa y repetición,
 y `tools/hostgui.c` comprueba tres aplicaciones, el foco, la secuencia y
 la restauración de ventanas minimizadas bajo AddressSanitizer.
+
+## Redimensionamiento de ventanas
+
+Las aplicaciones nativas permiten arrastrar el borde izquierdo/derecho,
+superior/inferior y las cuatro esquinas. El gestor ajusta la geometría al
+espacio visible del monitor y aplica tamaños mínimos específicos de cada
+aplicación para proteger controles importantes. El compositor invalida la
+zona anterior y la nueva, preservando la optimización por regiones dañadas.
+No se habilita el redimensionamiento libre de la superficie X11, que depende
+de una resolución de servidor fija hasta completar su integración.
+
+La prueba de escritorio host arrastra una esquina y dos bordes, verifica
+dimensiones exactas y comprueba que un arrastre fuera de pantalla se limita
+a las dimensiones mínimas y a los bordes válidos del framebuffer.

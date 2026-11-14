@@ -108,6 +108,43 @@ int main(void){
       closeall();
       puts("VORTEX MULTITAREA ALT+TAB, MAYUS Y RESTAURACION OK");
     }
+    /* Redimensionar por esquina, borde izquierdo y superior sin corromper
+     * contenido, sin salirse de la pantalla y sin perder el foco. */
+    {
+      closeall();
+      Win *w=open_app(A_FILES);if(!w){puts("FALLO ventana resize");return 1;}
+      int w0=w->w,h0=w->h;
+      int mx0=w->x+w->w-4,my0=w->y+w->h-4;
+      gui_mouse_abs(mx0,my0,0);gui_frame();
+      gui_mouse_abs(mx0,my0,1);gui_frame();
+      gui_mouse_abs(mx0+75,my0+60,1);gui_frame();
+      gui_mouse_abs(mx0+75,my0+60,0);gui_frame();
+      if(w->w!=w0+75||w->h!=h0+60||resize_win!=-1){puts("FALLO resize esquina");return 1;}
+      shot("34_redimensionar_ventana");
+      mx0=w->x+4;my0=w->y+w->h/2;
+      gui_mouse_abs(mx0,my0,0);gui_frame();
+      gui_mouse_abs(mx0,my0,1);gui_frame();
+      gui_mouse_abs(mx0+40,my0,1);gui_frame();
+      gui_mouse_abs(mx0+40,my0,0);gui_frame();
+      if(w->x!=160||w->w!=w0+35){puts("FALLO resize borde izquierdo");return 1;}
+      mx0=w->x+w->w/2;my0=w->y+3;int old_y=w->y,old_h=w->h;
+      gui_mouse_abs(mx0,my0,0);gui_frame();
+      gui_mouse_abs(mx0,my0,1);gui_frame();
+      gui_mouse_abs(mx0,my0+20,1);gui_frame();
+      gui_mouse_abs(mx0,my0+20,0);gui_frame();
+      if(w->y!=old_y+20||w->h!=old_h-20){puts("FALLO resize borde superior");return 1;}
+      mx0=w->x+w->w-4;my0=w->y+w->h-4;
+      gui_mouse_abs(mx0,my0,0);gui_frame();
+      gui_mouse_abs(mx0,my0,1);gui_frame();
+      gui_mouse_abs(0,0,1);gui_frame();
+      gui_mouse_abs(0,0,0);gui_frame();
+      int minw,minh;win_min_dimensions(w,&minw,&minh);
+      if(w->w<minw||w->h<minh||w->x<0||w->y<BARH||w->x+w->w>W||w->y+w->h>H){
+          puts("FALLO resize limites de pantalla");return 1;
+      }
+      closeall();
+      puts("VORTEX REDIMENSIONAMIENTO BORDES/ESQUINAS Y LIMITES OK");
+    }
     /* Apariencia y traduccion: probar cambios persistidos y menu superior. */
     dock(7);
     { Win *v=&wins[win_top()];

@@ -55,6 +55,10 @@ static int order[MAXW], nord;
 static int switch_active,switch_len,switch_pos,switch_order[MAXW];
 static int xraw_left_alt,xraw_alt_forwarded,xraw_tab_intercept;
 static int mx, my, mb, drag=-1, dragdx, dragdy, hover=-1;
+/* Redimensionamiento: ancla original y bordes activos del gesto. */
+enum { RE_LEFT=1,RE_RIGHT=2,RE_TOP=4,RE_BOTTOM=8 };
+static int resize_win=-1,resize_edges,resize_mx,resize_my;
+static int resize_x,resize_y,resize_w,resize_h;
 static int dirty=1, cursor_dirty=1, cur_x=-100, cur_y=-100;
 /* Regiones danadas independientes. Unificar toda la pantalla por dos iconos
  * distantes costaba varios MB por cada evento; conservar hasta 12 rectangulos. */
@@ -1228,6 +1232,43 @@ static void fm_drop(void){                                          /* se solto 
 }
 
 static int win_resizable(const Win *w){ (void)w;return 1; }
+/* Una pantalla X tiene dimensiones de servidor fijas; no ofrecer resize
+ * libre mientras no exista renegociación de resolución con X11. */
+static int win_free_resize(const Win *w){return w->type!=A_XSCR;}
+static void win_min_dimensions(const Win *w,int *minw,int *minh){
+    int mw=260,mh=190;
+    switch(w->type){
+    case A_SETTINGS: mw=520;mh=560;break;
+    case A_TERM:mw=TW*8+2;mh=TH*16+TB+1;break;
+    case A_CALC:mw=272;mh=TB+1+316;break;
+    case A_SNAKE:mw=SGW*SCELL+2;mh=TB+1+34+SGH*SCELL;break;
+    case A_AUDIO:mw=520;mh=275;break;
+    case A_OFFICE:mw=540;mh=TB+1+500;break;
+    case A_VIDEO:mw=480;mh=340;break;
+    case A_MEDIA:mw=430;mh=320;break;
+    case A_FILES:mw=420;mh=290;break;
+    case A_BROWSER:mw=400;mh=280;break;
+    case A_ABOUT:mw=440;mh=320;break;
+    default:break;
+    }
+    *minw=k_min(mw,gw);
+    *minh=k_min(mh,gh-BARH);
+}
+static void win_drag_resize(Win *w,int px,int py){
+    int l=resize_x,r=resize_x+resize_w,t=resize_y,b=resize_y+resize_h;
+    int dx=px-resize_mx,dy=py-resize_my,minw,minh;
+    win_min_dimensions(w,&minw,&minh);
+    if(resize_edges&RE_LEFT)minw=k_min(minw,r);
+    else minw=k_min(minw,gw-l);
+    if(resize_edges&RE_TOP)minh=k_min(minh,b-BARH);
+    else minh=k_min(minh,gh-t);
+    if(resize_edges&RE_LEFT)l=k_max(0,k_min(r-minw,resize_x+dx));
+    if(resize_edges&RE_RIGHT)r=k_min(gw,k_max(l+minw,resize_x+resize_w+dx));
+    if(resize_edges&RE_TOP)t=k_max(BARH,k_min(b-minh,resize_y+dy));
+    if(resize_edges&RE_BOTTOM)b=k_min(gh,k_max(t+minh,resize_y+resize_h+dy));
+    if(l==w->x&&t==w->y&&r-l==w->w&&b-t==w->h)return;
+    dwin(w);w->x=l;w->y=t;w->w=r-l;w->h=b-t;dwin(w);
+}
 static void win_restore(Win *w){ if(!w->maxed) return; dwin(w); w->x=w->rx; w->y=w->ry; w->w=w->rw; w->h=w->rh; w->maxed=0; dwin(w); }
 static void win_set_max(Win *w,int x,int y,int ww,int hh){
     if(!w->maxed){ w->rx=w->x; w->ry=w->y; w->rw=w->w; w->rh=w->h; }
@@ -1693,6 +1734,11 @@ static void draw_window(int wi,int focused){
         break; }
     }
     clip_reset();
+    if(win_free_resize(w)&&!w->maxed){
+        /* Asa de tres diagonales en la esquina inferior derecha. */
+        for(int i=0;i<3;i++)
+            line(x+w->w-7-i*4,y+w->h-4,x+w->w-4,y+w->h-7-i*4,1,C_DIM,200);
+    }
     { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
       clip_set(x+1,y+1,w->w-110,TB-1); text_ui_bold(tx,y+7,w->title,focused?C_TXT:C_DIM); clip_reset(); }
 }
@@ -2437,11 +2483,25 @@ static void on_press(void){
             if(in_rect(mx,my,w->x+w->w-32,w->y+4,25,23)){win_close(wi);return;}
             if(in_rect(mx,my,w->x+w->w-63,w->y+4,25,23)){win_toggle_max(w);return;}
             if(in_rect(mx,my,w->x+w->w-93,w->y+4,25,23)){win_minimize(w);return;}
-            { uint32_t t=kticks(); int rs=win_resizable(w);
-              if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
-              w->tclick=t;
-              if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
-              drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return; }
+        }
+        if(win_free_resize(w)&&!w->maxed){
+            int edges=0;
+            if(mx<w->x+8)edges|=RE_LEFT;
+            else if(mx>=w->x+w->w-9)edges|=RE_RIGHT;
+            if(my<w->y+7)edges|=RE_TOP;
+            else if(my>=w->y+w->h-9)edges|=RE_BOTTOM;
+            if(edges){
+                resize_win=wi;resize_edges=edges;resize_mx=mx;resize_my=my;
+                resize_x=w->x;resize_y=w->y;resize_w=w->w;resize_h=w->h;
+                return;
+            }
+        }
+        if(my<w->y+TB){
+            uint32_t t=kticks(); int rs=win_resizable(w);
+            if(rs && t-w->tclick<40){ w->tclick=0; win_toggle_max(w); return; }
+            w->tclick=t;
+            if(w->maxed){ win_restore(w); w->x=mx-w->w/2<0?0:mx-w->w/2; dirty=1; }
+            drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return;
         }
         app_click(w,mx-(w->x+1),my-(w->y+TB));
         return;
@@ -2488,6 +2548,11 @@ static void mouse_set(int x,int y,int b){
         hover=d;
         int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
         dmark(bx-10,by-40,bw+20,bh+52);
+    }
+    if(resize_win>=0){
+        if(b&1)win_drag_resize(&wins[resize_win],mx,my);
+        if(released){resize_win=-1;dirty=1;}
+        return;
     }
     if(drag>=0){
         if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
