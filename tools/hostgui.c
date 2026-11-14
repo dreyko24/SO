@@ -66,7 +66,7 @@ static void shot(const char *name){
 static void click(int x,int y){ gui_mouse_abs(x,y,0); gui_frame(); gui_mouse_abs(x,y,1); gui_frame(); gui_mouse_abs(x,y,0); gui_frame(); T+=5; }
 static void dclick(int x,int y){ click(x,y); T+=3; click(x,y); }
 static void typestr(const char *s){ for(;*s;s++){ gui_key(*s=='\\'?'\n':*s); } }
-static void dock(int i){ int bw=9*52+8*14+28, bx=(W-bw)/2, by=H-(52+16)-10; click(bx+14+i*66+26,by+8+26); }
+static void dock(int i){ int x,y; dock_icon_pos(i,&x,&y); click(x+TILE/2,y+TILE/2); } /* Geometria REAL del dock lateral Vortex */
 static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) break; Win *w=&wins[top]; click(w->x+w->w-20,w->y+TB/2); } }
 int main(void){
     fb=calloc(W*H,4);
