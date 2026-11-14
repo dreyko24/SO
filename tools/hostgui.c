@@ -773,7 +773,7 @@ int main(void){
     }
     /* La búsqueda española acepta mayúsculas, tildes y eñes Latin-1. */
     if(!enc_contains("Historia del Peru","PER\xfa")||
-       !enc_contains("Geografia","Geograf\xeda")||
+       !enc_contains("Geografia","Geograf\xed""a")||
        !enc_contains("Lengua quechua","lengua")||
        enc_contains("Peru","Chile")){
         puts("FALLO busqueda educativa con acentos y mayusculas");return 1;
