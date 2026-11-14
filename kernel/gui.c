@@ -1670,8 +1670,8 @@ static void draw_icon(int i,int x,int y){
 static void draw_dock(void){
     int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
     fill(bx+15,by+bh-2,bw-30,5,0x030918,55);
-    rrect(bx,by,bw,bh,18,0x101a2c,243);
-    rrect(bx+1,by+1,bw-2,bh-2,17,0x1b2941,225);
+    rrect(bx,by,bw,bh,18,0x101a2c,255);
+    rrect(bx+1,by+1,bw-2,bh-2,17,0x1b2941,255);
     fill(bx+20,by+2,bw-40,1,0xffffff,22);
     for(int i=0;i<NDOCK;i++){
         int x=bx+14+i*(TILE+14), y=by+8-(hover==i?4:0);
@@ -1784,17 +1784,21 @@ static void appmenu_tile_icon(const AppMenuEntry *e,int x,int y){
 static void appmenu_draw(void){
     if(!appmenu_open)return;
     int x,y,w,h;launcher_geom(&x,&y,&w,&h);
-    rrect(x+5,y+8,w,h,18,0x000000,85);
-    rrect(x,y,w,h,18,0x111629,250);
-    rrect(x+2,y+2,w-4,h-4,16,0x1b2340,244);
+    /* Un unico plano opaco en vez de tres laminas translucidas de 760x490.
+     * Cada pulsacion del launcher evita >700 mil mezclas innecesarias. */
+    fill(x-5,y+17,5,h-21,0x050817,70);
+    fill(x+w,y+17,5,h-21,0x050817,70);
+    fill(x+12,y+h,w-24,6,0x050817,70);
+    rrect(x,y,w,h,18,0x1b2842,255);
+    fill(x+26,y+62,w-52,1,0xffffff,24);
     rrect(x+13,y+14,40,40,11,0xe7e0fa,255);
     vortex_logo(x+18,y+20,31,255);
     text_big(x+64,y+17,"Aplicaciones",0xffffff);
     text(x+w-164,y+27,"Vortex OS",0xb7bdf0);
     fill(x+156,y+69,w-174,1,0xffffff,26);
-    rrect(x+9,y+66,143,h-78,12,0x12182d,210);
+    rrect(x+9,y+66,143,h-78,12,0x101b30,255);
     rrect(x+164,y+67,w-187,35,11,0x0e172a,255);
-    rrect(x+166,y+69,w-191,31,10,0x27334c,245);
+    rrect(x+166,y+69,w-191,31,10,0x273851,255);
     circle(x+184,y+84,6,0xc6d4ed,220);
     line(x+188,y+89,x+193,y+94,2,0xc6d4ed,220);
     if(app_search_len)text_ui(x+202,y+76,app_search,0xf0f4ff);
@@ -1812,7 +1816,7 @@ static void appmenu_draw(void){
         int idx=appmenu_index(n);if(idx<0)break;
         int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
         if(cy+rh>y+h)break;
-        rrect(cx+3,cy+3,cw-8,rh-6,10,0xffffff,10);
+        rrect(cx+3,cy+3,cw-8,rh-6,10,0x263652,255);
         int iconx=cx+(cw-TILE)/2,icony=cy+5;
         appmenu_tile_icon(&APPMENU[idx],iconx,icony);
         int tx=cx+(cw-text_ui_w(APPMENU[idx].label))/2;
