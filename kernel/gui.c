@@ -126,8 +126,11 @@ static uint32_t *get_thumb(int i){
 }
 static void build_wall(void){
     for(int y=0;y<gh;y++) for(int x=0;x<gw;x++) wall[y*gw+x]=wall_px(wall_i,x,y,gw,gh);
-    uint32_t *save=bb; bb=wall; clip_reset();                                   /* marca de agua: la corona */
-    int cw=gw*18/100; crown(gw*74/100,gh*38/100,cw,0xffffff,0xffffff,38);
+    uint32_t *save=bb; bb=wall; clip_reset();
+    /* Marca de agua Vortex discreta, dibujada en el propio framebuffer. */
+    int sz=k_min(gw,gh)*17/100, x=gw*78/100, y=gh*50/100;
+    line(x-sz/2,y-sz/2,x,y+sz/2,12,0xffffff,35);
+    line(x,y+sz/2,x+sz/2,y-sz/2,12,0x7dd3fc,35);
     bb=save;
 }
 
