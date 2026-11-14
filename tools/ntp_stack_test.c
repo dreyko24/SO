@@ -27,6 +27,10 @@ int main(void){
     check(net_utc_epoch()==1794650420ull,"UTC NTP sustituye hora RTC");
     T+=250; check(net_utc_epoch()==1794650422ull,"reloj monotono suma segundos");
     check(ntp.phase==0 && ntp.next>T,"reprograma la sincronizacion");
+    char request[]="hora sincronizar", status[]="fecha";
+    check(net_cmd(status)==1,"comando fecha disponible en el shell");
+    check(net_cmd(request)==1&&ntp.next==0&&ntp.phase==0,
+          "comando hora sincronizar programa un NTP inmediato");
     if(errors) return 1;
     puts("VORTEX NTP STACK OK");
     return 0;
