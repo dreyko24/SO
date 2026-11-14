@@ -36,3 +36,32 @@ captura maximizada
 raton 360 43
 doble
 captura tamano_restaurado
+# Volver a la biblioteca, completar el minijuego de asociacion de conceptos
+raton 190 135
+clic
+captura inicio_saber
+raton 230 500
+clic
+captura juego_parejas
+# Fraccion -> Parte igual de un todo (derecha fila 2)
+raton 210 245
+clic
+raton 550 310
+clic
+captura primera_pareja
+# Fotosintesis -> Plantas usan luz (derecha fila 4)
+raton 210 310
+clic
+raton 550 445
+clic
+# Independencia -> Peru 1821 (derecha fila 1)
+raton 210 375
+clic
+raton 550 245
+clic
+# HTTPS -> Cifrado TLS (derecha fila 3)
+raton 210 445
+clic
+raton 550 375
+clic
+captura juego_terminado
