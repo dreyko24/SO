@@ -21,6 +21,10 @@ jobs:
         run: |
           gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbdtest
           /tmp/vortex-kbdtest
+      - name: Gestor real de ventanas, dock y pantalla completa
+        run: |
+          gcc -std=gnu11 -O1 -g -w -fsanitize=address,undefined -fno-omit-frame-pointer tools/window_state_test.c -o /tmp/vortex-window-test
+          ASAN_OPTIONS=detect_leaks=0 /tmp/vortex-window-test
       - name: Fecha y zona horaria America/Lima
         run: |
           gcc -std=c11 -Wall -Wextra -Werror tools/time_test.c -o /tmp/vortex-timetest
