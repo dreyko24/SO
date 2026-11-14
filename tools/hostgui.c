@@ -138,7 +138,7 @@ int main(void){
     closeall();
     /* calculadora */
     dock(5); typestr("12*34="); shot("11_calculadora");
-    { Win *c=&wins[win_top()]; if(c->ccur!=408){ puts("FALLO calc 12*34"); return 1; } typestr("C7/0="); if(!c->cerr){ puts("FALLO calc /0"); return 1; } typestr("C100-1="); if(c->ccur!=99){ puts("FALLO calc 100-1"); return 1; } }
+    { Win *c=&wins[win_top()]; if(c->ccur!=408*CSC){ puts("FALLO calc 12*34"); return 1; } typestr("C7/0="); if(!c->cerr){ puts("FALLO calc /0"); return 1; } typestr("C100-1="); if(c->ccur!=99*CSC){ puts("FALLO calc 100-1"); return 1; } }
     closeall();
     /* snake */
     dock(6); gui_key('d'); for(int i=0;i<40;i++){ T+=3; gui_frame(); } shot("12_snake");
