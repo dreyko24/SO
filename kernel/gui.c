@@ -1583,7 +1583,7 @@ static void draw_window(int wi,int focused){
     }
     clip_reset();
     { int tx=x+14; if(w->type==A_ABOUT){ vortex_logo(x+12,y+9,18,255); tx=x+38; }
-      clip_set(x+1,y+1,w->w-40,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
+      clip_set(x+1,y+1,w->w-40,TB-1); text_ui_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
 /* ---------------- barra superior y dock ---------------- */
@@ -1591,11 +1591,11 @@ static void draw_topbar(void){
     fill(0,0,gw,BARH,0x0b1221,248);
     fill(0,BARH-1,gw,1,0x7086b3,50);
     fill(16,7,3,14,ACCENT,255);
-    text_bold(27,6,"Vortex OS",0xf4f7ff);
+    text_ui_bold(27,6,"Vortex OS",0xf4f7ff);
     char t[16]=""; int h=clk_h;
     if(!show24){ int am=h>=12; h=h%12; if(!h) h=12; if(h<10) cat(t,16," "); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); cat(t,16,am?" PM":" AM"); }
     else { if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m); }
-    text_bold((gw-text_w(t))/2,6,t,0xffffff);
+    text_ui_bold((gw-text_ui_w(t))/2,6,t,0xffffff);
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
     { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
 }
@@ -1646,7 +1646,7 @@ static void draw_dock(void){
         draw_icon(i,x,y);
         if(i==0&&appmenu_open)circle(x+TILE/2,by+bh-5,3,0xffffff,255);
         else for(int k=0;k<nord;k++) if(wins[order[k]].type==DOCK_APP[i]){ circle(x+TILE/2,by+bh-5,2,0xffffff,255); break; }
-        if(hover==i){ int lw=text_w(DOCK_LBL[i])+16; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x05060c,220); text(x+TILE/2-lw/2+8,by-27,DOCK_LBL[i],0xffffff); }
+        if(hover==i){ int lw=text_ui_w(DOCK_LBL[i])+18; rrect(x+TILE/2-lw/2,by-30,lw,22,6,0x0b1428,245); text_ui(x+TILE/2-lw/2+9,by-27,DOCK_LBL[i],0xffffff); }
     }
 }
 
@@ -1764,17 +1764,17 @@ static void appmenu_draw(void){
     rrect(x+166,y+69,w-191,31,10,0x27334c,245);
     circle(x+184,y+84,6,0xc6d4ed,220);
     line(x+188,y+89,x+193,y+94,2,0xc6d4ed,220);
-    if(app_search_len)text(x+202,y+76,app_search,0xf0f4ff);
-    else text(x+202,y+76,"Buscar aplicaciones...",0x99aac6);
-    text(x+w-83,y+110,"Enter / Esc",0x8698b2);
+    if(app_search_len)text_ui(x+202,y+76,app_search,0xf0f4ff);
+    else text_ui(x+202,y+76,"Buscar aplicaciones...",0x99aac6);
+    text_ui(x+w-86,y+110,"Enter / Esc",0x8698b2);
     for(int i=0;i<APPMENU_CATS;i++){
         int row=y+76+i*42;
         if(i==appmenu_cat)rrect(x+16,row,130,37,8,0x6358b4,230);
-        text(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:0xb5c1d9);
+        text_ui_bold(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:0xb5c1d9);
     }
     int left=x+156,top=y+122,cw=(w-177)/4,rh=(h-134)/4;
     int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&app_match(APPMENU[i].label,app_search))count++;
-    if(!count)text(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
+    if(!count)text_ui(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
     for(int n=0;n<APPMENU_N;n++){
         int idx=appmenu_index(n);if(idx<0)break;
         int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
@@ -1782,9 +1782,9 @@ static void appmenu_draw(void){
         rrect(cx+3,cy+3,cw-8,rh-6,10,0xffffff,10);
         int iconx=cx+(cw-TILE)/2,icony=cy+5;
         appmenu_tile_icon(&APPMENU[idx],iconx,icony);
-        int tx=cx+(cw-text_w(APPMENU[idx].label))/2;
+        int tx=cx+(cw-text_ui_w(APPMENU[idx].label))/2;
         if(tx<cx+4)tx=cx+4;
-        text(tx,cy+rh-22,APPMENU[idx].label,0xeaf0ff);
+        text_ui(tx,cy+rh-22,APPMENU[idx].label,0xeaf0ff);
     }
 }
 static int power_menu_hit(int mx0,int my0){
@@ -1805,7 +1805,7 @@ static void power_menu_draw(void){
         if(i==0)circle(x+33,cy+21,7,0xffffff,240);
         else if(i==1)fill(x+31,cy+14,4,14,0xffffff,255);
         else {line(x+27,cy+24,x+39,cy+17,2,0xffffff,255);line(x+38,cy+17,x+37,cy+26,2,0xffffff,255);}
-        text(x+57,cy+13,power_labels[i],0xeaf0ff);
+        text_ui_bold(x+57,cy+13,power_labels[i],0xeaf0ff);
     }
 }
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
@@ -1837,8 +1837,8 @@ static void draw_dobj(const DObj *o){
     }
     if(o->kind>=0 && o->kind<8){
         draw_icon(o->kind,o->x+12,o->y);
-        int lw=text_w(DOCK_LBL[o->kind]); rrect(o->x+o->w/2-lw/2-5,o->y+TILE+6,lw+10,20,6,0x05060c,130);
-        text(o->x+o->w/2-lw/2,o->y+TILE+8,DOCK_LBL[o->kind],0xffffff);
+        int lw=text_ui_w(DOCK_LBL[o->kind]); rrect(o->x+o->w/2-lw/2-5,o->y+TILE+6,lw+10,20,6,0x0b1428,185);
+        text_ui(o->x+o->w/2-lw/2,o->y+TILE+8,DOCK_LBL[o->kind],0xffffff);
     } else if(o->kind==100){
         rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
         char t[16]=""; int h=clk_h; if(h<10) cat(t,16,"0"); cat_int(t,16,h); cat(t,16,":"); if(clk_m<10) cat(t,16,"0"); cat_int(t,16,clk_m);
@@ -1846,10 +1846,10 @@ static void draw_dobj(const DObj *o){
         { char z[40]="Zona horaria UTC"; if(tz>=0) cat(z,40,"+"); cat_int(z,40,tz); text(o->x+(o->w-text_w(z))/2,o->y+62,z,C_DIM); }
     } else if(o->kind==101){
         rrect(o->x,o->y,o->w,o->h,16,0x05060c,130); rrect(o->x,o->y,o->w,o->h,16,0xffffff,12);
-        text_bold(o->x+14,o->y+10,"Sistema",0xffffff);
-        char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text(o->x+14,o->y+34,b,C_TXT);
-        b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text(o->x+14,o->y+54,b,C_TXT);
-        b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
+        text_ui_bold(o->x+14,o->y+10,"Sistema",0xffffff);
+        char b[48]; b[0]=0; cat(b,48,"RAM: "); cat_int(b,48,(int)(kram_kb()/1024)); cat(b,48," MB"); text_ui(o->x+14,o->y+34,b,C_TXT);
+        b[0]=0; cat(b,48,"Activo: "); cat_int(b,48,(int)(kticks()/6000)); cat(b,48," min"); text_ui(o->x+14,o->y+54,b,C_TXT);
+        b[0]=0; cat(b,48,net_state()>=2?"Red: conectada":"Red: sin conexion"); text_ui(o->x+14,o->y+74,b,net_state()>=2?0x7ee787:C_DIM);
     }
 }
 static int dobj_hit(int px,int py){ for(int i=NDO-1;i>=0;i--) if(dobj[i].kind>=0 && px>=dobj[i].x&&px<dobj[i].x+dobj[i].w&&py>=dobj[i].y&&py<dobj[i].y+dobj[i].h) return i; return -1; }
