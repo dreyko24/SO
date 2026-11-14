@@ -1705,7 +1705,7 @@ static int appmenu_index(int nth){
 }
 static int appmenu_hit(int px,int py){
     int x,y,w,h; launcher_geom(&x,&y,&w,&h);
-    int left=x+156,top=y+112,cols=4,cw=(w-177)/cols,rh=(h-124)/4;
+    int left=x+156,top=y+122,cols=4,cw=(w-177)/cols,rh=(h-134)/4;
     if(px<left||px>=left+cols*cw||py<top||py>=top+4*rh)return -1;
     int col=(px-left)/cw,row=(py-top)/rh;
     return appmenu_index(row*cols+col);
@@ -2156,31 +2156,53 @@ static void app_click(Win *w,int lx,int ly){
     default: break;
     }
 }
+static void appmenu_launch(int idx){
+    if(idx<0||idx>=APPMENU_N)return;
+    kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[idx].label);kserial_puts("\n");
+    Win *w=open_app(APPMENU[idx].app);
+    if(w&&w->type==A_MEDIA){
+        w->media_tab=APPMENU[idx].tab;w->scroll=0;
+        if(w->media_tab==3)(void)usb_storage_probe();
+        dwin(w);
+    }
+}
 static void on_press(void){
     if(power_menu_open){
-        int choice=power_menu_hit(mx,my);power_menu_open=0;dirty=1;
+        int choice=power_menu_hit(mx,my);
+        power_menu_open=0;power_damage();
         if(choice==0){kserial_puts("[vortex-power] apagar\n");khalt();}
-        if(choice==1){kserial_puts("[vortex-power] reposo de pantalla\n");power_sleep=1;}
+        if(choice==1){kserial_puts("[vortex-power] reposo de pantalla\n");power_sleep=1;dirty=1;}
         if(choice==2){kserial_puts("[vortex-power] reiniciar\n");kreboot();}
         return;
     }
     if(appmenu_open){
+        int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+        if(in_rect(mx,my,x+164,y+67,w-187,35))return;/* campo buscar */
         int cat=appmenu_cat_hit(mx,my);
-        if(cat>=0&&cat<APPMENU_CATS){appmenu_cat=cat;dirty=1;return;}
-        int idx=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
-        if(idx>=0&&idx<APPMENU_N){kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[idx].label);kserial_puts("\n");Win *w=open_app(APPMENU[idx].app);
-            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[idx].tab;w->scroll=0;
-                if(w->media_tab==3)(void)usb_storage_probe();}
+        if(cat>=0&&cat<APPMENU_CATS){
+            appmenu_cat=cat;app_search_len=0;app_search[0]=0;
+            launcher_damage();return;
         }
+        int idx=appmenu_hit(mx,my);
+        appmenu_open=0;launcher_damage();
+        appmenu_launch(idx);
         return;
     }
     if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
     if(dren>=0) dren_commit();
     int d=dock_hit(mx,my);
-    if(d>=0){ if(d==0){appmenu_open=!appmenu_open;power_menu_open=0;kserial_puts("[vortex-apps] menu abierto\n");}
-        else open_app(DOCK_APP[d]); dirty=1; return; }
+    if(d>=0){ if(d==0){
+            appmenu_open=!appmenu_open;
+            app_search_len=0;app_search[0]=0;
+            if(power_menu_open){power_menu_open=0;power_damage();}
+            launcher_damage();
+            kserial_puts("[vortex-apps] menu abierto\n");
+        }else open_app(DOCK_APP[d]);return; }
     if(d==-2) return;
-    if(my<BARH){if(mx>gw-48){power_menu_open=!power_menu_open;appmenu_open=0;dirty=1;}return;}
+    if(my<BARH){if(mx>gw-48){
+            power_menu_open=!power_menu_open;power_damage();
+            if(appmenu_open){appmenu_open=0;launcher_damage();}
+        }return;}
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
@@ -2201,8 +2223,8 @@ static void on_press(void){
       else if(dsel>=0){ dsel=-1; dirty=1; } }
 }
 static void on_rpress(void){                                         /* boton derecho: menu contextual */
-    if(appmenu_open){appmenu_open=0;dirty=1;}
-    if(power_menu_open){power_menu_open=0;dirty=1;}
+    if(appmenu_open){appmenu_open=0;launcher_damage();}
+    if(power_menu_open){power_menu_open=0;power_damage();}
     if(mu_open){ mu_open=0; dirty=1; }
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
@@ -2234,7 +2256,11 @@ static void mouse_set(int x,int y,int b){
             if(lx!=xw->xlx||ly!=xw->xly){ xw->xlx=lx; xw->xly=ly; kinput_event(3,0,lx); kinput_event(3,1,ly); kinput_event(0,0,0); }
             static const int bit[3]={1,2,4}, code[3]={0x110,0x111,0x112};
             for(int k=0;k<3;k++) if((b^omb)&bit[k]){ kinput_event(1,code[k],(b&bit[k])?1:0); kinput_event(0,0,0); } } } }
-    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){ hover=d; { int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh); dmark(bx-10,by-40,bw+20,bh+52); } }
+    int d=dock_hit(mx,my); if(d<0) d=-1; if(d!=hover){
+        hover=d;
+        int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
+        dmark(bx-10,by-40,bw+20,bh+52);
+    }
     if(drag>=0){
         if(b&1){ Win *w=&wins[drag]; dwin(w); w->x=mx-dragdx; w->y=k_max(BARH,my-dragdy); dwin(w); }
         if(released){ Win *w=&wins[drag]; drag=-1;
@@ -2282,8 +2308,22 @@ static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(power_sleep){power_sleep=0;dirty=1;return;}
-    if(power_menu_open&&c==27){power_menu_open=0;dirty=1;return;}
-    if(appmenu_open&&c==27){appmenu_open=0;dirty=1;return;}
+    if(power_menu_open&&c==27){power_menu_open=0;power_damage();return;}
+    if(appmenu_open){
+        if(c==27){appmenu_open=0;launcher_damage();return;}
+        if(c=='\b'||c==0x7f){if(app_search_len)app_search[--app_search_len]=0;launcher_damage();return;}
+        if(c=='\n'){
+            int idx=appmenu_index(0);
+            if(idx>=0){appmenu_open=0;launcher_damage();appmenu_launch(idx);}
+            return;
+        }
+        if(c>=32&&c<=126&&app_search_len<(int)sizeof(app_search)-1){
+            app_search[app_search_len++]=(char)c;
+            app_search[app_search_len]=0;
+            launcher_damage();
+        }
+        return;
+    }
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
     if(c==0x40D){Win *w=open_app(A_MEDIA);if(w)w->media_tab=0;dirty=1;return;}
     if(c==0x414||c==0x14){ open_app(A_TERM); dirty=1; return; }                   /* Ctrl+T: abrir la terminal */
