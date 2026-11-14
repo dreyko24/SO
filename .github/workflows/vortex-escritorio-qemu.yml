@@ -29,7 +29,7 @@ jobs:
           python3 - <<'PY'
           import pathlib, hashlib
           d=pathlib.Path('capturas')
-          expected=['aplicaciones','biblioteca_saber','primera_leccion','respuesta','siguiente_pregunta','pantalla_completa','minimizada','restaurada','segunda_instancia','instancia_cerrada','maximizada','tamano_restaurado']
+          expected=['aplicaciones','biblioteca_saber','primera_leccion','respuesta','siguiente_pregunta','pantalla_completa','minimizada','restaurada','segunda_instancia','instancia_cerrada','maximizada','tamano_restaurado','inicio_saber','juego_parejas','primera_pareja','juego_terminado']
           files=[d/(n+'.png') for n in expected]
           for f in files:
               assert f.exists() and f.stat().st_size>5000, f'Captura ausente o vacia: {f}'
@@ -57,7 +57,7 @@ jobs:
               diff=sum(x!=y for x,y in zip(a,b))
               print(expected[i-1], '->', expected[i], 'bytes cambiados:',diff)
               assert diff>7000, f'Interaccion sin efecto visible: {expected[i-1]} -> {expected[i]}'
-          print('QEMU: controles y contenidos cambiaron entre los 12 estados esperados')
+          print('QEMU: controles y contenidos cambiaron entre los 16 estados esperados')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
