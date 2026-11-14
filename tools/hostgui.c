@@ -494,6 +494,12 @@ int main(void){
       if(e->enc_category!=3||enc_count(e)<4){
           puts("FALLO categoria geografia");return 1;
       }
+      /* Geografia cabe completa; para verificar el desplazamiento usamos
+       * Todos, que contiene más resultados que filas visibles. */
+      click(e->x+1+54,e->y+TB+137+14);
+      if(e->enc_category!=0||enc_count(e)!=ENC_ARTICLES_N){
+          puts("FALLO regresar a todos los temas");return 1;
+      }
       int oldscroll=e->enc_scroll;
       gui_mouse_abs(e->x+1+300,e->y+TB+240,0);
       gui_mouse_wheel(-1);
