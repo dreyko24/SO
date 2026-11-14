@@ -524,6 +524,7 @@ static int browser_open_modern(const char *url){
     return 1;
 }
 static void calendar_load(Win *w);
+static void calendar_check_reminder(void);
 static void calendar_save(Win *w,int remove);
 static void calendar_shift_month(Win *w,int delta);
 static void enc_progress_load(Win *w);
