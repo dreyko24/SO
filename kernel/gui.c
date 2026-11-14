@@ -1330,10 +1330,10 @@ static void draw_window(int wi,int focused){
         rrect(cx+20,cy+81,cw-40,18,8,0x0b0e1a,255);
         if(progress>0)rrect(cx+20,cy+81,(cw-40)*progress/100,18,8,ACCENT,255);
         char b[80]="Progreso: ";cat_int(b,80,progress);cat(b,80,"%");text(cx+22,cy+109,b,C_TXT);
-        text(cx+22,cy+135,ok?(audio_paused()?"Pausado":"Reproduciendo PCM por AC'97"):audio_error(),ok?0x7ee787:0xf59e0b);
+        text(cx+22,cy+135,ok?(audio_paused()?"Pausado":audio_error()):audio_error(),ok?0x7ee787:0xf59e0b);
         button(cx+20,cy+ch-48,160,30,ok?(audio_paused()?"Reanudar":"Pausar"):"Reproducir",0);
         button(cx+194,cy+ch-48,138,30,"Detener",0);
-        text(cx+18,cy+ch-14,"WAV PCM 8/16-bit, mono/estereo. Tarjeta AC'97.",C_DIM);
+        text(cx+18,cy+ch-14,"WAV PCM: salida AC'97 o SB16 (ISA).",C_DIM);
         break; }
     case A_VIDEO:{
         fill(cx,cy,cw,ch,0x090d16,255);
@@ -1384,7 +1384,7 @@ static void draw_window(int wi,int focused){
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
             int n=dir?fs_list(dir,fl,FLMAX):0;
             text(cx+20,cy+54,dirs[w->media_tab],C_DIM);
-            if(w->media_tab==1)text(cx+20,cy+78,"WAV PCM: AC'97. VMware ES1371/HDA requiere driver.",C_DIM);
+            if(w->media_tab==1)text(cx+20,cy+78,"WAV PCM: AC'97 o SB16. ES1371/HDA sin driver.",C_DIM);
             else if(w->media_tab==2)text(cx+20,cy+78,"Abre AVI RGB sin compresion.",C_DIM);
             else text(cx+20,cy+78,"Haz clic en una imagen para abrirla.",C_DIM);
             int max=(ch-115)/32;if(max<1)max=1;
