@@ -23,7 +23,7 @@ def make(destination, source):
     with open(destination, "wb") as file:
         file.truncate(total * 512)
         boot = bytearray(512)
-        boot[0:3] = b"\\xeb\\x76\\x90"
+        boot[0:3] = b"\xeb\x76\x90"
         boot[3:11] = b"EXFAT   "
         le64(boot, 0x48, total)
         le32(boot, 0x50, fat_start)
@@ -35,7 +35,7 @@ def make(destination, source):
         boot[0x6d] = 3
         boot[0x6e] = 1
         boot[0x6f] = 0x80
-        boot[510:512] = b"\\x55\\xaa"
+        boot[510:512] = b"\x55\xaa"
         file.seek(0)
         file.write(boot)
         fat = bytearray(512)
