@@ -21,6 +21,11 @@ jobs:
         run: |
           gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbdtest
           /tmp/vortex-kbdtest
+      - name: Sintaxis de scripts del navegador real y construccion Debian
+        run: |
+          sh -n tools/rootfs-es/usr/local/bin/vortex-chromium
+          sh -n tools/rootfs-es/usr/local/bin/abrir-x
+          sh -n tools/mkdebian.sh
       - name: Gestor real de ventanas, dock y pantalla completa
         run: |
           gcc -std=gnu11 -O1 -g -w -fsanitize=address,undefined -fno-omit-frame-pointer tools/window_state_test.c -o /tmp/vortex-window-test
