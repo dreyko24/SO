@@ -21,6 +21,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-multilib libc6-dev binutils grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 cpio gzip qemu-system-x86 debootstrap debian-archive-keyring ca-certificates dosfstools fdisk
+      # Se inicia al modificar este workflow para crear una ISO de la revision
+      # actual. La ISO se publica solo tras arrancar ambos modos en QEMU.
+      - name: Identificar revision incluida en la ISO
+        run: echo "Construyendo Vortex OS desde commit $GITHUB_SHA"
       - name: Construir VortexOS.iso (32/64 grafico, Debian solo en 64)
         shell: bash
         run: |
