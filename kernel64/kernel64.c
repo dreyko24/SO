@@ -384,7 +384,7 @@ static void run(char *l){
     while(*l==' ') l++;
     if(!*l) return;
     if(streq(l,"help")) kprintf("help info mem heap uptime clear echo <txt> reboot halt | ejecutar <ruta> [&] programas procesos matar <pid> rastro [0-2] | red ping <host> dns <host> wget <url> | pantalla abrir <programa> actualizar instalar quitar buscar (ayuda-programas)\n");
-    else if(streq(l,"info")) kprintf("kng-kernel %s (%s, Multiboot)\nParte de Vortex OS. Modo largo, IDT, heap, interfaz grafica, red. Sin procesos todavia.\n",KNG_VERSION,KNG_ARCH);
+    else if(streq(l,"info")) kprintf("kng-kernel %s (%s, Multiboot)\nParte de Vortex OS. Modo largo, memoria virtual, procesos de usuario ELF/Linux, interfaz grafica y red.\n",KNG_VERSION,KNG_ARCH);
     else if(streq(l,"mem")) kprintf("RAM usable: %lu KB | heap: %lu KB\n",ram_kb,heap_total/1024);
     else if(streq(l,"probar-ram")) cmd_probar_ram();
     else if(streq(l,"heap")){ u64 u,f,m; heap_stats(&u,&f,&m); kprintf("heap: total %lu KB | usado %lu B | libre %lu B | bloque libre mayor %lu B\n",heap_total/1024,u,f,m); }
