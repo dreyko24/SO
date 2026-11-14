@@ -543,7 +543,14 @@ static void enc_progress_load(Win *w);
 static void enc_progress_save(Win *w);
 static void enc_article_open(Win *w,int id);
 static Win *open_app(int type){
-    if(!open_new) for(int i=0;i<nord;i++){ Win *e=&wins[order[i]]; if(e->type==type && type!=A_VIEWER){ focus(order[i]); return e; } }
+    /* Abrir la misma aplicacion en otro espacio no transporta al usuario. */
+    if(!open_new)for(int i=0;i<nord;i++){
+        Win *e=&wins[order[i]];
+        if(e->used&&e->type==type&&type!=A_VIEWER&&
+           e->workspace==active_workspace){
+            focus(order[i]);return e;
+        }
+    }
     int wi=-1; for(int i=0;i<MAXW;i++) if(!wins[i].used){ wi=i; break; }
     if(wi<0) return 0;
     Win *w=&wins[wi];memset(w,0,sizeof *w);w->used=1;w->type=type;w->workspace=active_workspace;

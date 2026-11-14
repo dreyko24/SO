@@ -651,6 +651,22 @@ int main(void){
       gui_key(KBD_WORKSPACE_NEXT);
       if(active_workspace!=1||win_top()!=(int)(b-wins)){
           puts("FALLO recuperar espacio 2");return 1;}
+      /* Cada espacio conserva su propia instancia, estado y foco. */
+      Win *notes2=open_app(A_NOTES);
+      if(!notes2||notes2==a||notes2->workspace!=1||a->workspace!=0){
+          puts("FALLO aplicacion duplicada en otro workspace");return 1;
+      }
+      if(open_app(A_NOTES)!=notes2||active_workspace!=1){
+          puts("FALLO instancia de aplicacion en espacio activo");return 1;
+      }
+      workspace_set(0);
+      if(open_app(A_NOTES)!=a||active_workspace!=0||win_top()!=(int)(a-wins)){
+          puts("FALLO recuperar instancia sin saltar a otro espacio");return 1;
+      }
+      workspace_set(1);
+      if(!notes2->used||notes2->workspace!=1){
+          puts("FALLO datos independientes de otra ventana");return 1;
+      }
       closeall();workspace_set(0);closeall();
       puts("VORTEX GNOME WORKSPACES INDEPENDIENTES OK");
     }
