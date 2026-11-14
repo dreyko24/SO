@@ -352,11 +352,11 @@ static Win *open_app(int type){
     Win *w=&wins[wi]; memset(w,0,sizeof *w); w->used=1; w->type=type;
     int off=(nord%5)*28;
     switch(type){
-    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Königreich OS"); break;
+    case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Vortex OS"); break;
     case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Navegador"); break;
     case A_FILES:    w->w=660; w->h=440; set_title(w,"Archivos"); w->dir=fs_root(); break;
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
-                     memset(w->grid,' ',sizeof w->grid); tp(w,"Königreich OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
+                     memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
     case A_SETTINGS: w->w=520; w->h=560; set_title(w,"Ajustes"); break;
     case A_VIEWER:   w->w=600; w->h=420; set_title(w,"Visor de texto"); break;
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
@@ -540,7 +540,7 @@ static const char *build_search(const char *url,int *len){
     static const struct { const char *u, *t, *kw; } PG[]={
         {"kng://inicio","Inicio","inicio bienvenida enlaces home principal"},
         {"kng://ayuda","Ayuda","ayuda help navegador terminal comandos teclas buscar busqueda"},
-        {"kng://acerca","Acerca de Königreich OS","acerca kernel autor sistema version nick kng"}};
+        {"kng://acerca","Acerca de Vortex OS","acerca kernel autor sistema version vortex"}};
     int any=0;
     for(int i=0;i<3;i++) if(ci_find(PG[i].t,k_strlen(PG[i].t),q)>=0 || ci_find(PG[i].kw,k_strlen(PG[i].kw),q)>=0){
         if(!any){ a_raw("<h2>Paginas del sistema</h2><ul>"); any=1; }
@@ -831,6 +831,14 @@ static void button(int x,int y,int w,int h,const char *label,int primary){
     rrect(x,y,w,h,6,0xffffff,primary?40:20); rrect(x+1,y+1,w-2,h-2,5,primary?ACCENT:C_BTN,255);
     clip_set(x+1,y+1,w-2,h/2); rrect(x+1,y+1,w-2,h-2,5,0xffffff,14); clip_reset();
     text(x+(w-text_w(label))/2,y+(h-16)/2,label,0xffffff);
+}
+/* Marca vectorial de Vortex, sin depender de fuentes o recursos externos. */
+static void vortex_mark(int x,int y,int size){
+    int cx=x+size/2, cy=y+size/2, t=k_max(2,size/11);
+    circle(cx,cy,size/2,0x121b35,255);
+    circle(cx,cy,size/2-2,ACCENT,55);
+    line(x+size/4,y+size/4,cx,y+size*3/4,t,0xe2e8f0,255);
+    line(cx,y+size*3/4,x+size*3/4,y+size/4,t,0x38bdf8,255);
 }
 static void draw_folder(int x,int y){ rrect(x,y+2,10,6,2,0xe0a62d,255); rrect(x,y+5,22,14,3,0xf5b83d,255); }
 static void draw_doc(int x,int y){ rrect(x+2,y+1,16,20,2,0xe8eaf4,255); fill(x+5,y+8,10,1,0x8a8fa8,255); fill(x+5,y+12,10,1,0x8a8fa8,255); fill(x+5,y+16,7,1,0x8a8fa8,255); }
@@ -1253,10 +1261,10 @@ static void draw_window(int wi,int focused){
     clip_set(cx,cy,cw,ch);
     switch(w->type){
     case A_ABOUT:{
-        crown(cx+cw/2-60,cy+24,120,0xe9c46a,ACCENT,255);
-        int tw=12*13; text_big(cx+(cw-tw)/2,cy+130,"Königreich OS",0xffffff);
+        vortex_mark(cx+cw/2-60,cy+24,120);
+        int tw=text_w_big("Vortex OS"); text_big(cx+(cw-tw)/2,cy+130,"Vortex OS",0xffffff);
         { char vb[80]="kng-kernel " KNG_VERSION " (" KNG_ARCH ")  -  sistema operativo propio"; text(cx+(cw-text_w(vb))/2,cy+166,vb,C_DIM); }
-        text(cx+(cw-text_w("No es Linux ni usa su codigo."))/2,cy+190,"No es Linux ni usa su codigo.",C_TXT);
+        text(cx+28,cy+190,"Kernel propio compatible con aplicaciones Linux.",C_TXT);
         text(cx+(cw-text_w("Autor: Nick Jose Tolentino Rojas"))/2,cy+226,"Autor: Nick Jose Tolentino Rojas",C_DIM);
         break; }
     case A_TERM:{
@@ -1527,7 +1535,7 @@ static void draw_window(int wi,int focused){
             } else {
                 text(cx+20,oy+42,"En este equipo la resolucion la pone el menu de arranque:",C_DIM);
                 text(cx+20,oy+64,"al encender, entra en \"Resolucion de pantalla\", elige una",C_DIM);
-                text(cx+20,oy+84,"y luego arranca Konigreich OS. Por defecto usa la mayor",C_DIM);
+                text(cx+20,oy+84,"y luego arranca Vortex OS. Por defecto usa la mayor",C_DIM);
                 text(cx+20,oy+104,"disponible hasta 1920 x 1080.",C_DIM);
             }
         } else if(set_tab==2){
@@ -1548,14 +1556,14 @@ static void draw_window(int wi,int focused){
                 uint64_t seg[1]={used}; uint32_t col[1]={ACCENT}; stor_bar(cx+20,dy+48,cw-40,22,seg,col,1,cap);
                 if(kngfs_active()){ hsize(used,s1,24); b[0]=0; cat(b,96,"Guardado: "); cat(b,96,s1); cat(b,96,"  (se guarda solo y al apagar)"); text(cx+20,dy+78,b,0x7ee787);
                     button(cx+20,dy+104,150,28,"Guardar ahora",1); }
-                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Konigreich OS.",0xffb86b);
+                else { text(cx+20,dy+78,"Este disco aun no guarda datos de Vortex OS.",0xffb86b);
                     button(cx+20,dy+104,260,28,fmt_confirm?"Pulsa otra vez: BORRA el disco":"Usar este disco para guardar",fmt_confirm); }
             } else { text(cx+20,dy+24,"No se encontro un disco duro (IDE o SATA).",C_DIM); text(cx+20,dy+44,"Sin disco, lo que hagas se pierde al apagar.",0xffb86b); }
             button(cx+cw-170,dy+104,150,28,"Vaciar Papelera",0);
         } else {
             char b[96];
             text_bold(cx+20,oy+10,"Sistema",C_TXT);
-            b[0]=0; cat(b,96,"Kernel: kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
+            b[0]=0; cat(b,96,"Vortex OS / kng-kernel " KNG_VERSION " (" KNG_ARCH ")"); text(cx+20,oy+38,b,C_DIM);
             b[0]=0; cat(b,96,"Memoria RAM: "); { char s1[24]; hsize((uint64_t)kram_kb()*1024u,s1,24); cat(b,96,s1); } text(cx+20,oy+60,b,C_DIM);
             b[0]=0; cat(b,96,"Pantalla: "); cat_int(b,96,gw); cat(b,96," x "); cat_int(b,96,gh); text(cx+20,oy+82,b,C_DIM);
             b[0]=0; cat(b,96,"Tiempo encendido: "); cat_int(b,96,(int)(kticks()/6000)); cat(b,96," min"); text(cx+20,oy+104,b,C_DIM);
@@ -1566,7 +1574,7 @@ static void draw_window(int wi,int focused){
         break; }
     }
     clip_reset();
-    if(!w->fullscreen){ int tx=x+14; if(w->type==A_ABOUT){ crown(x+12,y+9,18,0xe9c46a,ACCENT,255); tx=x+38; }
+    if(!w->fullscreen){ int tx=x+14; if(w->type==A_ABOUT){ vortex_mark(x+12,y+5,20); tx=x+38; }
       clip_set(x+1,y+1,w->w-116,TB-1); text_bold(tx,y+7,w->title,focused?0xffffff:C_DIM); clip_reset(); }
 }
 
@@ -1574,7 +1582,7 @@ static void draw_window(int wi,int focused){
 static void draw_topbar(void){
     for(int j=0;j<BARH;j++) fill(0,j,gw,1,0x05060c,190-j*70/BARH);
     fill(0,BARH-1,gw,1,0xffffff,14);
-    crown(12,6,22,0xe9c46a,ACCENT,255); text(40,6,"Königreich OS",C_TXT);
+    vortex_mark(10,4,24); text(42,6,"Vortex OS",C_TXT);
     char t[44]="";
     if(clk_y){ cat2(t,sizeof t,clk_day); cat(t,sizeof t,"/"); cat2(t,sizeof t,clk_mon); cat(t,sizeof t,"/"); cat_int(t,sizeof t,clk_y); cat(t,sizeof t,"  "); }
     else cat(t,sizeof t,"RTC sin fecha  ");
@@ -1606,7 +1614,7 @@ static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0xffffff,10);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: crown(x+9,y+11,34,0xe9c46a,ACCENT,255); break;
+    case 0: vortex_mark(x+8,y+8,36); break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
     case 2: rrect(x+9,y+14,16,9,3,0xe0a62d,255); rrect(x+9,y+19,34,22,4,0xf5b83d,255); fill(x+13,y+25,26,2,0xffffff,70); break;
