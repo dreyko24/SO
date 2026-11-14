@@ -18,6 +18,10 @@ jobs:
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/fat32_layout_test.c -o /tmp/vortex-fat32-test
           /tmp/vortex-fat32-test
+      - name: Validar exFAT corrupto en host (ASan/UBSan)
+        run: |
+          gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/exfat_layout_test.c -o /tmp/vortex-exfat-test
+          /tmp/vortex-exfat-test
       - name: Compilar kernels
         run: |
           make -C kernel64

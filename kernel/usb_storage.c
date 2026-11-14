@@ -6,6 +6,7 @@
 #include "fs.h"
 #include "vortex.h"
 #include "fat32_layout.h"
+#include "exfat_layout.h"
 #ifdef HOSTGUI
 static int ready;
 int usb_storage_probe(void){return 0;}
@@ -44,6 +45,7 @@ static u8 payload[4096] __attribute__((aligned(16)));
 static u32 scsi_tag=0x10736u,block_count,part,first_data,fat_sector,root_cluster;
 static u32 fat_size,reserved,sectors_per_cluster,nfats,last_fat_lba=0xffffffffu;
 static u32 volume_end,cluster_count;
+static int exfat_mode;
 static u8 fatcache[512];
 static int imported,depth_count;
 static u32 rd32(const u8 *x){return (u32)x[0]|((u32)x[1]<<8)|(u32)x[2]<<16|(u32)x[3]<<24;}
@@ -214,10 +216,10 @@ static int enumerate(void){
 }
 static int fatmount(void){
     u8 s[512];if(readsector(0,s))return -1;
-    part=0;u32 part_sectors=block_count;
+    part=0;exfat_mode=0;u32 part_sectors=block_count;
     if(s[510]==0x55&&s[511]==0xAA){
         for(int i=0;i<4;i++){const u8 *e=s+446+i*16;
-            if(e[4]==0x0b||e[4]==0x0c){
+            if(e[4]==0x0b||e[4]==0x0c||e[4]==0x07){
                 u32 p=rd32(e+8),cnt=rd32(e+12);
                 if(p&&p<block_count&&cnt&&cnt<=block_count-p){
                     part=p;part_sectors=cnt;break;
@@ -225,6 +227,16 @@ static int fatmount(void){
             }
         }
         if(part&&readsector(part,s))return -2;
+    }
+    VortexExfatLayout ex;
+    if(!vortex_exfat_layout(s,block_count,part,part_sectors,&ex)){
+        exfat_mode=1;sectors_per_cluster=ex.sectors_per_cluster;
+        root_cluster=ex.root_cluster;volume_end=ex.volume_end;cluster_count=ex.cluster_count;
+        fat_sector=ex.fat_lba;fat_size=ex.fat_sectors;first_data=ex.first_data;
+        last_fat_lba=0xffffffffu;
+        kprintf("[vortex-usb] exFAT part=%u root=%u spc=%u fat=%u data=%u end=%u\n",
+            part,root_cluster,sectors_per_cluster,fat_sector,first_data,volume_end);
+        return 0;
     }
     VortexFat32Layout v;
     if(vortex_fat32_layout(s,block_count,part,part_sectors,&v))return -3;
@@ -243,7 +255,8 @@ static u32 fatnext(u32 cluster){
     u32 lba=fat_sector+cluster/128u;
     if(lba>=volume_end)return 0x0fffffffu;
     if(lba!=last_fat_lba){if(readsector(lba,fatcache))return 0x0fffffffu;last_fat_lba=lba;}
-    return rd32(fatcache+(cluster%128u)*4u)&0x0fffffffu;
+    u32 value=rd32(fatcache+(cluster%128u)*4u);
+    return exfat_mode?value:(value&0x0fffffffu);
 }
 static int cluster_lba(u32 cl,u32 *out){
     if(cl<2||(u64)cl>=(u64)cluster_count+2u)return -1;
@@ -319,6 +332,88 @@ static void readdir_usb(u32 first,FsNode *dst,int depth){
         }
     }
 }
+/* UTF-16LE from exFAT filename entries to UTF-8, without truncating
+ * multi-byte characters. Unsupported surrogate pairs are skipped. */
+static void exfat_name_piece(const u8 *e,char *name,int *used,int *chars,int maxchars){
+    for(int j=0;j<15&&*chars<maxchars;j++){
+        u32 cp=rd16(e+2+j*2);(*chars)++;
+        if(!cp||cp==0xffffu||cp>=0xd800u&&cp<=0xdfffu)continue;
+        int bytes=cp<0x80?1:cp<0x800?2:3;
+        if(*used+bytes>=FS_NAME){*used=FS_NAME;return;}
+        if(bytes==1)name[(*used)++]=(char)cp;
+        else if(bytes==2){name[(*used)++]=(char)(0xc0|(cp>>6));name[(*used)++]=(char)(0x80|(cp&63));}
+        else{name[(*used)++]=(char)(0xe0|(cp>>12));name[(*used)++]=(char)(0x80|((cp>>6)&63));name[(*used)++]=(char)(0x80|(cp&63));}
+        name[*used]=0;
+    }
+}
+static int readfile_exfat(u32 first,u32 len,int contiguous,FsNode *dir,const char *name){
+    if(!len||len>4u*1024u*1024u||imported>=100||first<2)return -1;
+    u8 *buf=kmalloc(len);if(!buf)return -1;
+    u32 got=0,visited=0;
+    for(u32 c=first;got<len&&visited++<8192;){
+        u32 base;if(cluster_lba(c,&base))break;
+        for(u32 j=0;j<sectors_per_cluster&&got<len;j++){
+            u8 sec[512];if(readsector(base+j,sec)){got=0;break;}
+            u32 take=len-got;if(take>512)take=512;
+            memcpy(buf+got,sec,take);got+=take;
+        }
+        if(contiguous){if(c>=cluster_count+1u)break;c++;}
+        else {u32 next=fatnext(c);if(next<2||next>=0xfffffff8u)break;c=next;}
+    }
+    if(got==len){FsNode *f=fs_create(dir,name,(const char*)buf,(int)len);
+        if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado exFAT\n",name,len);}}
+    kfree(buf);return got==len?0:-1;
+}
+static void readdir_exfat(u32 first,int contiguous,u64 data_length,FsNode *dir,int depth){
+    if(depth>4||depth_count++>120||first<2)return;
+    u32 visited=0,seen=0;
+    int rem=0,have_stream=0,nchars=0,name_used=0,expected=0;
+    u32 attr=0,file_cluster=0;u64 file_length=0;
+    int nofat=0;
+    char name[FS_NAME];name[0]=0;
+    for(u32 c=first;visited++<256;){
+        u32 base;if(cluster_lba(c,&base))return;
+        for(u32 j=0;j<sectors_per_cluster;j++){
+            if(data_length&&((u64)seen*512u)>=data_length)return;
+            u8 sec[512];if(readsector(base+j,sec))return;
+            seen++;
+            for(int k=0;k<16;k++){
+                const u8 *e=sec+k*32;
+                if(!e[0])return; /* fin del directorio */
+                if(e[0]==0x85){
+                    rem=e[1];attr=rd16(e+4);have_stream=0;
+                    file_cluster=0;file_length=0;nofat=0;
+                    nchars=name_used=expected=0;name[0]=0;
+                    if(rem>18)rem=0;
+                    continue;
+                }
+                if(!rem)continue;
+                if(e[0]==0xc0&&!have_stream){
+                    have_stream=1;nofat=!!(e[1]&2);
+                    expected=e[3];file_cluster=rd32(e+20);
+                    file_length=ex_rd64(e+24);
+                }else if(e[0]==0xc1&&have_stream&&name_used<FS_NAME){
+                    exfat_name_piece(e,name,&name_used,&nchars,expected);
+                }
+                rem--;
+                if(rem==0){
+                    if(!have_stream||nchars!=expected||!goodname(name)||
+                       file_cluster<2||file_cluster>=cluster_count+2u)continue;
+                    if(attr&0x10){
+                        if(depth<4&&file_length<=8u*1024u*1024u){
+                            FsNode *sub=fs_mkdir(dir,name);
+                            if(sub){sub->dev=1;readdir_exfat(file_cluster,nofat,file_length,sub,depth+1);}
+                        }
+                    }else if(file_length<=4u*1024u*1024u&&file_length>0){
+                        (void)readfile_exfat(file_cluster,(u32)file_length,nofat,dir,name);
+                    }
+                }
+            }
+        }
+        if(contiguous){if(c>=cluster_count+1u)return;c++;}
+        else {u32 next=fatnext(c);if(next<2||next>=0xfffffff8u)return;c=next;}
+    }
+}
 static void status(const char *msg){k_strcpy(info,msg,sizeof info);kprintf("[vortex-usb] %s\n",info);}
 int usb_storage_probe(void){
     if(ready)return 1;
@@ -326,7 +421,7 @@ int usb_storage_probe(void){
     if(init()){status("USB: no hay controlador UHCI disponible");return 0;}
     if(portreset()){status("UHCI detectado, sin dispositivo conectado");return 0;}
     if(enumerate()){status("USB conectado, pero no es almacenamiento BOT/SCSI compatible");return -1;}
-    if(fatmount()){status("Unidad USB detectada, formato no es FAT32 compatible");return -2;}
+    if(fatmount()){status("USB detectado: se requiere FAT32 o exFAT en UHCI");return -2;}
     FsNode *root=fs_root();
     FsNode *mount=fs_find(root,"Dispositivos");
     if(!mount)mount=fs_mkdir(root,"Dispositivos");
@@ -336,10 +431,12 @@ int usb_storage_probe(void){
     if(!dir)dir=fs_mkdir(mount,"Unidad-USB");
     if(!dir){status("Sin memoria para mostrar USB");return -4;}
     dir->dev=1;imported=depth_count=0;
-    readdir_usb(root_cluster,dir,0);
+    if(exfat_mode)readdir_exfat(root_cluster,0,0,dir,0);
+    else readdir_usb(root_cluster,dir,0);
     ready=1;found=1;ever=1;
     kprintf("[vortex-usb] importados=%d entradas, raiz=%u\n",imported,root_cluster);
-    status("USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
+    status(exfat_mode?"USB exFAT real leido en /Dispositivos/Unidad-USB (solo lectura)":
+                      "USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
     return 1;
 }
 int usb_storage_ready(void){return ready;}
