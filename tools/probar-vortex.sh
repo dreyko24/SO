@@ -20,7 +20,7 @@ args=(-name "Vortex OS - prueba" -m 4096 -smp 2 -boot d
   -drive "file=$ISO,media=cdrom,if=ide,readonly=on"
   -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot)
 if [[ -n "$USB_IMG" ]]; then
-    [[ -f "$USB_IMG" ]] || { echo "[VORTEX] No existe la imagen USB FAT32: $USB_IMG" >&2; exit 1; }
+    [[ -f "$USB_IMG" ]] || { echo "[VORTEX] No existe la imagen USB FAT32/exFAT: $USB_IMG" >&2; exit 1; }
     args+=(-drive "if=none,id=vortexusb,format=raw,file=$USB_IMG,readonly=on"
            -device "usb-storage,drive=vortexusb,bus=usb-bus.0")
     echo "[VORTEX] USB emulado de solo lectura: $USB_IMG"
