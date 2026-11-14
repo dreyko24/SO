@@ -1687,7 +1687,7 @@ static void on_press(void){
     int d=dock_hit(mx,my);
     if(d==0){ launcher_open=!launcher_open; dirty=1; return; }
     if(launcher_click(mx,my)) return;
-    if(d>=0){ open_app(DOCK_APP[d]); dirty=1; return; }
+    if(d>=0){ launcher_open=0; open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
     if(my<BARH){ if(mx>gw-48) open_app(A_SETTINGS); return; }
     for(int k=nord-1;k>=0;k--){
