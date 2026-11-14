@@ -70,7 +70,7 @@ static void dwin(const Win *w){ dmark(w->x-14,w->y-10,w->w+28,w->h+32); }
 static uint32_t *wall;
 static int acc_i=0, wall_i=0, tz=-5, show24=1;
 static VImage custom_wall;
-static int appmenu_open;
+static int appmenu_open,appmenu_cat,power_menu_open,power_sleep;
 extern const unsigned char vortex_demo_png_start[],vortex_demo_png_end[];
 static void cfg_set(const char *key,const char *val);
 static int cfg_get(const char *key,char *val,int max);
@@ -1573,21 +1573,19 @@ static void draw_topbar(void){
     { int st=net_state(), nx=gw-132; for(int b=0;b<4;b++) fill(nx+b*5,BARH/2+6-(b+1)*3,3,(b+1)*3,st>=2?0x7ee787:C_DIM,st>=2?255:(b==0?200:70)); }
     { const char *lc=layout_code(kbd_layout()); char up[4]={(char)(lc[0]-32),(char)(lc[1]?lc[1]-32:0),(char)(lc[1]&&lc[2]?lc[2]-32:0),0}; text(gw-86-(k_strlen(up)-2)*4,6,up,C_DIM); } circle(gw-26,BARH/2,7,0x000000,0); circle(gw-26,BARH/2,6,C_DIM,255); circle(gw-26,BARH/2,4,0x05060c,255); fill(gw-27,BARH/2-9,2,8,C_DIM,255);
 }
-#define NDOCK 10
+#define NDOCK 9
 #define TILE 52
 static void dock_geom(int *bx,int *by,int *bw,int *bh){ *bw=NDOCK*TILE+(NDOCK-1)*14+28; *bh=TILE+16; *bx=(gw-*bw)/2; *by=gh-*bh-10; }
-static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_PROGS};
-static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Programas"};
+static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,0x1a1d33,255);
     clip_set(x,y,TILE,TILE/2); rrect(x,y,TILE,TILE,13,0xffffff,13); clip_reset();           /* brillo superior */
     rrect(x,y,TILE,TILE,13,0xffffff,10);
     int cx=x+TILE/2, cy=y+TILE/2;
     switch(i){
-    case 0: /* Acceso a todas las aplicaciones: icono de cuadricula, no logotipo del SO. */
-        for(int row=0;row<3;row++)for(int col=0;col<3;col++)
-            rrect(x+11+col*11,y+11+row*11,8,8,2,
-                  (row==1&&col==1)?0x9b87f7:0xc8d2f7,255);
+    case 0: /* Logo original de Vortex OS como acceso unico a Aplicaciones. */
+        vortex_logo(x+5,y+7,42,255);
         break;
     case 1: circle(cx,cy,19,0xf97316,255); circle(cx,cy,15,0x1a1d33,255); ellipse_ring(cx,cy,7,15,0xf97316);
             line(cx-15,cy,cx+15,cy,2,0xf97316,255); line(cx-12,cy-8,cx+12,cy-8,1,0xf97316,255); line(cx-12,cy+8,cx+12,cy+8,1,0xf97316,255); break;
@@ -1623,35 +1621,136 @@ static void draw_dock(void){
     }
 }
 
-/* Menu de aplicaciones de la barra superior (no requiere una ventana). */
-typedef struct {const char *label; int app,tab;} AppMenuEntry;
+/* Lanzador Vortex: panel de aplicaciones con categorias y cuadrícula interactiva. */
+typedef struct {const char *label; int app,tab,cat,icon;} AppMenuEntry;
+enum { MC_ALL,MC_MULTIMEDIA,MC_OFICINA,MC_INTERNET,MC_SISTEMA,MC_UTIL,MC_JUEGOS };
+static const char *const APP_CATS[]={"Todas","Multimedia","Oficina","Internet","Sistema","Utilidades","Juegos"};
 static const AppMenuEntry APPMENU[]={
-    {"Explorador de archivos",A_FILES,0},{"Galeria de imagenes",A_MEDIA,0},
-    {"Musica",A_MEDIA,1},{"Videos",A_MEDIA,2},{"Dispositivos USB",A_MEDIA,3},
-    {"Navegador",A_BROWSER,0},{"Terminal",A_TERM,0},{"Notas",A_NOTES,0},
-    {"Calculadora",A_CALC,0},{"Monitor del sistema",A_MONITOR,0},
-    {"Ajustes",A_SETTINGS,0},{"LibreOffice",A_OFFICE,0},{"Programas Linux",A_PROGS,0},
-    {"Acerca de Vortex OS",A_ABOUT,0}
+    {"Navegador",A_BROWSER,0,MC_INTERNET,1},
+    {"Archivos",A_FILES,0,MC_SISTEMA,2},
+    {"Galeria",A_MEDIA,0,MC_MULTIMEDIA,10},
+    {"Musica",A_MEDIA,1,MC_MULTIMEDIA,11},
+    {"Videos",A_MEDIA,2,MC_MULTIMEDIA,12},
+    {"USB",A_MEDIA,3,MC_SISTEMA,13},
+    {"LibreOffice",A_OFFICE,0,MC_OFICINA,14},
+    {"Terminal",A_TERM,0,MC_UTIL,3},
+    {"Notas",A_NOTES,0,MC_UTIL,4},
+    {"Calculadora",A_CALC,0,MC_UTIL,5},
+    {"Ajustes",A_SETTINGS,0,MC_SISTEMA,7},
+    {"Monitor",A_MONITOR,0,MC_SISTEMA,8},
+    {"Snake",A_SNAKE,0,MC_JUEGOS,6},
+    {"Acerca de",A_ABOUT,0,MC_SISTEMA,15}
 };
-#define APPMENU_N ((int)(sizeof APPMENU/sizeof APPMENU[0]))
-static int appmenu_hit(int x,int y){
-    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
-    int px=bx+7, py=by-APPMENU_N*28-42;
-    if(x<px||x>=px+244||y<py+28||y>=py+28+APPMENU_N*28)return -1;
-    return (y-py-28)/28;
+#define APPMENU_N ((int)(sizeof APPMENU/sizeof(APPMENU[0])))
+#define APPMENU_CATS ((int)(sizeof APP_CATS/sizeof APP_CATS[0]))
+static void launcher_geom(int *x,int *y,int *w,int *h){
+    int bx,by,bw,bh; dock_geom(&bx,&by,&bw,&bh);
+    *w=k_min(gw-24,760);*h=k_min(by-BARH-14,458);
+    *x=(gw-*w)/2;*y=by-*h-9;
+    if(*y<BARH+4)*y=BARH+4;
+}
+static int appmenu_index(int nth){
+    for(int i=0;i<APPMENU_N;i++)if(appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat){
+        if(!nth)return i;nth--;
+    }
+    return -1;
+}
+static int appmenu_hit(int px,int py){
+    int x,y,w,h; launcher_geom(&x,&y,&w,&h);
+    int left=x+156,top=y+77,cols=4,cw=(w-177)/cols,rh=(h-87)/4;
+    if(px<left||px>=left+cols*cw||py<top||py>=top+4*rh)return -1;
+    int col=(px-left)/cw,row=(py-top)/rh;
+    return appmenu_index(row*cols+col);
+}
+static int appmenu_cat_hit(int px,int py){
+    int x,y,w,h;launcher_geom(&x,&y,&w,&h);(void)w;(void)h;
+    if(px<x+12||px>=x+145||py<y+76||py>=y+76+APPMENU_CATS*42)return -1;
+    return (py-y-76)/42;
+}
+static void appmenu_tile_icon(const AppMenuEntry *e,int x,int y){
+    if(e->icon>=1&&e->icon<=8){draw_icon(e->icon,x,y);return;}
+    rrect(x,y,TILE,TILE,13,0x2a3052,255);
+    switch(e->icon){
+    case 10: /* fotografia */
+        rrect(x+9,y+11,34,30,5,0x6b8ef0,255);
+        circle(x+34,y+19,5,0xffe69c,255);
+        {int p[]={x+12,y+37,x+24,y+25,x+32,y+33,x+40,y+24,x+40,y+38};poly(p,5,0xb0e2d2,255);}
+        break;
+    case 11: /* musica */
+        line(x+22,y+16,x+35,y+13,3,0xc8b4ff,255);
+        line(x+35,y+13,x+35,y+35,3,0xc8b4ff,255);
+        line(x+22,y+16,x+22,y+38,3,0xc8b4ff,255);
+        circle(x+17,y+38,6,0xb5a0ff,255);circle(x+30,y+35,6,0xb5a0ff,255);
+        break;
+    case 12: /* video */
+        rrect(x+9,y+13,34,27,5,0x394a7e,255);
+        {int p[]={x+23,y+20,x+23,y+34,x+35,y+27};poly(p,3,0xffffff,255);}
+        break;
+    case 13: /* almacenamiento USB */
+        line(x+26,y+13,x+26,y+38,3,0x8dd6e8,255);
+        line(x+26,y+23,x+15,y+30,3,0x8dd6e8,255);
+        line(x+26,y+28,x+37,y+22,3,0x8dd6e8,255);
+        circle(x+15,y+30,4,0x8dd6e8,255);
+        rrect(x+34,y+18,7,7,2,0x8dd6e8,255);
+        break;
+    case 14: /* oficina */
+        rrect(x+12,y+8,28,37,5,0x4bc6a9,255);
+        for(int j=0;j<4;j++)fill(x+17,y+18+j*6,17,2,0xe8fff8,255);
+        break;
+    default: vortex_logo(x+6,y+8,40,255); break;
+    }
 }
 static void appmenu_draw(void){
     if(!appmenu_open)return;
-    int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
-    int x=bx+7,y=by-APPMENU_N*28-42,w=244,h=APPMENU_N*28+32;
-    rrect(x+4,y+4,w,h,12,0x000000,80);
-    rrect(x,y,w,h,10,0x21253b,255);
-    text_bold(x+16,y+9,"Aplicaciones",0xffffff);
-    for(int i=0;i<APPMENU_N;i++){
-        int ry=y+24+i*28;
-        if(i&1)rrect(x+4,ry,w-8,27,5,0xffffff,9);
-        text(x+16,ry+5,APPMENU[i].label,C_TXT);
+    int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+    rrect(x+5,y+8,w,h,18,0x000000,85);
+    rrect(x,y,w,h,18,0x111629,250);
+    rrect(x+2,y+2,w-4,h-4,16,0x1b2340,244);
+    rrect(x+13,y+14,40,40,11,0x2b3159,255);
+    vortex_logo(x+19,y+20,29,255);
+    text_big(x+64,y+17,"Aplicaciones",0xffffff);
+    text(x+w-164,y+27,"Vortex OS",0xb7bdf0);
+    fill(x+156,y+69,w-174,1,0xffffff,26);
+    rrect(x+9,y+66,143,h-78,12,0x12182d,210);
+    for(int i=0;i<APPMENU_CATS;i++){
+        int row=y+76+i*42;
+        if(i==appmenu_cat)rrect(x+16,row,130,37,8,0x6358b4,230);
+        text(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:0xb5c1d9);
     }
+    int left=x+156,top=y+77,cw=(w-177)/4,rh=(h-87)/4;
+    for(int n=0;n<APPMENU_N;n++){
+        int idx=appmenu_index(n);if(idx<0)break;
+        int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
+        if(cy+rh>y+h)break;
+        rrect(cx+3,cy+3,cw-8,rh-6,10,0xffffff,10);
+        int iconx=cx+(cw-TILE)/2,icony=cy+5;
+        appmenu_tile_icon(&APPMENU[idx],iconx,icony);
+        int tx=cx+(cw-text_w(APPMENU[idx].label))/2;
+        if(tx<cx+4)tx=cx+4;
+        text(tx,cy+rh-22,APPMENU[idx].label,0xeaf0ff);
+    }
+}
+static int power_menu_hit(int mx0,int my0){
+    if(mx0<gw-223||mx0>=gw-13||my0<BARH+18||my0>=BARH+162)return -1;
+    return (my0-(BARH+18))/48;
+}
+static void power_menu_draw(void){
+    if(!power_menu_open)return;
+    int x=gw-230,y=BARH+6;
+    rrect(x+3,y+4,218,196,12,0x000000,80);
+    rrect(x,y,218,196,12,0x1a2138,255);
+    text_bold(x+19,y+12,"Energia",0xffffff);
+    static const char *const power_labels[]={"Apagar","Suspender","Reiniciar"};
+    for(int i=0;i<3;i++){
+        int cy=y+38+i*48;
+        rrect(x+10,cy,198,43,8,0xffffff,13);
+        rrect(x+21,cy+9,25,25,7,i==0?0xb84d5c:i==1?0x5a69ac:0x4b927e,255);
+        if(i==0)circle(x+33,cy+21,7,0xffffff,240);
+        else if(i==1)fill(x+31,cy+14,4,14,0xffffff,255);
+        else {line(x+27,cy+24,x+39,cy+17,2,0xffffff,255);line(x+38,cy+17,x+37,cy+26,2,0xffffff,255);}
+        text(x+57,cy+13,power_labels[i],0xeaf0ff);
+    }
+    text(x+16,y+187,"Suspender: reposo de pantalla",C_DIM);
 }
 /* ---------------- escritorio modular: iconos y widgets que se arrastran ---------------- */
 
@@ -1768,6 +1867,14 @@ static void render(void){
     if(x1<=x0||y1<=y0){ dirty=0; return; }
     int rw=x1-x0, rh=y1-y0;
     clip_base(x0,y0,rw,rh);
+    if(power_sleep){
+        fill(x0,y0,rw,rh,0x040710,255);
+        vortex_logo(gw/2-34,gh/2-116,68,255);
+        text_big(gw/2-90,gh/2-28,"Vortex OS",0xf5f5ff);
+        text(gw/2-175,gh/2+28,"Reposo de pantalla. Pulsa una tecla o haz clic.",0xa9b4d3);
+        gfx_present_rect(x0,y0,rw,rh);clip_base(0,0,gw,gh);
+        cur_x=-100;dirty=0;cursor_dirty=0;return;
+    }
     for(int j=y0;j<y1;j++) memcpy(bb+j*gw+x0,wall+j*gw+x0,(size_t)rw*4);
     for(int i=0;i<NDO;i++) if(dobj[i].kind>=0 && rect_hit(dobj[i].x-6,dobj[i].y-6,dobj[i].w+12,dobj[i].h+12,x0,y0,rw,rh)) draw_dobj(&dobj[i]);
     for(int k=0;k<nord;k++){
@@ -1776,7 +1883,7 @@ static void render(void){
         int hidden=0; for(int j=k+1;j<nord;j++){ Win *o=&wins[order[j]]; if(rect_in(w->x-14,w->y-10,w->w+28,w->h+32,o->x,o->y,o->w,o->h)){ hidden=1; break; } }
         if(!hidden) draw_window(order[k],k==nord-1);
     }
-    draw_topbar(); draw_dock(); appmenu_draw();
+    draw_topbar(); draw_dock(); appmenu_draw(); power_menu_draw();
     if(fd_on){ char g[FS_NAME+4]; k_strcpy(g,fd_name,sizeof g); g[26]=0; int tw=text_w(g)+44;                    /* lo que se esta arrastrando */
         rrect(fd_gx,fd_gy,tw,28,7,0x05060c,200); rrect(fd_gx,fd_gy,tw,28,7,ACCENT,90); draw_doc(fd_gx+8,fd_gy+3); text(fd_gx+34,fd_gy+6,g,0xffffff); }
     mu_draw();
@@ -1964,10 +2071,19 @@ static void app_click(Win *w,int lx,int ly){
     }
 }
 static void on_press(void){
+    if(power_menu_open){
+        int choice=power_menu_hit(mx,my);power_menu_open=0;dirty=1;
+        if(choice==0){kserial_puts("[vortex-power] apagar\n");khalt();}
+        if(choice==1){kserial_puts("[vortex-power] reposo de pantalla\n");power_sleep=1;}
+        if(choice==2){kserial_puts("[vortex-power] reiniciar\n");kreboot();}
+        return;
+    }
     if(appmenu_open){
-        int i=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
-        if(i>=0&&i<APPMENU_N){kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[i].label);kserial_puts("\n");Win *w=open_app(APPMENU[i].app);
-            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[i].tab;w->scroll=0;
+        int cat=appmenu_cat_hit(mx,my);
+        if(cat>=0&&cat<APPMENU_CATS){appmenu_cat=cat;dirty=1;return;}
+        int idx=appmenu_hit(mx,my);appmenu_open=0;dirty=1;
+        if(idx>=0&&idx<APPMENU_N){kserial_puts("[vortex-apps] ");kserial_puts(APPMENU[idx].label);kserial_puts("\n");Win *w=open_app(APPMENU[idx].app);
+            if(w&&w->type==A_MEDIA){w->media_tab=APPMENU[idx].tab;w->scroll=0;
                 if(w->media_tab==3)(void)usb_storage_probe();}
         }
         return;
@@ -1975,10 +2091,10 @@ static void on_press(void){
     if(mu_open){ int i=mu_item_at(mx,my); mu_open=0; dirty=1; if(i>=0) mu_exec(i); return; }
     if(dren>=0) dren_commit();
     int d=dock_hit(mx,my);
-    if(d>=0){ if(d==0){appmenu_open=!appmenu_open;kserial_puts("[vortex-apps] menu abierto\n");}
+    if(d>=0){ if(d==0){appmenu_open=!appmenu_open;power_menu_open=0;kserial_puts("[vortex-apps] menu abierto\n");}
         else open_app(DOCK_APP[d]); dirty=1; return; }
     if(d==-2) return;
-    if(my<BARH){if(mx>gw-48)open_app(A_SETTINGS);return;}
+    if(my<BARH){if(mx>gw-48){power_menu_open=!power_menu_open;appmenu_open=0;dirty=1;}return;}
     for(int k=nord-1;k>=0;k--){
         int wi=order[k]; Win *w=&wins[wi];
         if(!in_rect(mx,my,w->x,w->y,w->w,w->h)) continue;
@@ -2000,6 +2116,7 @@ static void on_press(void){
 }
 static void on_rpress(void){                                         /* boton derecho: menu contextual */
     if(appmenu_open){appmenu_open=0;dirty=1;}
+    if(power_menu_open){power_menu_open=0;dirty=1;}
     if(mu_open){ mu_open=0; dirty=1; }
     if(dren>=0) dren_commit();
     for(int k=nord-1;k>=0;k--){
@@ -2024,6 +2141,7 @@ static void mouse_set(int x,int y,int b){
     int pressed=(b&1)&&!(mb&1), released=!(b&1)&&(mb&1), rpressed=(b&2)&&!(mb&2); int omb=mb;
     if(x!=mx||y!=my) cursor_dirty=1;
     mx=x; my=y; mb=b;
+    if(power_sleep){if(pressed){power_sleep=0;dirty=1;}return;}
     { int top=win_top();                                       /* sobre la pantalla X, el raton se le entrega al programa de Linux */
       if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top]; int lx=x-(xw->x+1), ly=y-(xw->y+TB);
         if(lx>=0&&ly>=0&&lx<xw->xw&&ly<xw->xh){
@@ -2077,6 +2195,8 @@ void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
 static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
 void gui_key(int c){
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
+    if(power_sleep){power_sleep=0;dirty=1;return;}
+    if(power_menu_open&&c==27){power_menu_open=0;dirty=1;return;}
     if(appmenu_open&&c==27){appmenu_open=0;dirty=1;return;}
     if(mu_open&&c==27){ mu_open=0; dirty=1; return; }
     if(c==0x40D){Win *w=open_app(A_MEDIA);if(w)w->media_tab=0;dirty=1;return;}
