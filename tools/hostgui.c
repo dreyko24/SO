@@ -11,6 +11,13 @@ static uint32_t T=1000;
 uint32_t kticks(void){ return T; }
 int kgetc(void){ return -1; }
 void (*kcon_hook)(char);
+int kattach_pid;
+char kshell_cwd[96];
+void (*kproc_done)(int pid,int code);
+void kinput_event(int type,int code,int value){
+    (void)type; (void)code; (void)value;
+}
+void kproc_key(int c){ (void)c; }
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kprintf(const char *f,...){ (void)f; }
 void kshell_exec(char *l){
