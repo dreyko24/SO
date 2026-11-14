@@ -36,7 +36,8 @@ typedef struct {
     long long cacc, ccur; int cop, cfresh, cerr, cdec;                          /* calculadora: valores x10000 (4 decimales); cdec = decimales tecleados (-1 sin punto) */
     int rx, ry, rw, rh, maxed, snap, minimized; /* snap: 0 completa, 1 izquierda, 2 derecha */
     int fullscreen, fx0, fy0, fw0, fh0; /* pantalla completa real, geometria anterior */
-    int apps_tab; int saber_topic, saber_q, saber_answer, saber_hits, saber_streak; uint32_t tclick;                                   /* maximizar / ajustar */
+    int apps_tab; int saber_topic, saber_q, saber_answer, saber_hits, saber_streak;
+    int saber_pair_sel, saber_pair_mask, saber_pair_errors; uint32_t tclick;                                   /* maximizar / ajustar */
     unsigned char sx[SGW*SGH], sy[SGW*SGH]; int slen, sdir, sndir, fx, fy, score, sover, sstart; uint32_t snext, seed;   /* snake */
 } Win;
 
@@ -292,25 +293,29 @@ static const SaberLeccion SABER[NSABER]={
 };
 static const int APPS_LOCAL[]={A_SABER,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR,A_ABOUT};
 static const char *APPS_LOCAL_NOMBRES[]={"Vortex Saber","Navegador simple","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor","Acerca de"};
-static int saber_best[NSABER], saber_loaded;
+#define SABER_PAIRS 4
+static const char *SABER_TERMS[SABER_PAIRS]={"Fraccion","Fotosintesis","Independencia","HTTPS"};
+static const char *SABER_DEFS[SABER_PAIRS]={"Parte igual de un todo","Plantas usan luz","Peru: 1821","Cifrado TLS"};
+static const int SABER_PERM[SABER_PAIRS]={2,0,3,1};
+static int saber_best[NSABER+1], saber_loaded;
 static void saber_load(void){
     if(saber_loaded) return;
     saber_loaded=1;
-    for(int i=0;i<NSABER;i++) saber_best[i]=0;
+    for(int i=0;i<=NSABER;i++) saber_best[i]=0;
     FsNode *f=fs_resolve(fs_root(),"/Documentos/Vortex-Saber-progreso.txt");
     if(!f||f->dir||!f->data) return;
-    for(int i=0;i<NSABER&&i<f->size;i++){
-        char c=f->data[i]; if(c>='0'&&c<='3') saber_best[i]=c-'0';
+    for(int i=0;i<=NSABER&&i<f->size;i++){
+        char c=f->data[i]; if(c>='0'&&c<=(i==NSABER?'4':'3')) saber_best[i]=c-'0';
     }
 }
 static void saber_save(void){
     FsNode *r=fs_root(), *d=fs_find(r,"Documentos");
     if(!d) d=fs_mkdir(r,"Documentos");
     if(!d||!d->dir) return;
-    char buf[NSABER+2];
-    for(int i=0;i<NSABER;i++) buf[i]=(char)('0'+saber_best[i]);
-    buf[NSABER]='\n'; buf[NSABER+1]=0;
-    (void)fs_create(d,"Vortex-Saber-progreso.txt",buf,NSABER+1);
+    char buf[NSABER+3];
+    for(int i=0;i<=NSABER;i++) buf[i]=(char)('0'+saber_best[i]);
+    buf[NSABER+1]='\n'; buf[NSABER+2]=0;
+    (void)fs_create(d,"Vortex-Saber-progreso.txt",buf,NSABER+2);
 }
 static void saber_start(Win *w,int topic){
     if(topic<0||topic>=NSABER) return;
@@ -331,6 +336,28 @@ static void saber_next(Win *w){
         saber_best[w->saber_topic]=w->saber_hits; saber_save();
     }
     dirty=1;
+}
+
+/* Juego interactivo de parejas: conceptos/definiciones, sin respuestas preconcedidas. */
+static void saber_game_start(Win *w){
+    saber_load();
+    w->saber_topic=-2; w->saber_pair_sel=-1; w->saber_pair_mask=0;
+    w->saber_pair_errors=0; dirty=1;
+}
+static void saber_game_select(Win *w,int column,int row){
+    if(w->saber_topic!=-2||row<0||row>=SABER_PAIRS||w->saber_pair_mask==15) return;
+    int id=column?SABER_PERM[row]:row;
+    if(w->saber_pair_mask&(1<<id)) return;
+    if(!column){ w->saber_pair_sel=id; dirty=1; return; }
+    if(w->saber_pair_sel<0) return;
+    if(w->saber_pair_sel==id){
+        w->saber_pair_mask|=1<<id;
+        if(w->saber_pair_mask==15){
+            int pts=k_max(0,SABER_PAIRS-w->saber_pair_errors);
+            if(pts>saber_best[NSABER]){ saber_best[NSABER]=pts; saber_save(); }
+        }
+    }else w->saber_pair_errors++;
+    w->saber_pair_sel=-1; dirty=1;
 }
 
 static const PApp PAPPS[]={
