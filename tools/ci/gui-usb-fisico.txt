@@ -1,12 +1,12 @@
 # QEMU: controlador USB UHCI + pendrive FAT32 real (emulado como hardware externo)
 captura 01-escritorio-usb
-raton 5 80
+raton 950 110
 clic
-raton 248 724
+raton 53 14
 clic
 esperar 1
 captura 02-menu-aplicaciones
-raton 505 438
+raton 551 404
 clic
 esperar 3
 captura 03-memoria-usb-detectada

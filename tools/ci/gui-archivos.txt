@@ -4,7 +4,7 @@ captura 01-inicio
 raton 600 500
 clic
 # --- calculadora (ventana en x=120 y=52): 12 + 3.5 = 15.5 con clics en sus botones
-raton 545 724
+raton 46 458
 clic
 esperar 1
 captura 02-calculadora
@@ -35,7 +35,7 @@ captura 04-calc-movida-9
 raton 772 250
 clic
 # --- gestor de archivos
-raton 347 724
+raton 46 266
 clic
 esperar 1
 captura 05-archivos

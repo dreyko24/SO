@@ -1,6 +1,6 @@
 raton 600 500
 clic
-raton 677 724
+raton 46 586
 clic
 esperar 1
 captura 01-general

@@ -1,10 +1,11 @@
-# Test del reproductor multimedia con archivos nativos creados por Vortex OS
+# Test de audio/video: interfaz Ubuntu+GNOME (Actividades superior).
+# Menu 1024x768: Musica col3 fila0=857,305; Videos col0 fila1=398,404.
 captura 01-escritorio
-raton 5 80
+raton 950 110
 clic
-raton 248 724
+raton 53 14
 clic
-raton 795 346
+raton 857 305
 clic
 esperar 1
 captura 02-biblioteca-audio
@@ -12,9 +13,9 @@ raton 210 203
 clic
 esperar 2
 captura 03-audio-wav-reproduciendo
-raton 248 724
+raton 53 14
 clic
-raton 360 438
+raton 398 404
 clic
 esperar 1
 captura 04-biblioteca-video
