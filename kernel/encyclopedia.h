@@ -39,4 +39,21 @@ static const EncArticle ENC_ARTICLES[]={
     {"Prevencion y salud",6,"Habitos, vacunas e informacion fiable","La prevencion de enfermedades combina medidas personales y comunitarias. La higiene, el acceso a agua segura y las vacunas recomendadas pueden disminuir riesgos importantes.\n\nLas revisiones de salud y la deteccion temprana ayudan en muchas situaciones. La informacion debe consultarse en fuentes sanitarias confiables.\n\nUna enciclopedia educativa ofrece conocimientos generales, pero no diagnosticos ni tratamiento individual. Buscar atencion profesional es importante ante sintomas graves."},
 };
 #define ENC_ARTICLES_N ((int)(sizeof ENC_ARTICLES/sizeof ENC_ARTICLES[0]))
+/* Cuestionario original para practicar sin conexion. */
+typedef struct {const char *question;const char *answers[4];int correct;const char *explanation;} EncQuiz;
+static const EncQuiz ENC_QUIZ[]={
+    {"Cual es la estrella central del Sistema Solar?",{"El Sol","La Luna","Marte","Jupiter"},0,"El Sol aporta energia y su gravedad domina el Sistema Solar."},
+    {"Que molecula almacena informacion hereditaria?",{"Agua","ADN","Oxigeno","Sal"},1,"El ADN contiene instrucciones geneticas en la mayoria de los organismos."},
+    {"Cual fue la capital politica del Tawantinsuyu?",{"Lima","Quito","Cusco","Puno"},2,"Cusco fue el centro politico principal del estado inca."},
+    {"Que era el Qhapaq Nan?",{"Una red de caminos","Una escritura","Una moneda","Un instrumento"},0,"El Qhapaq Nan conectaba poblaciones y centros administrativos andinos."},
+    {"Que cordillera recorre el occidente sudamericano?",{"Alpes","Himalaya","Andes","Urales"},2,"Los Andes atraviesan gran parte del occidente de America del Sur."},
+    {"Que servicio utiliza paginas y navegadores?",{"Solo el correo","La Web","El GPS","El Bluetooth"},1,"La Web es uno de los servicios que funciona sobre Internet."},
+    {"Que estudia principalmente la estadistica?",{"La luz solar","La musica","Los volcanes","Datos y variacion"},3,"La estadistica permite organizar e interpretar informacion."},
+    {"Que unidad forma los organismos vivos?",{"La celula","El cristal","El tornillo","La roca"},0,"Las celulas constituyen unidades funcionales de los seres vivos."},
+    {"Para que sirve un sistema operativo?",{"Dibujar mapas","Organizar recursos y programas","Producir lluvia","Mover placas"},1,"El sistema operativo administra memoria, dispositivos, procesos y archivos."},
+    {"Cual es una buena practica de seguridad?",{"Compartir claves","Ignorar actualizaciones","Usar copias de seguridad","Abrir cualquier enlace"},2,"Las copias de seguridad verificadas ayudan a recuperar informacion."},
+    {"Que influye en el clima del Peru?",{"Solo la hora","Oceano y Andes","Solo las ciudades","Un solo rio"},1,"El oceano Pacifico y los Andes son factores importantes del clima peruano."},
+    {"Como se llama una familia de lenguas andinas?",{"Quechua","Latin clasico","Frances","Esperanto"},0,"Las variedades quechuas son habladas por comunidades de los Andes."},
+};
+#define ENC_QUIZ_N ((int)(sizeof ENC_QUIZ/sizeof ENC_QUIZ[0]))
 #endif
