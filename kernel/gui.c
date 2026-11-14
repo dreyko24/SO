@@ -1326,11 +1326,14 @@ static void draw_window(int wi,int focused){
         break; }
     case A_BROWSER:{
         button(cx+8,cy+6,32,24,"<",0);
-        rrect(cx+48,cy+6,cw-56,24,6,0x10111b,255);
+        rrect(cx+48,cy+6,cw-194,24,6,0x10111b,255);
+        button(cx+cw-138,cy+6,130,24,papp_installed(4)?"Abrir Chromium":"Instalar Chromium",1);
         char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
+        clip_set(cx+56,cy+8,cw-208,20);
         if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
         text(cx+58,cy+10,shown,w->editing?0xffffff:C_DIM);
         if(w->editing && ((kticks()/50)&1)) fill(cx+58+text_w(shown),cy+10,2,16,ACCENT,255);
+        clip_reset();
         int src_len; const char *src=page_src(w,&src_len);
         int vx=cx+12, vy=cy+38, vw=cw-24, vh=ch-38;
         html_render(src,src_len,vx,vy,vw,vh,w->bscroll,mix(0x8ab4ff,ACCENT,60),1,&w->page);
@@ -1884,7 +1887,13 @@ static void settings_click(int lx,int ly,int cw,int ch){
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
-    if(in_rect(lx,ly,48,6,cw-56,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
+    if(in_rect(lx,ly,cw-138,6,130,24)){
+        w->editing=0;
+        if(papp_installed(4)) run_quiet("abrir chromium");
+        else run_in_terminal("instalar chromium");
+        dirty=1; return;
+    }
+    if(in_rect(lx,ly,48,6,cw-194,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
     w->editing=0;
     for(int i=0;i<w->page.nlinks;i++){
         HLink *k=&w->page.links[i]; int px=12+k->x, py=38+k->y-w->bscroll;
