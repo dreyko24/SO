@@ -366,6 +366,8 @@ static Win *open_app(int type){
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
     }
+    if(w->w>gw-DOCK_SIDE-8) w->w=gw-DOCK_SIDE-8;
+    if(w->h>gh-BARH-8) w->h=gh-BARH-8;
     w->x=DOCK_SIDE+16+off; w->y=BARH+24+off;
     if(w->x+w->w>gw) w->x=k_max(DOCK_SIDE,gw-w->w);
     if(w->y+w->h>gh-80) w->y=k_max(BARH,gh-80-w->h);
@@ -1938,7 +1940,8 @@ static void on_press(void){
               if(w->maxed){ win_restore(w); w->x=k_max(DOCK_SIDE,mx-w->w/2); dirty=1; }
               drag=wi; dragdx=mx-w->x; dragdy=my-w->y; return; }
         }
-        app_click(w,mx-(w->x+1),my-(w->y+TB));
+        { int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
+          app_click(w,mx-cx,my-cy); }
         return;
     }
     { int di=dobj_hit(mx,my); if(di>=0){ ddrag=di; ddx=mx-dobj[di].x; ddy=my-dobj[di].y; dmoved=0; if(dobj[di].kind==200&&dsel!=di){ dsel=di; dirty=1; } }
@@ -1970,7 +1973,9 @@ static void mouse_set(int x,int y,int b){
     if(x!=mx||y!=my) cursor_dirty=1;
     mx=x; my=y; mb=b;
     { int top=win_top();                                       /* sobre la pantalla X, el raton se le entrega al programa de Linux */
-      if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top]; int lx=x-(xw->x+1), ly=y-(xw->y+TB);
+      if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top];
+         int cx,cy,cw,ch; crect(xw,&cx,&cy,&cw,&ch);
+         int lx=x-cx, ly=y-cy; (void)cw; (void)ch;
         if(lx>=0&&ly>=0&&lx<xw->xw&&ly<xw->xh){
             if(lx!=xw->xlx||ly!=xw->xly){ xw->xlx=lx; xw->xly=ly; kinput_event(3,0,lx); kinput_event(3,1,ly); kinput_event(0,0,0); }
             static const int bit[3]={1,2,4}, code[3]={0x110,0x111,0x112};
