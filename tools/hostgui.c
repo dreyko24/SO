@@ -94,6 +94,21 @@ int main(void){
       }
       puts("VORTEX ARCHIVO WAV 16-BIT DE PRUEBA OK");
     }
+    /* El motor nativo no afirma implementar TLS ni JS. La Web completa
+     * utiliza Chromium de Debian, con URL validada y busqueda en Google. */
+    {
+      char url[192];
+      browser_google_query("vortex os peru",url,sizeof url);
+      if(strcmp(url,"https://www.google.com/search?q=vortex%20os%20peru")||
+         !browser_safe_target(url)||
+         browser_safe_target("https://google.com/;reboot")||
+         browser_safe_target("https://google.com/$(halt)")||
+         browser_safe_target("javascript:alert(1)")||
+         browser_safe_target("https://google.com/sitio con espacio")){
+          puts("FALLO URI o busqueda Chromium real");return 1;
+      }
+      puts("VORTEX WEB: GOOGLE URL ENCODING, BLOQUEO DE INYECCION Y PUENTE CHROMIUM OK");
+    }
     /* Multitarea por teclado: ciclo completo, retroceso, y estado
      * intacto al volver a una ventana minimizada. */
     {

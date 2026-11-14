@@ -481,6 +481,38 @@ static void render(void);
 static void run_in_terminal(const char *cmd){ Win *t=open_app(A_TERM); if(!t||t->busy) return; for(const char *q=cmd;*q;q++) gui_key((unsigned char)*q); gui_key('\n'); }
 void gui_open_installer(void){ run_in_terminal("instalar-sistema"); }
 static void run_quiet(const char *cmd){ char l[160]; k_strcpy(l,cmd,sizeof l); term_target=0; kcon_hook=0; kshell_exec(l); }
+/* Puente a un navegador moderno REAL de Debian, si esta instalado.
+ * El renderizador nativo solo soporta una parte de HTML/CSS sin JS/TLS.
+ * No se delega a una pagina fingida: la app real se ejecuta en X11.
+ * Los argumentos se validan y se entregan como tokens, nunca a un shell. */
+static int browser_safe_target(const char *u){
+    if(!u||!(k_startswith(u,"https://")||k_startswith(u,"http://")))return 0;
+    int n=0;
+    for(const unsigned char *p=(const unsigned char*)u;*p;p++){
+        unsigned char c=*p;
+        if(++n>170)return 0;
+        if((c>='a'&&c<='z')||(c>='A'&&c<='Z')||
+           (c>='0'&&c<='9'))continue;
+        if(c=='/'||c==':'||c=='.'||c=='-'||c=='_'||
+           c=='?'||c=='&'||c=='='||c=='%'||c=='+'||
+           c=='#'||c=='~'||c==','||c=='@')continue;
+        return 0; /* rechaza espacios, comillas y metacaracteres */
+    }
+    return n>8;
+}
+static void browser_google_query(const char *q,char *out,int max){
+    k_strcpy(out,"https://www.google.com/search?q=",max);
+    urlenc(out,max,q);
+}
+static int browser_open_modern(const char *url){
+    if(!papp_installed(4))return 0;
+    const char *target=browser_safe_target(url)?url:"https://www.google.com/";
+    char cmd[210]="abrir chromium ";
+    cat(cmd,sizeof cmd,target);
+    kserial_puts("[vortex-browser] chromium-real-web\n");
+    run_quiet(cmd);
+    return 1;
+}
 static Win *open_app(int type){
     if(!open_new) for(int i=0;i<nord;i++){ Win *e=&wins[order[i]]; if(e->type==type && type!=A_VIEWER){ focus(order[i]); return e; } }
     int wi=-1; for(int i=0;i<MAXW;i++) if(!wins[i].used){ wi=i; break; }
@@ -739,7 +771,7 @@ static const char *page_src(Win *w,int *len){
         rawbuf[0]=0;
         if(w->loading){ cat(rawbuf,sizeof rawbuf,"<title>Cargando...</title><h1>Cargando...</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><p>Esperando respuesta del servidor.</p>"); }
         else { cat(rawbuf,sizeof rawbuf,"<title>Error</title><h1>No se pudo abrir la pagina</h1><p>"); esc_into(rawbuf,sizeof rawbuf,w->err[0]?w->err:"Error desconocido");
-               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>Si buscabas en la web: ejecuta <b>tools/vortex-proxy.py</b> en tu PC (puerto 8080).</p><p><a href=\"vortex://inicio\">Ir al inicio</a></p>"); }
+               cat(rawbuf,sizeof rawbuf,"</p><p>"); esc_into(rawbuf,sizeof rawbuf,w->url); cat(rawbuf,sizeof rawbuf,"</p><hr><p>HTTPS, JavaScript y CSS modernos requieren Chromium (64 bits).</p><p>Usa <b>Instalar web</b> para instalar el navegador real de Debian, o configura el proxy HTTP.</p><p><a href=\"vortex://inicio\">Ir al inicio</a></p>"); }
         *len=k_strlen(rawbuf); return rawbuf;
     }
     if(k_startswith(w->url,"file://")){
@@ -866,6 +898,17 @@ static void browser_go_typed(Win *w){
     int has=0; for(int i=0;w->ebuf[i]&&w->ebuf[i+2];i++) if(w->ebuf[i]==':'&&w->ebuf[i+1]=='/'&&w->ebuf[i+2]=='/') has=1;
     int dot=0, sp=0; for(int i=0;w->ebuf[i];i++){ if(w->ebuf[i]=='.') dot=1; if(w->ebuf[i]==' ') sp=1; }
     u[0]=0;
+    if(papp_installed(4)){
+        if(has&&browser_safe_target(w->ebuf)){
+            if(browser_open_modern(w->ebuf)){w->editing=0;dwin(w);return;}
+        }else if((dot||k_startswith(w->ebuf,"localhost"))&&!sp){
+            char site[192]="https://";cat(site,sizeof site,w->ebuf);
+            if(browser_open_modern(site)){w->editing=0;dwin(w);return;}
+        }else if(!has&&sp){
+            browser_google_query(w->ebuf,u,sizeof u);
+            if(browser_open_modern(u)){w->editing=0;dwin(w);return;}
+        }
+    }
     if(has && k_startswith(w->ebuf,"https://")){                                   /* https: a traves de vortex-proxy si esta configurado */
         char b[192]; cfg_search_url("",b,sizeof b);
         if(k_startswith(b,"http://")){ int e=7; while(b[e]&&b[e]!='/') e++; b[e]=0; k_strcpy(u,b,sizeof u); cat(u,sizeof u,"/go?u="); urlenc(u,sizeof u,w->ebuf); }
@@ -1841,7 +1884,8 @@ static void draw_window(int wi,int focused){
         break; }
     case A_BROWSER:{
         button(cx+8,cy+6,32,24,"<",0);
-        rrect(cx+48,cy+6,cw-56,24,10,C_TILE,255);
+        rrect(cx+48,cy+6,cw-188,24,10,C_TILE,255);
+        button(cx+cw-128,cy+6,120,24,papp_installed(4)?"Web completa":"Instalar web",0);
         char shown[100]; if(w->editing){ k_strcpy(shown,w->ebuf,sizeof shown); } else k_strcpy(shown,w->url,sizeof shown);
         if(w->editing && w->selall) fill(cx+57,cy+9,text_w(shown)+2,18,ACCENT,150);
         text(cx+58,cy+10,shown,w->editing?C_TXT:C_DIM);
@@ -2738,7 +2782,17 @@ static void settings_click(int lx,int ly,int cw,int ch){
 static void browser_click(Win *w,int lx,int ly,int cw,int ch){
     (void)ch;
     if(in_rect(lx,ly,8,6,32,24)){ go_back(w); return; }
-    if(in_rect(lx,ly,48,6,cw-56,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
+    if(in_rect(lx,ly,cw-128,6,120,24)){
+        if(!papp_installed(4)){
+            run_in_terminal("instalar chromium");
+        }else{
+            const char *url=browser_safe_target(w->url)?
+                w->url:"https://www.google.com/";
+            (void)browser_open_modern(url);
+        }
+        return;
+    }
+    if(in_rect(lx,ly,48,6,cw-188,24)){ w->editing=1; w->selall=1; k_strcpy(w->ebuf,w->url,192); w->elen=k_strlen(w->ebuf); dirty=1; return; }
     w->editing=0;
     for(int i=0;i<w->page.nlinks;i++){
         HLink *k=&w->page.links[i]; int px=12+k->x, py=38+k->y-w->bscroll;
