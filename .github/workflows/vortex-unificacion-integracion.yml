@@ -36,6 +36,13 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror tools/browser_launch_test.c -o /tmp/vortex-browser && /tmp/vortex-browser
       - name: Red simulada con pila Vortex real
         run: python3 tools/nettest.py
+      - name: Lanzadores de QEMU y USB en modo solo lectura
+        run: |
+          bash -n tools/probar-vortex.sh
+          grep -Fq 'usb-storage,drive=vortexusb,bus=usb-bus.0' tools/probar-vortex.sh
+          grep -Fq 'readonly=on' tools/probar-vortex.sh
+          grep -Fq 'usb-storage,drive=vortexusb,bus=usb-bus.0' Probar-VortexOS.cmd
+          grep -Fq 'readonly=on' Probar-VortexOS.cmd
       - name: Atajos del gestor de ventanas Vortex
         run: |
           gcc -std=c11 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbd && /tmp/vortex-kbd

@@ -13,5 +13,16 @@ if [[ -z "$ISO" ]]; then
 fi
 if [[ ! -f "$ISO" ]]; then echo "[VORTEX] No existe la ISO: $ISO" >&2; exit 1; fi
 command -v qemu-system-x86_64 >/dev/null || { echo "[VORTEX] Instala qemu-system-x86 (Ubuntu: sudo apt install qemu-system-x86)" >&2; exit 1; }
-exec qemu-system-x86_64 -name "Vortex OS - prueba" -m 4096 -smp 2 -boot d \
-  -drive "file=$ISO,media=cdrom,if=ide,readonly=on" -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot
+# Segundo argumento opcional: archivo de imagen FAT32 para el dispositivo
+# USB Mass Storage emulado. Nunca permitir escritura sobre esa imagen.
+USB_IMG="${2:-}"
+args=(-name "Vortex OS - prueba" -m 4096 -smp 2 -boot d
+  -drive "file=$ISO,media=cdrom,if=ide,readonly=on"
+  -vga std -nic user,model=e1000 -device AC97 -usb -rtc base=utc -no-reboot)
+if [[ -n "$USB_IMG" ]]; then
+    [[ -f "$USB_IMG" ]] || { echo "[VORTEX] No existe la imagen USB FAT32: $USB_IMG" >&2; exit 1; }
+    args+=(-drive "if=none,id=vortexusb,format=raw,file=$USB_IMG,readonly=on"
+           -device "usb-storage,drive=vortexusb,bus=usb-bus.0")
+    echo "[VORTEX] USB emulado de solo lectura: $USB_IMG"
+fi
+exec qemu-system-x86_64 "${args[@]}"
