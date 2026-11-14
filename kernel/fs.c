@@ -83,7 +83,7 @@ static int ensure_cap(FsNode *n,int need){
     int osize=n->size; drop_data(n); n->data=d; n->size=osize; n->cap=nc; return 0;
 }
 int fs_write_at(FsNode *n,int off,const char *src,int len){
-    if(!n||n->dir||off<0||len<0||len>0x7ffffffe-off||(len&&!src))return -1;
+    if(!n||n->dir||off<0||len<0||len>0x7ffffffe - off||(len&&!src))return -1;
     int end=off+len;
     if(ensure_cap(n,end)) return -1;
     if(off>n->size) memset(n->data+n->size,0,(size_t)(off-n->size));
