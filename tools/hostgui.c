@@ -75,6 +75,12 @@ static void closeall(void){ for(int k=0;k<14;k++){ int top=win_top(); if(top<0) 
 int main(void){
     fb=calloc(W*H,4);
     if(gui_init(fb,W,H,W*4)){ puts("gui_init fallo"); return 1; }
+    { FsNode *m=fs_resolve(fs_root(),"/Musica");FsNode *f=m?fs_find(m,"Prueba-de-audio-16bits.wav"):0;
+      if(!f||f->size!=88244||memcmp(f->data,"RIFF",4)||memcmp(f->data+8,"WAVE",4)){
+          puts("FALLO archivo WAV PCM 16-bit de prueba");return 1;
+      }
+      puts("VORTEX ARCHIVO WAV 16-BIT DE PRUEBA OK");
+    }
     shot("01_escritorio");
     dock(2); T+=100;                       /* Archivos */
     dclick(170,160); shot("02_archivos");

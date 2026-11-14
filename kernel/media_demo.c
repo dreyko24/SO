@@ -25,6 +25,30 @@ static void sample_wav(FsNode *dir){
     if(f)f->sys=1;
     kfree(b);
 }
+/* Prueba con datos WAV PCM 16 bits reales, no un nombre vacio.
+ * 2 segundos a 22050 Hz: 440 y 660 Hz, envolvente suave de entrada/salida. */
+static void sample_wav16(FsNode *dir){
+    if(!dir||fs_find(dir,"Prueba-de-audio-16bits.wav"))return;
+    enum {RATE=22050, SAMPLES=RATE*2, N=44+SAMPLES*2};
+    unsigned char *b=kmalloc(N);if(!b)return;
+    memset(b,0,N);puttag(b,"RIFF");put32(b+4,N-8);puttag(b+8,"WAVE");
+    puttag(b+12,"fmt ");put32(b+16,16);put16(b+20,1);put16(b+22,1);
+    put32(b+24,RATE);put32(b+28,RATE*2);put16(b+32,2);put16(b+34,16);
+    puttag(b+36,"data");put32(b+40,SAMPLES*2);
+    for(int i=0;i<SAMPLES;i++){
+        int a=(i*440*64/RATE)%64;
+        int t=(i*660*64/RATE)%64;
+        int s1=a<32?a:63-a;
+        int s2=t<32?t:63-t;
+        int wave=(s1-16)*640+(s2-16)*300;
+        int env=i<1200?i: i>SAMPLES-1200?SAMPLES-i:1200;
+        wave=wave*env/1200;
+        put16(b+44+i*2,(unsigned short)(short)wave);
+    }
+    FsNode *f=fs_create(dir,"Prueba-de-audio-16bits.wav",(char*)b,N);
+    if(f)f->sys=1;
+    kfree(b);
+}
 static void sample_avi(FsNode *dir){
     if(!dir||fs_find(dir,"Prueba-de-video.avi"))return;
     enum {W=96,H=64,FRAMES=12,FRAME=W*H*3};
@@ -63,5 +87,5 @@ static void sample_avi(FsNode *dir){
 void vortex_media_examples(void){
     FsNode *r=fs_root();if(!r)return;
     FsNode *music=fs_resolve(r,"/Musica"),*video=fs_resolve(r,"/Videos");
-    sample_wav(music);sample_avi(video);
+    sample_wav(music);sample_wav16(music);sample_avi(video);
 }

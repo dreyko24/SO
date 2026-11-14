@@ -422,7 +422,7 @@ static Win *open_app(int type){
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
     case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
     case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
-    case A_AUDIO:    w->w=520; w->h=240; set_title(w,"Vortex Musica"); break;
+    case A_AUDIO:    w->w=520; w->h=275; set_title(w,"Vortex Musica"); break;
     case A_VIDEO:    w->w=720; w->h=540; set_title(w,"Vortex Video"); break;
     case A_XSCR:     w->xw=xs_w; w->xh=xs_h; w->w=w->xw+2; w->h=w->xh+TB+1; set_title(w,"Pantalla X (programas de Linux)"); w->xlx=w->xly=-1; break;
     case A_SNAKE:    w->w=SGW*SCELL+2; w->h=TB+1+34+SGH*SCELL; set_title(w,"Snake"); snake_reset(w); break;
@@ -1415,7 +1415,13 @@ static void draw_window(int wi,int focused){
         rrect(cx+20,cy+81,cw-40,18,8,0x0b0e1a,255);
         if(progress>0)rrect(cx+20,cy+81,(cw-40)*progress/100,18,8,ACCENT,255);
         char b[80]="Progreso: ";cat_int(b,80,progress);cat(b,80,"%");text(cx+22,cy+109,b,C_TXT);
-        text(cx+22,cy+135,ok?(audio_paused()?"Pausado":audio_error()):audio_error(),ok?0x7ee787:0xf59e0b);
+        if(!audio_hardware()){
+            text(cx+22,cy+135,"No hay tarjeta de sonido compatible.",0xd97706);
+            text(cx+22,cy+157,"VMware: apaga la VM; usa sound.virtualDev = sb16.",C_DIM);
+            text(cx+22,cy+177,"El archivo WAV si existe; falta el dispositivo de audio.",C_DIM);
+        }else{
+            text(cx+22,cy+135,ok?(audio_paused()?"Pausado":audio_error()):audio_error(),ok?0x16803d:0xd97706);
+        }
         button(cx+20,cy+ch-48,160,30,ok?(audio_paused()?"Reanudar":"Pausar"):"Reproducir",0);
         button(cx+194,cy+ch-48,138,30,"Detener",0);
         text(cx+18,cy+ch-14,"WAV PCM: salida AC'97 o SB16 (ISA).",C_DIM);
@@ -1454,13 +1460,13 @@ static void draw_window(int wi,int focused){
             if(n)text(cx+20,cy+128,usb_controller_name(usb_first_controller_type()),C_DIM);
             text(cx+20,cy+176,usb_storage_message(),usb_storage_ready()?0x7ee787:0xffb86b);
             if(usb_storage_ready()){
-                text(cx+20,cy+206,"FAT32 de unidad fisica montada en modo lectura.",C_DIM);
+                text(cx+20,cy+206,"FAT32/exFAT de unidad fisica en solo lectura.",C_DIM);
                 button(cx+20,cy+242,200,34,"Abrir dispositivo",1);
             }else{
                 text(cx+20,cy+205,"VMware: VM > Dispositivos extraibles > USB.",C_TXT);
                 text(cx+20,cy+226,"Selecciona Kingston y 'Conectar al invitado'.",C_DIM);
-                text(cx+20,cy+247,"USB de la VM: compatibilidad 1.1 (UHCI), FAT32.",C_DIM);
-                text(cx+20,cy+268,"XHCI/EHCI, NTFS y exFAT aun no admitidos.",0xffb86b);
+                text(cx+20,cy+247,"USB VM: controlador USB 1.1 (UHCI); FAT32 o exFAT.",C_DIM);
+                text(cx+20,cy+268,"USB 2/3 (EHCI/xHCI) y NTFS no admitidos.",0xffb86b);
             }
             button(cx+20,cy+307,222,34,"Buscar USB conectado",0);
             text(cx+20,cy+360,"Solo lectura. No se escribe ni formatea el USB.",C_DIM);
@@ -1469,7 +1475,7 @@ static void draw_window(int wi,int focused){
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
             int n=dir?fs_list(dir,fl,FLMAX):0;
             text(cx+20,cy+54,dirs[w->media_tab],C_DIM);
-            if(w->media_tab==1)text(cx+20,cy+78,"WAV PCM: AC'97 o SB16. ES1371/HDA sin driver.",C_DIM);
+            if(w->media_tab==1)text(cx+20,cy+78,"Pruebas WAV 8/16-bit. VMware requiere SB16.",C_DIM);
             else if(w->media_tab==2)text(cx+20,cy+78,"Abre AVI RGB sin compresion.",C_DIM);
             else text(cx+20,cy+78,"Haz clic en una imagen para abrirla.",C_DIM);
             int max=(ch-115)/32;if(max<1)max=1;
