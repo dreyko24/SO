@@ -104,6 +104,8 @@ int main(void){
       click(W-180+40,BARH+6+31+16);
       if(ui_lang!=0||language_menu_open){puts("FALLO menu idioma espanol");return 1;}
       { char z[20];if(!cfg_get("idioma",z,sizeof z)||strcmp(z,"es")){puts("FALLO guardar idioma");return 1;} }
+      click(v->x+1+12+48,v->y+TB+10+14);
+      if(set_tab!=0){puts("FALLO regreso a ajustes generales");return 1;}
       puts("VORTEX TEMA CLARO/OSCURO E IDIOMAS ES/EN/QU OK");
     }
     closeall();
