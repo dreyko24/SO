@@ -81,6 +81,17 @@ bash tools/probar-vortex.sh out/VortexOS.iso
 
 En Windows con QEMU instalado: `Probar-VortexOS.cmd "out\VortexOS.iso"`. Los lanzadores aceptan una imagen FAT32/exFAT opcional como **segundo argumento** para USB virtual solo lectura. No conectan ni formatean directamente discos físicos. Para construir el espacio Debian opcional: `VORTEX_DEBIAN=1 bash tools/build-iso.sh`; exige dependencias y recursos adicionales. Antes de utilizar la ISO, comparar la suma SHA-256 generada.
 
+### Correcciones de interfaz y dispositivos: noviembre de 2026
+
+Se han aplicado modificaciones **directamente en `main`** a partir de las pruebas del usuario en VMware. El commit de aplicación por sí solo no equivale a prueba completa en máquina virtual o USB físico; para dar por validada una corrección deben terminar correctamente las ejecuciones correspondientes de GitHub Actions.
+
+- **Barra superior:** posiciones de ventanas minimizadas calculadas para todas las instancias visibles del espacio de trabajo, con geometría compartida entre pintura y clic; regresión de tres ventanas en `tools/hostgui.c`.
+- **Vortex Saber:** la acción del botón visible «Siguiente» corresponde ahora a su coordenada real y marca el artículo como leído; esquemas específicos para células, ADN y ciclo del agua; juego de memoria con iconos, progreso e indicador de tiempo. Siguen pendientes contenidos más profundos y actividades más variadas.
+- **Tema claro:** el motor HTML adopta los colores de texto del tema claro (antes usaba texto casi blanco fijo), y los botones y superficies mejoran contraste.
+- **USB UHCI:** tolerancia a NAK no fatal, reintentos SCSI para memorias lentas, mensajes de error por etapa y búsqueda manual forzada que renueva la instantánea. **El pendrive Kingston físico del usuario todavía no se ha validado tras estos cambios** y no existe soporte EHCI/xHCI ni acceso USB universal.
+- **Web Debian:** `tools/mkdebian.sh` ahora incluye Firefox ESR, Xvfb y herramientas X11 en nuevas ISOs Debian; el lanzador detecta fallos de arranque de X y aplica ajustes provisionales para Firefox. **No afirmar que el navegador grafico en VMware ya funciona:** solo una prueba real con ISO nueva puede confirmarlo. Sandbox de navegador y aislamiento seguros siguen pendientes.
+- **Persistencia:** los cambios de `apt` hechos durante una sesión no persisten porque `kernel64/sys_fs.inc` marca la mayoría de las rutas Debian como no persistentes. Incluir Firefox en la ISO evita reinstalar ese paquete, pero **no** equivale a conservar cualquier otra instalación. La persistencia general de Debian sigue pendiente de diseño y prueba.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
 1. **USB real:** host EHCI/xHCI, HID, DMA/IRQ y hotplug, recuperación al desconectar, escritura/montaje robustos, pruebas sobre varios controladores y pendrives; no asumir que UHCI QEMU implica USB 3 físico.
