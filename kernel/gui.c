@@ -123,15 +123,17 @@ static char notif_text[100];
 static const uint32_t ACC[6]={0xe95420,0x77216f,0x9141ac,0x26a269,0x3584e4,0xf6a800};
 #define ACCENT ACC[acc_i]
 /* Vortex Flow: superficies limpias con jerarquia visual y menos veladuras. */
-#define C_BG (light_theme?0xf8f9fc:0x22212c)
-#define C_BORDER (light_theme?0xc2c5d0:0x55515f)
-#define C_TXT (light_theme?0x242431:0xf4f2f8)
-#define C_DIM (light_theme?0x686778:0xaaa4b8)
-#define C_BTN (light_theme?0xe6e5ec:0x3b3748)
-#define C_PANEL (light_theme?0xf3f3f8:0x25232f)
-#define C_DASH (light_theme?0xe8e6ef:0x211d2a)
+/* Paleta clara de alto contraste: texto gris oscuro, azules frios y bordes
+ * visibles. Evitar texto blanco sobre superficies casi blancas. */
+#define C_BG (light_theme?0xf7f9fd:0x22212c)
+#define C_BORDER (light_theme?0xb9c6d8:0x55515f)
+#define C_TXT (light_theme?0x17243b:0xf4f2f8)
+#define C_DIM (light_theme?0x4a5b77:0xaaa4b8)
+#define C_BTN (light_theme?0xe1e9f4:0x3b3748)
+#define C_PANEL (light_theme?0xeaf0f9:0x25232f)
+#define C_DASH (light_theme?0xe2ebf8:0x211d2a)
 #define C_TILE (light_theme?0xffffff:0x373241)
-#define C_HOVER (light_theme?0xdad6e5:0x51475a)
+#define C_HOVER (light_theme?0xd2e0f1:0x51475a)
 #define DASH_LEFT 8
 #define DASH_WIDTH 76
 #define DASH_STEP dock_step_for_height(gh)
@@ -1143,7 +1145,7 @@ static void snake_tick(uint32_t t){
 
 /* ---------------- dibujo comun ---------------- */
 static void button(int x,int y,int w,int h,const char *label,int primary){
-    rrect(x,y,w,h,6,0xffffff,primary?40:20); rrect(x+1,y+1,w-2,h-2,5,primary?ACCENT:C_BTN,255);
+    rrect(x,y,w,h,6,light_theme?C_BORDER:0xffffff,primary?210:100); rrect(x+1,y+1,w-2,h-2,5,primary?ACCENT:C_BTN,255);
     clip_set(x+1,y+1,w-2,h/2); rrect(x+1,y+1,w-2,h-2,5,0xffffff,14); clip_reset();
     text(x+(w-text_w(label))/2,y+(h-16)/2,label,primary?0xffffff:C_TXT);
 }
@@ -2351,7 +2353,9 @@ static void draw_window(int wi,int focused){
         if(w->editing && ((kticks()/50)&1)) fill(cx+58+text_w(shown),cy+10,2,16,ACCENT,255);
         int src_len; const char *src=page_src(w,&src_len);
         int vx=cx+12, vy=cy+38, vw=cw-24, vh=ch-38;
-        html_render(src,src_len,vx,vy,vw,vh,w->bscroll,mix(0x8ab4ff,ACCENT,60),1,&w->page);
+        html_set_light_theme(light_theme);
+        html_render(src,src_len,vx,vy,vw,vh,w->bscroll,
+                    light_theme?0x184fa9:mix(0x8ab4ff,ACCENT,60),1,&w->page);
         { int maxs=k_max(0,w->page.content_h-vh); if(w->bscroll>maxs) w->bscroll=maxs; }
         if(w->page.title[0]){ char t[40]="Navegador - "; cat(t,40,w->page.title); k_strcpy(w->title,t,40); }
         if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
