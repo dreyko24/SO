@@ -3505,7 +3505,7 @@ static void app_click(Win *w,int lx,int ly){
             if(i==3)(void)usb_storage_probe();
             dwin(w);return;}
         if(w->media_tab==3){
-            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_probe();dwin(w);return;}
+            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_rescan();dwin(w);return;}
             if(usb_storage_ready()&&in_rect(lx,ly,20,242,200,34)){
                 FsNode *root=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
                 if(root){Win *f=open_app(A_FILES);if(f){f->dir=root;f->scroll=0;f->sel=0;}}
