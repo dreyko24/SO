@@ -45,6 +45,9 @@ typedef struct {
     int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
     int enc_game,enc_game_first,enc_game_pending,enc_game_matches,enc_game_turns;
     unsigned enc_game_revealed;uint32_t enc_game_started;
+    /* Juego de exploracion con movimiento: independiente de memoria y quiz. */
+    int enc_arcade,enc_ship_x,enc_ship_y,enc_arcade_hits;
+    uint32_t enc_arcade_started;
     VortexSaberProgress enc_progress;
     int cal_year,cal_month,cal_day,cal_edit,cal_len;
     char cal_text[100];
@@ -1706,8 +1709,41 @@ static int enc_memory_pair(int id){
     static const unsigned char pairs[8]={0,2,1,3,2,0,3,1};
     return id>=0&&id<8?pairs[id]:-1;
 }
+/* Mision Cosmos: nave controlada por teclado o clic, cuatro mundos y
+ * descubrimientos. Una actividad jugable, no otra ronda de preguntas. */
+static void enc_arcade_start(Win *w){
+    w->enc_arcade=1;w->enc_game=0;w->enc_quiz=0;
+    w->enc_ship_x=38;w->enc_ship_y=156;w->enc_arcade_hits=0;
+    w->enc_arcade_started=kticks();w->enc_scroll=0;dwin(w);
+}
+static void enc_arcade_planet(int id,int sw,int sh,int *px,int *py){
+    static const int xp[]={22,72,40,80},yp[]={24,22,72,75};
+    *px=sw*xp[id]/100;
+    *py=sh*yp[id]/100;
+}
+static void enc_arcade_move(Win *w,int dx,int dy){
+    if(!w->enc_arcade)return;
+    int cx,cy,cw,ch;crect(w,&cx,&cy,&cw,&ch);
+    int sw=cw-270,sh=ch-254;
+    if(sw<200)sw=200;if(sh<140)sh=140;
+    w->enc_ship_x=k_max(18,k_min(sw-18,w->enc_ship_x+dx));
+    w->enc_ship_y=k_max(17,k_min(sh-17,w->enc_ship_y+dy));
+    for(int i=0;i<4;i++)if(!(w->enc_arcade_hits&(1<<i))){
+        int px,py;enc_arcade_planet(i,sw,sh,&px,&py);
+        int x=w->enc_ship_x-px,y=w->enc_ship_y-py;
+        if(x*x+y*y<32*32){
+            w->enc_arcade_hits|=1<<i;
+            if(w->enc_arcade_hits==15){
+                w->enc_progress.games_won++;
+                enc_progress_save(w);
+                if(vortexfs_active())(void)vortexfs_save();
+            }
+        }
+    }
+    dwin(w);
+}
 static void enc_memory_start(Win *w){
-    w->enc_game=1;w->enc_quiz=0;
+    w->enc_game=1;w->enc_arcade=0;w->enc_quiz=0;
     w->enc_game_revealed=0;w->enc_game_first=-1;
     w->enc_game_pending=-1;w->enc_game_matches=0;w->enc_game_turns=0;
     w->enc_game_started=kticks();w->enc_scroll=0;dwin(w);
@@ -1834,15 +1870,58 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     }
     rrect(sx+8,sy+342,sw-16,33,12,w->enc_quiz?ACCENT:C_HOVER,250);
     text_ui_bold(sx+24,sy+351,"Practicar",w->enc_quiz?0xffffff:C_TXT);
-    rrect(sx+8,sy+380,sw-16,33,12,w->enc_game?ACCENT:C_HOVER,250);
-    text_ui_bold(sx+24,sy+389,"Memoria educativa",w->enc_game?0xffffff:C_TXT);
+    rrect(sx+8,sy+380,sw-16,33,12,w->enc_arcade?ACCENT:C_HOVER,250);
+    text_ui_bold(sx+24,sy+389,"Mision Cosmos",w->enc_arcade?0xffffff:C_TXT);
     char stats[54]="Nivel ";cat_int(stats,sizeof stats,saber_level(&w->enc_progress));
     cat(stats,sizeof stats,"  Leidos ");
     cat_int(stats,sizeof stats,saber_read_count(w->enc_progress.articles));
     text_ui(sx+12,sy+421,stats,C_TXT);
     int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
     rrect(rx,ry,rw,rh,16,C_TILE,255);
-    if(w->enc_game){
+    if(w->enc_arcade){
+        int sw=rw-40,sh=rh-150;
+        if(sw<200)sw=200;if(sh<140)sh=140;
+        text_ui_bold(rx+19,ry+14,"MISION COSMOS",C_TXT);
+        text_ui(rx+19,ry+39,"Explora cuatro mundos: WASD o flechas para pilotar",C_DIM);
+        int count=0;for(int i=0;i<4;i++)if(w->enc_arcade_hits&(1<<i))count++;
+        rrect(rx+19,ry+63,rw-38,5,3,C_BORDER,255);
+        if(count)rrect(rx+19,ry+63,(rw-38)*count/4,5,3,0x47c79e,255);
+        rrect(rx+20,ry+79,sw,sh,12,0x0d1a36,255);
+        clip_set(rx+20,ry+79,sw,sh);
+        for(int i=0;i<54;i++){
+            int sx=(i*73+31)%sw,sy=(i*i*23+13)%sh;
+            circle(rx+20+sx,ry+79+sy,i%7?1:2,i%4?0xc9d9f4:0xf8d29e,160+i%3*28);
+        }
+        static const char *const names[]={"Mercurio","Tierra","Saturno","Neptuno"};
+        static const uint32_t colors[]={0xb2a6a3,0x3d9bd4,0xecc47d,0x426fce};
+        for(int i=0;i<4;i++){
+            int px,py;enc_arcade_planet(i,sw,sh,&px,&py);
+            int ax=rx+20+px,ay=ry+79+py;
+            int found=w->enc_arcade_hits&(1<<i);
+            circle(ax,ay,found?19:17,found?0x59d7ae:colors[i],255);
+            if(i==1){circle(ax-5,ay-5,6,0x5bc58d,255);circle(ax+5,ay+7,4,0x5bc58d,255);}
+            if(i==2){line(ax-27,ay+9,ax+27,ay-9,3,0xe4c994,255);}
+            if(i==3){circle(ax-4,ay-7,5,0x7aa8f2,255);}
+            if(found)circle(ax,ay,6,0xffffff,175);
+            text_ui(ax-28,ay+25,names[i],found?0x79ecc2:0xf3f6ff);
+        }
+        {int px=rx+20+w->enc_ship_x,py=ry+79+w->enc_ship_y;
+          line(px-12,py+10,px+14,py,4,0xd6eafd,255);
+          line(px+14,py,px-12,py-10,4,0xd6eafd,255);
+          line(px-12,py-10,px-12,py+10,3,0x7bd8f6,255);
+          line(px-14,py-4,px-23,py,3,0xffab4e,255);
+          line(px-14,py+4,px-23,py,3,0xffab4e,255);
+        }
+        clip_set(cx,cy,cw,ch);
+        char stats[94]="Planetas explorados: ";
+        cat_int(stats,sizeof stats,count);cat(stats,sizeof stats,"/4    Tiempo: ");
+        cat_int(stats,sizeof stats,(int)((kticks()-w->enc_arcade_started)/100));
+        cat(stats,sizeof stats," s");
+        text_ui(rx+20,ry+rh-60,stats,C_TXT);
+        if(count==4)text_ui_bold(rx+20,ry+rh-82,"Mision completada. Has explorado el sistema solar.",0x20b681);
+        button(rx+20,ry+rh-36,142,28,"Reiniciar",0);
+        button(rx+rw-176,ry+rh-36,158,28,"Juego de memoria",0);
+    }else if(w->enc_game){
         text_ui_bold(rx+20,ry+16,"Memoria visual",C_TXT);
         char score[96]="Parejas: ";
         cat_int(score,sizeof score,w->enc_game_matches);
@@ -3412,14 +3491,30 @@ static void app_click(Win *w,int lx,int ly){
     }
     case A_ENCARTA:{
         if(in_rect(lx,ly,20,94+342,175,33)){
-            w->enc_quiz=1;w->enc_game=0;w->enc_qindex=0;w->enc_qanswer=-1;
+            w->enc_quiz=1;w->enc_game=0;w->enc_arcade=0;w->enc_qindex=0;w->enc_qanswer=-1;
             w->enc_qscore=0;w->enc_scroll=0;dwin(w);return;
         }
         if(in_rect(lx,ly,20,94+380,175,33)){
-            enc_memory_start(w);return;
+            enc_arcade_start(w);return;
         }
         if(in_rect(lx,ly,300,22,cw-322,34)){
-            w->enc_quiz=0;w->enc_game=0;w->enc_topic=-1;dwin(w);return;
+            w->enc_quiz=0;w->enc_game=0;w->enc_arcade=0;w->enc_topic=-1;dwin(w);return;
+        }
+        if(w->enc_arcade){
+            int ry=94,rh=ch-104,rw=cw-230,rx=218;
+            if(in_rect(lx,ly,rx+20,ry+rh-36,142,28)){
+                enc_arcade_start(w);return;
+            }
+            if(in_rect(lx,ly,rx+rw-176,ry+rh-36,158,28)){
+                enc_memory_start(w);return;
+            }
+            /* Tocar el mapa mueve la nave un paso en direccion al punto. */
+            if(in_rect(lx,ly,rx+20,ry+79,rw-40,rh-150)){
+                int dx=lx-(rx+20)-w->enc_ship_x,dy=ly-(ry+79)-w->enc_ship_y;
+                enc_arcade_move(w,k_max(-25,k_min(25,dx)),
+                                  k_max(-25,k_min(25,dy)));return;
+            }
+            return;
         }
         if(w->enc_game){
             int ry=94,rh=ch-104,rw=cw-230,rx=218;
@@ -3451,7 +3546,7 @@ static void app_click(Win *w,int lx,int ly){
         for(int i=0;i<ENC_CATEGORIES_N;i++)
             if(in_rect(lx,ly,20,137+i*40,175,34)){
                 w->enc_category=i;w->enc_topic=-1;w->enc_scroll=0;
-                w->enc_quiz=0;w->enc_game=0;
+                w->enc_quiz=0;w->enc_game=0;w->enc_arcade=0;
                 dwin(w);return;
             }
         if(w->enc_topic>=0){
@@ -3819,7 +3914,7 @@ void gui_mouse_wheel(int steps){
             increment=2;break;
         }
         case A_ENCARTA:
-            if(w->enc_quiz||w->enc_game)return;
+            if(w->enc_quiz||w->enc_game||w->enc_arcade)return;
             if(w->enc_topic<0){
                 int h=w->h-TB-1,visible=k_max(1,(h-178)/57);
                 maximum=k_max(0,enc_count(w)-visible);increment=2;
@@ -3978,6 +4073,15 @@ void gui_key(int c){
         else if(c=='\n'){w->cal_edit=1;dwin(w);}
         break;
     case A_ENCARTA:
+        if(w->enc_arcade){
+            if(c==27)w->enc_arcade=0;
+            else if(c=='r'||c=='R'||c=='\n')enc_arcade_start(w);
+            else if(c==KEY_LEFT||c=='a'||c=='A')enc_arcade_move(w,-24,0);
+            else if(c==KEY_RIGHT||c=='d'||c=='D')enc_arcade_move(w,24,0);
+            else if(c==KEY_UP||c=='w'||c=='W')enc_arcade_move(w,0,-24);
+            else if(c==KEY_DOWN||c=='s'||c=='S')enc_arcade_move(w,0,24);
+            dwin(w);break;
+        }
         if(w->enc_game){
             if(c==27)w->enc_game=0;
             else if(c>='1'&&c<='8')enc_memory_flip(w,c-'1');
