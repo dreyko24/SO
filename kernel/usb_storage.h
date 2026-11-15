@@ -7,6 +7,9 @@
 int usb_storage_probe(void);      /* 1 si se importo FAT32 desde USB, 0 sin unidad, negativo error */
 int usb_storage_rescan(void);     /* reenumera inmediatamente al pulsar Buscar */
 int usb_storage_ready(void);
+unsigned usb_storage_capacity_mib(void);  /* cero si la unidad no esta montada */
+unsigned usb_storage_file_count(void);    /* entradas importadas del disco */
+const char *usb_storage_format(void);     /* FAT32/exFAT, o desconocido */
 const char *usb_storage_message(void);
 void usb_storage_poll(void);
 #endif
