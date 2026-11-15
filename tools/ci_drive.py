@@ -78,7 +78,7 @@ def listo():
             p = b.rfind(PROMPT)
             if p >= 0:
                 tail = b[p + len(PROMPT):].strip()
-                if tail.startswith(b'[proceso ') and b'termino con codigo' in tail and b'\\n' not in tail:
+                if tail.startswith(b'[proceso ') and b'termino con codigo' in tail:
                     return True
         if cmd_actual[0].rstrip().endswith('&'):          # programa en segundo plano: basta con que vuelva el indicador
             i = b.find(cmd_actual[0].encode())
