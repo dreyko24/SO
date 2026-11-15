@@ -242,8 +242,12 @@ static int enumerate(void){
     { u8 dd[18],ss[128];memset(dd,0,sizeof dd);
       if(!ctrl(address,0x80,6,0x0100,0,dd,18,1)&&dd[1]==1&&dd[15]){
           memset(ss,0,sizeof ss);
-          if(!ctrl(address,0x80,6,(u16)(0x0300u|dd[15]),0x0409,ss,128,1)&&ss[1]==3){
-              int n=ss[0];if(n>126)n=126;
+          /* Leer primero DOS bytes: pedir 128 a un descriptor corto
+           * dejaba TDs activos y bloqueaba UHCI por un short packet. */
+          int ok=!ctrl(address,0x80,6,(u16)(0x0300u|dd[15]),0x0409,ss,2,1);
+          int n=ss[0];if(n>126)n=126;
+          if(ok&&n>=4&&ss[1]==3&&
+             !ctrl(address,0x80,6,(u16)(0x0300u|dd[15]),0x0409,ss,n,1)){
               int j=0;for(int i=2;i+1<n&&j<(int)sizeof usb_product-1;i+=2){
                   int c=ss[i]|((int)ss[i+1]<<8);
                   usb_product[j++]=(c>=32&&c<127)?(char)c:'?';
