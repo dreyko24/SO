@@ -2,9 +2,13 @@
 #include "html.h"
 #include "gfx.h"
 
-#define COL_TXT  0xdfe3f0
-#define COL_DIM  0x9aa0b8
-#define COL_H    0xffffff
+/* El HTML se muestra sobre una superficie clara u oscura. Antes todo el
+ * texto era casi blanco aun con la paleta clara y quedaba ilegible. */
+static int html_light_theme;
+void html_set_light_theme(int enabled){html_light_theme=!!enabled;}
+#define COL_TXT  (html_light_theme?0x1c2d45:0xdfe3f0)
+#define COL_DIM  (html_light_theme?0x53647e:0x9aa0b8)
+#define COL_H    (html_light_theme?0x17253e:0xffffff)
 
 typedef struct { int cx, cy, lh, left, right; } Lay;           /* cursor de maquetacion */
 
