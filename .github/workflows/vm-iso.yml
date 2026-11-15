@@ -121,29 +121,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # QEMU -initrd NO descomprime los modulos .gz. En la ISO real los
+          # entrega GRUB; para -kernel hay que extraerlos antes.
+          gzip -dc build/iso/boot/debian.cpio.gz > /tmp/vortex-ci-debian.cpio
+          test -s /tmp/vortex-ci-debian.cpio
+          cat >/tmp/vortex-web-commands.txt <<'CMDS'
+          60|pantalla
+          @esperar 12
+          30|procesos
+          60|abrir xterm
+          @esperar 14
+          30|procesos
+          90|abrir firefox-esr https://example.com/
+          @esperar 18
+          30|procesos
+          CMDS
           set +e
-          (
-            sleep 13
-            printf 'pantalla\r'; sleep 15
-            printf 'procesos\r'; sleep 2
-            printf 'abrir xterm\r'; sleep 12
-            printf 'procesos\r'; sleep 2
-            printf 'abrir firefox-esr https://example.com/\r'; sleep 15
-            printf 'procesos\r'; sleep 2
-          ) | timeout --signal=TERM --kill-after=4s 115s qemu-system-x86_64 \
-                  -m 4096 -kernel kernel64/vortex-kernel64-text.elf \
-                  -initrd build/iso/boot/debian.cpio.gz,build/iso/boot/vortex-extra.cpio \
-                  -display none -serial stdio -monitor none -no-reboot \
-                  -netdev user,id=n0 -device e1000,netdev=n0 > vortex-web-smoke.log 2>&1
+          VORTEX_PROMPT='vortex> ' KELF=kernel64/vortex-kernel64-text.elf \
+            timeout --signal=TERM --kill-after=5s 480s python3 tools/ci_drive.py \
+              /tmp/vortex-web-commands.txt vortex-web-smoke.log -- \
+              qemu-system-x86_64 -m 4096 -kernel kernel64/vortex-kernel64-text.elf \
+              -initrd /tmp/vortex-ci-debian.cpio,build/iso/boot/vortex-extra.cpio \
+              -display none -serial stdio -monitor none -no-reboot \
+              -netdev user,id=n0 -device e1000,netdev=n0
           code=$?
           set -e
-          tail -180 vortex-web-smoke.log
+          tail -200 vortex-web-smoke.log
           if [[ "$code" != 0 && "$code" != 124 ]]; then echo "FALLO QEMU web: $code"; exit 1; fi
           grep -q 'pantalla: iniciando el servidor X' vortex-web-smoke.log || {
-             echo 'FALLO: no se pudo lanzar Xvfb'; exit 1;
+             echo 'FALLO: Xvfb no se pudo ejecutar'; exit 1;
           }
-          # No se afirma que Firefox haya renderizado: la prueba registra
-          # procesos y syscalls para localizar la pantalla negra en VMware.
+          # Esto comprueba que se intenta arrancar Xvfb con Debian cargado.
+          # Aun NO verifica que Firefox haya dibujado una pagina web.
       - name: Guardar diagnostico X11 y Firefox
         if: always()
         uses: actions/upload-artifact@v4
