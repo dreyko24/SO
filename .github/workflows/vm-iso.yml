@@ -117,6 +117,41 @@ jobs:
           grep -Eq '^\.?/?usr/bin/firefox-esr$' /tmp/vortex-debian-files.txt
           grep -Eq '^\.?/?usr/bin/Xvfb$' /tmp/vortex-debian-files.txt
           echo "Firefox ESR y Xvfb preinstalados: OK"
+      - name: Diagnosticar servidor X y navegador reales dentro del kernel de 64 bits
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          (
+            sleep 13
+            printf 'pantalla\r'; sleep 15
+            printf 'procesos\r'; sleep 2
+            printf 'abrir xterm\r'; sleep 12
+            printf 'procesos\r'; sleep 2
+            printf 'abrir firefox-esr https://example.com/\r'; sleep 15
+            printf 'procesos\r'; sleep 2
+          ) | timeout --signal=TERM --kill-after=4s 115s qemu-system-x86_64 \
+                  -m 4096 -kernel kernel64/vortex-kernel64-text.elf \
+                  -initrd build/iso/boot/debian.cpio.gz,build/iso/boot/vortex-extra.cpio \
+                  -display none -serial stdio -monitor none -no-reboot \
+                  -netdev user,id=n0 -device e1000,netdev=n0 > vortex-web-smoke.log 2>&1
+          code=$?
+          set -e
+          tail -180 vortex-web-smoke.log
+          if [[ "$code" != 0 && "$code" != 124 ]]; then echo "FALLO QEMU web: $code"; exit 1; fi
+          grep -q 'pantalla: iniciando el servidor X' vortex-web-smoke.log || {
+             echo 'FALLO: no se pudo lanzar Xvfb'; exit 1;
+          }
+          # No se afirma que Firefox haya renderizado: la prueba registra
+          # procesos y syscalls para localizar la pantalla negra en VMware.
+      - name: Guardar diagnostico X11 y Firefox
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vortex-web-smoke
+          path: vortex-web-smoke.log
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
         shell: bash
         env:
