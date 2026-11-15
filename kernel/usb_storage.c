@@ -10,6 +10,7 @@
 #ifdef HOSTGUI
 static int ready;
 int usb_storage_probe(void){return 0;}
+int usb_storage_rescan(void){return 0;}
 int usb_storage_ready(void){return ready;}
 const char *usb_storage_message(void){return "No hay USB fisico en el simulador host";}
 void usb_storage_poll(void){}
@@ -469,6 +470,9 @@ int usb_storage_probe(void){
     FsNode *dir=fs_find(mount,"Unidad-USB");
     if(!dir)dir=fs_mkdir(mount,"Unidad-USB");
     if(!dir){status("Sin memoria para mostrar USB");return -4;}
+    /* Nueva memoria USB: descartar solo la instantanea anterior en RAM.
+     * Nunca escribir ni formatear el dispositivo fisico. */
+    while(dir->child)fs_remove(dir->child);
     dir->dev=1;imported=depth_count=0;
     if(exfat_mode)readdir_exfat(root_cluster,0,0,dir,0);
     else readdir_usb(root_cluster,dir,0);
@@ -477,6 +481,12 @@ int usb_storage_probe(void){
     status(exfat_mode?"USB exFAT real leido en /Dispositivos/Unidad-USB (solo lectura)":
                       "USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
     return 1;
+}
+/* El boton Buscar debe volver a enumerar aun si quedo una deteccion
+ * anterior marcada como lista; la prueba automatica usa probe(). */
+int usb_storage_rescan(void){
+    ready=0;probe_once=0;
+    return usb_storage_probe();
 }
 int usb_storage_ready(void){return ready;}
 const char *usb_storage_message(void){return info;}
