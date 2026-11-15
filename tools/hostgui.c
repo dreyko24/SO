@@ -996,20 +996,36 @@ int main(void){
       gui_key(27);
       if(e->enc_quiz){puts("FALLO salir del cuestionario");return 1;}
       click(e->x+1+54,e->y+TB+94+380+15);
-      if(!e->enc_game||e->enc_game_matches){puts("FALLO iniciar juego de memoria");return 1;}
+      if(!e->enc_arcade||e->enc_arcade_hits){puts("FALLO iniciar Mision Cosmos");return 1;}
+      int oldship=e->enc_ship_x;gui_key('d');
+      if(e->enc_ship_x<=oldship){puts("FALLO controles nave Cosmos");return 1;}
+      shot("46a_saber_mision_cosmos");
+      { int cx,cy,cw,ch;crect(e,&cx,&cy,&cw,&ch);
+        int sw=cw-270,sh=ch-254;
+        for(int i=0;i<4;i++){
+            int px,py;enc_arcade_planet(i,sw,sh,&px,&py);
+            enc_arcade_move(e,px-e->enc_ship_x,py-e->enc_ship_y);
+        }
+        if(e->enc_arcade_hits!=15||e->enc_progress.games_won!=1){
+           puts("FALLO exploracion de planetas y logro");return 1;
+        }
+        shot("46b_saber_mision_completada");
+        click(cx+cw-110,cy+ch-30);
+      }
+      if(!e->enc_game||e->enc_game_matches){puts("FALLO juego de memoria adicional");return 1;}
       const int pairs[8]={0,5,1,4,2,7,3,6};
       for(int m=0;m<8;m+=2){
           enc_memory_flip(e,pairs[m]);enc_memory_flip(e,pairs[m+1]);
       }
       if(e->enc_game_matches!=4||e->enc_game_turns!=4||
-         e->enc_progress.games_won!=1){
+         e->enc_progress.games_won!=2){
           puts("FALLO juego de memoria y logro persistente");return 1;
       }
       shot("46_saber_memoria_logro");
       closeall();
       e=open_app(A_ENCARTA);
       if(!e||e->enc_progress.best!=ENC_QUIZ_N||
-         e->enc_progress.completed!=1||e->enc_progress.games_won!=1||
+         e->enc_progress.completed!=1||e->enc_progress.games_won!=2||
          !(e->enc_progress.articles&1u)){
           puts("FALLO restaurar progreso tras cerrar Vortex Saber");return 1;
       }
