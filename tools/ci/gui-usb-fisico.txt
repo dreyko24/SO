@@ -11,11 +11,11 @@ clic
 esperar 3
 captura 03-memoria-usb-detectada
 # La nueva pestaña USB usa Abrir archivos USB en y=285 del panel.
-raton 240 382
+raton 240 412
 clic
 esperar 2
 captura 04-archivos-usb
-raton 245 209
+raton 201 185
 doble
 esperar 2
 captura 05-visor-imagen-usb
