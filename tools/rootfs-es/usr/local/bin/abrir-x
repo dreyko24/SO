@@ -26,5 +26,9 @@ printf 'Iniciando %s en DISPLAY=%s\n' "$1" "$DISPLAY" > "$log"
 code=$?
 if [ "$code" -ne 0 ]; then
   printf 'El programa termino con codigo %s\n' "$code" >> "$log"
+  # Mostrar el error tambien en la terminal y puerto serie; antes quedaba
+  # oculto en el archivo y parecia una pantalla completamente negra.
+  printf 'Vortex X11: fallo de %s (codigo %s). Ultimas lineas:\n' "$1" "$code" >&2
+  tail -n 15 "$log" >&2
 fi
 exit "$code"
