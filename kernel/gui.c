@@ -1902,12 +1902,12 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
                     circle(ixc,iyc,17,0xffd577,255);
                     circle(ixc,iyc,10,0xffecaf,255);
                     for(int q=-2;q<=2;q++)line(ixc+q*8,iyc-24,ixc+q*8,iyc-20,2,0xffe8a1,255);
-                }else if(kind==1){
+                }else if(kind==2){
                     line(ixc-24,iyc+14,ixc,iyc-20,4,0xbad7ff,255);
                     line(ixc,iyc-20,ixc+24,iyc+14,4,0xbad7ff,255);
                     line(ixc-11,iyc-4,ixc,iyc-20,3,0xffffff,255);
                     line(ixc,iyc-20,ixc+11,iyc-4,3,0xffffff,255);
-                }else if(kind==2){
+                }else if(kind==1){
                     for(int q=0;q<5;q++){
                         int dx=q*9-18,ofs=(q&1)?8:-8;
                         circle(ixc+dx,iyc+ofs,4,0xe8bee9,255);
