@@ -1,0 +1,22 @@
+name: vortex-window-regression
+on:
+  push:
+    branches:
+      - 'vortex/window-management-*'
+  pull_request:
+    paths:
+      - 'kernel/gui.c'
+      - 'kernel/kbd.c'
+      - 'tools/kbdtest.c'
+      - '.github/workflows/window-regression.yml'
+jobs:
+  keyboard-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install multilib toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib make python3
+      - name: Test keyboard translations
+        run: gcc -std=gnu11 -O2 -Wall -Wextra tools/kbdtest.c -o /tmp/vortex-kbdtest && /tmp/vortex-kbdtest
+      - name: Compile both kernels
+        run: make -C kernel && make -C kernel64
