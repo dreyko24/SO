@@ -1,8 +1,7 @@
 name: vortex-autoguardado
-# Conserva cada avance con un tag recuperable aunque la rama cambie o se borre.
+# Creación MANUAL de checkpoints; no generar una etiqueta por cada commit.
+# El historial permanente de main ya guarda todos los cambios.
 on:
-  push:
-    branches: [cambio-nombre-vortex-os]
   workflow_dispatch:
 permissions:
   contents: write

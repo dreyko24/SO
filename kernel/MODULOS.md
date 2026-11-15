@@ -2,7 +2,7 @@
 
 | Módulo | Archivo | Qué hace |
 |---|---|---|
-| Arranque y kernel | `kernel/boot.S`, `kernel.c` (32 bits) · `kernel64/boot64.S`, `kernel64.c` (64 bits) | Multiboot, memoria, interrupciones, teclado/ratón PS/2, procesos (solo 32 bits) |
+| Arranque y kernel | `kernel/boot.S`, `kernel.c` (32 bits) · `kernel64/boot64.S`, `kernel64.c` (64 bits) | Multiboot, memoria, interrupciones, teclado/ratón PS/2, procesos propios en 32 bits y procesos ELF/Linux compatibles en 64 bits |
 | Gráficos 2D | `gfx.c` | Pixeles, formas suaves, texto, recorte por zona sucia |
 | Escritorio y apps | `gui.c` | Ventanas, dock, iconos y widgets arrastrables, Archivos, Terminal, Navegador, Notas, Calculadora, Snake, Monitor, Ajustes |
 | Páginas web | `html.c` | Motor mínimo de HTML y páginas internas `vortex://` |

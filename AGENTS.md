@@ -10,7 +10,7 @@ Este repositorio ya contiene años/versiones de desarrollo y múltiples ramas hi
 
 Para comenzar cualquier sesión/chat:
 
-1. Leer `AGENTS.md`, `README.md`, `VORTEX_ESTADO.md` y `docs/AUDITORIA_FUNCIONAL_VORTEX.md` de **`main`** en GitHub; revisar `git log` o últimos commits. El estado puede cambiar entre chats.
+1. Leer `AGENTS.md`, `README.md` y `VORTEX_ESTADO.md` de **`main`** en GitHub; revisar `git log` o últimos commits. El estado puede cambiar entre chats.
 2. Inspeccionar el árbol actual: `kernel/`, `kernel64/`, `tools/`, `tests/`, `docs/`, `.github/workflows/`.
 3. Consultar las ramas y PR recientes. **Muchas ramas ya fueron fusionadas mediante squash**: GitHub puede mostrar `ahead` o `diverged` aunque las funcionalidades estén presentes en `main`. Comparar contenido y tests; no intentar fusionar a ciegas una rama obsoleta.
 4. Probar antes de fusionar: compilar ambos kernels y ejecutar los trabajos de GitHub Actions de escritorio, red, USB, audio, vídeo y QEMU correspondientes. No confundir pruebas con hardware real.
@@ -19,12 +19,10 @@ Para comenzar cualquier sesión/chat:
 
 ## Archivos de referencia y procedencia
 
-- `README.md`: sistema actual, instrucciones de ISO/QEMU y limitaciones.
-- `VORTEX_ESTADO.md`: mapa **vigente** de arquitectura, integración y limitaciones.
-- `docs/AUDITORIA_FUNCIONAL_VORTEX.md`: evidencia técnica de componentes.
-- `TRASPASO_kng_v17.md` a `TRASPASO_kng_v24.md`: documentos históricos recuperados. **No usar su estado antiguo como descripción de la última versión**.
-- `CONTINUIDAD_VORTEX_2026-11-14.md`: informe histórico de una rama anterior; preservado por trazabilidad. Sus afirmaciones de PR abiertos pueden estar obsoletas.
-- `docs/historico/`: documentación y pruebas antiguas preservadas para evitar pérdida de contexto.
+- `README.md`: información para el usuario, compilación e inicio.
+- `VORTEX_ESTADO.md`: **única referencia consolidada** de arquitectura, historia, auditoría, pruebas, pendientes y continuidad.
+- Los anteriores `TRASPASO_*.md`, informes por fecha y versiones históricas se han reunido en el documento anterior. Sus contenidos originales siguen disponibles en el historial de Git; **no volver a copiarlos a la raíz ni generar nuevos traspasos versionados**.
+- Los manuales específicos `docs/VMWARE.md` y `docs/ARQUITECTURA_GRAFICA.md` describen subsistemas, no nuevas versiones del proyecto.
 
 ## Evidencia y compilación
 

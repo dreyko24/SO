@@ -1,6 +1,6 @@
 # Vortex OS en VMware Workstation: uso real y limitaciones
 
-Esta guía corresponde a la rama `cambio-nombre-vortex-os`. Los kernels de 32 y 64 bits siguen siendo propios de Vortex OS; **no se usa Linux como núcleo**.
+Esta guía corresponde al Vortex OS integrado en `main`. Los kernels de 32 y 64 bits son propios de Vortex OS; **no se usa Linux como núcleo**. Ver `VORTEX_ESTADO.md` para el estado técnico actualizado.
 
 ## Una sola ISO
 

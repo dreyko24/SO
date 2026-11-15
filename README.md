@@ -1,6 +1,6 @@
 # Vortex OS — sistema operativo propio, 32 y 64 bits
 
-> **Continuidad del proyecto:** este es el repositorio oficial y `main` es su versión de desarrollo activa. Antes de iniciar un trabajo o retomar otro chat, leer **[AGENTS.md](AGENTS.md)** y **[VORTEX_ESTADO.md](VORTEX_ESTADO.md)**. Todas las ramas históricas se evalúan frente a `main`; no crear otro SO ni sobreescribir avances. Los documentos `TRASPASO_kng_v*.md` se conservaron por historia, no como estado vigente.
+> **Continuidad del proyecto:** este es el repositorio oficial y `main` es su versión de desarrollo activa. Antes de iniciar un trabajo o retomar otro chat, leer **[AGENTS.md](AGENTS.md)** y **[VORTEX_ESTADO.md](VORTEX_ESTADO.md)**. Todas las ramas históricas se evalúan frente a `main`; no crear otro SO ni sobreescribir avances. Los antiguos traspasos y auditorías están **integrados en [VORTEX_ESTADO.md](VORTEX_ESTADO.md)**; sus originales se pueden recuperar en el historial Git, sin ensuciar la raíz.
 
 Sistema operativo **independiente**: dos kernels propios (`vortex-kernel` de 32 y de 64 bits), interfaz gráfica propia, gestor de archivos,
 terminal, navegador con red, ajustes. **No utiliza el kernel Linux.** Su núcleo es propio; opcionalmente puede ejecutar binarios Linux y un espacio de usuario Debian 12 mediante la capa de compatibilidad de 64 bits.
@@ -33,7 +33,7 @@ Capturas de la interfaz: carpeta `docs/` (generadas con el mismo código de la i
 - **LibreOffice:** la ventana **Aplicaciones → LibreOffice** ofrece Writer, Calc, Impress, Draw y Math, deteccion de instalacion y acceso a instalacion/actualizacion. Se ejecuta como programa Debian para Linux sobre la **capa de compatibilidad propia de Vortex 64 bits**, con Xvfb como interfaz grafica. En la ISO con Debian, usa **Instalar LibreOffice** cuando aun no esta instalado; no se incluye LibreOffice de serie en el Debian base para evitar una imagen demasiado pesada.
 - **Pruebas reales:** `vortex-usb-mass-storage` verificó la lectura de FAT32 y exFAT desde USB virtualizado, apertura del PNG y cambio de fondo. `vortex-reproductores` verifico AC'97 con audio WAV generado y AVI mostrado en QEMU. `prueba-grafica`, `vortex-jpeg-nativo`, `vortex-escritorio-host` y `arranque-qemu` comprueban componentes independientes.
 
-Estos avances **no implican** compatibilidad universal con memorias USB de PCs modernas, con todos los formatos multimedia, ni ejecucion grafica de LibreOffice verificada en hardware fisico. Consulta `docs/AUDITORIA_FUNCIONAL_VORTEX.md`.
+Estos avances **no implican** compatibilidad universal con memorias USB de PCs modernas, con todos los formatos multimedia, ni ejecucion grafica de LibreOffice verificada en hardware fisico. Consulta [VORTEX_ESTADO.md](VORTEX_ESTADO.md) para evidencias, limitaciones y evolución técnica.
 
 ## Vortex Flow — nueva base visual y de rendimiento
 
@@ -143,7 +143,7 @@ Comandos en español (en la terminal de vortex, también dentro de la ventana gr
 `actualizar` · `instalar <nombre>` · `quitar <nombre>` · `mejorar` · `buscar <palabra>` · `mostrar <nombre>` · `paquetes` · `limpiar` · `ayuda-programas`
 Nombres especiales de `instalar`: `brave`, `chrome`, `opera`, `chromium`, `firefox`, `libreoffice`, `openoffice` (el resto es cualquier paquete de Debian).
 Programas con ventana: `pantalla` (servidor X real) y `abrir <programa>` (p. ej. `abrir brave`), o los lanzadores del panel **Aplicaciones** y la terminal.
-Diagnóstico: `rastro 1` muestra las llamadas del sistema que fallan. Estado real y pendientes: ver `TRASPASO_vortex_v24.md`.
+Diagnóstico: `rastro 1` muestra las llamadas del sistema que fallan. Estado real y pendientes: consulta [VORTEX_ESTADO.md](VORTEX_ESTADO.md), documento técnico único.
 
 
 ## Identidad visual de Vortex OS

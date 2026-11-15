@@ -1,6 +1,6 @@
 # Vortex Flow — compositor, rendimiento e interfaz
 
-Estado de implementación de la rama `cambio-nombre-vortex-os`, noviembre de 2026.
+Descripción del compositor Vortex Flow integrado en `main`. Para el estado actualizado y sus límites, consultar `VORTEX_ESTADO.md`.
 
 ## Qué cambia en el producto
 
