@@ -913,6 +913,29 @@ int main(void){
           puts("FALLO abrir articulo educativo y guardar lectura");return 1;
       }
       shot("40_vortex_saber_articulo");
+      /* Cada una de las 31 lecciones debe generar una escena propia. */
+      { uint64_t scene_hash[ENC_ARTICLES_N];
+        int cx,cy,cw,ch;crect(e,&cx,&cy,&cw,&ch);
+        int ix=cx+238,iy=cy+94+130,ww=cw-270,hh=96;
+        for(int topic=0;topic<ENC_ARTICLES_N;topic++){
+            e->enc_topic=topic;dwin(e);gui_frame();
+            uint64_t h=1469598103934665603ull;
+            for(int y=2;y<hh-2;y+=3)for(int x=4;x<ww-4;x+=3){
+                h^=fb[(iy+y)*W+ix+x];h*=1099511628211ull;
+            }
+            for(int j=0;j<topic;j++)if(scene_hash[j]==h){
+                fprintf(stderr,"FALLO: ilustracion repetida: %s y %s\n",
+                        ENC_ARTICLES[j].title,ENC_ARTICLES[topic].title);
+                return 1;
+            }
+            scene_hash[topic]=h;
+            if(topic==12)shot("40c_saber_independencia_peru");
+            if(topic==19)shot("40d_saber_computadora");
+            if(topic==30)shot("40e_saber_salud");
+        }
+        e->enc_topic=0;dwin(e);gui_frame();
+        puts("VORTEX SABER: 31 LECCIONES CON ILUSTRACIONES DIFERENTES OK");
+      }
       /* Regresion de una zona de clic que antes estaba 94px por encima
        * del boton real Siguiente: pulsar el boton VISUAL y pasar de tema. */
       { int cx,cy,cw,ch;crect(e,&cx,&cy,&cw,&ch);
