@@ -69,11 +69,14 @@ static int run(int n){
     for(int spin=0;spin<100000000;spin++){
         if(!(tds[n-1].sts&(1u<<23)))break;
         if((int)(kticks()-start)>150){qh.element=1;return -2;}
-        int fail=0;for(int i=0;i<n;i++)if(tds[i].sts&0x007e0000u)fail=1;
+        /* UHCI marca NAK (bit 19) mientras la memoria prepara datos.
+         * No es un fallo fatal: el controlador reintentara el TD activo.
+         * Antes abortabamos al primer NAK en pendrives fisicos lentos. */
+        int fail=0;for(int i=0;i<n;i++)if(tds[i].sts&0x00760000u)fail=1;
         if(fail){qh.element=1;return -3;}
     }
     int ok=!(tds[n-1].sts&(1u<<23));
-    for(int i=0;i<n;i++)if(tds[i].sts&0x007e0000u)ok=0;
+    for(int i=0;i<n;i++)if(tds[i].sts&0x00760000u)ok=0;
     qh.element=1;return ok?0:-4;
 }
 static int ctrl(u8 dev,u8 type,u8 req,u16 value,u16 index,u8 *data,int n,int in){
@@ -210,8 +213,23 @@ static int enumerate(void){
     if(!epin||!epout)return -9;
     if(ctrl(address,0,9,(u16)conf,0,0,0,0))return -10;
     tgin=tgout=0;
-    u8 cd[10]={0x25};u8 cap[8];
-    if(bot(cd,10,cap,8))return -11;
+    /* Tras SET_CONFIGURATION algunos pendrives reales necesitan varios
+     * ciclos antes de responder a SCSI. TEST UNIT READY no es obligatorio:
+     * si falla se recupera la fase BOT antes de READ CAPACITY. */
+    waitms(100);
+    u8 tur[6]={0},cd[10]={0x25},cap[8]={0};
+    tur[0]=0x00;
+    if(bot(tur,6,0,0))bot_recover();
+    int cap_ok=0;
+    for(int attempt=0;attempt<8;attempt++){
+        memset(cap,0,sizeof cap);
+        int rc=bot(cd,10,cap,8);
+        if(!rc){cap_ok=1;break;}
+        kprintf("[vortex-usb] READ CAPACITY intento=%d rc=%d\n",attempt+1,rc);
+        bot_recover();
+        waitms(40+attempt*50);
+    }
+    if(!cap_ok)return -11;
     block_count=((u32)cap[0]<<24)|((u32)cap[1]<<16)|((u32)cap[2]<<8)|cap[3];
     u32 last=block_count;
     u32 bs=((u32)cap[4]<<24)|((u32)cap[5]<<16)|((u32)cap[6]<<8)|cap[7];
@@ -425,8 +443,24 @@ int usb_storage_probe(void){
     probe_once=1;
     if(init()){status("USB: no hay controlador UHCI disponible");return 0;}
     if(portreset()){status("UHCI detectado, sin dispositivo conectado");return 0;}
-    if(enumerate()){status("USB conectado, pero no es almacenamiento BOT/SCSI compatible");return -1;}
-    if(fatmount()){status("USB detectado: se requiere FAT32 o exFAT en UHCI");return -2;}
+    int r=enumerate();
+    if(r){
+        kprintf("[vortex-usb] fallo de enumeracion etapa=%d, UHCI=%x puerto=%x\n",
+                r,(u32)io,(u32)port);
+        if(r==-9)status("USB visto, pero no tiene interfaz de almacenamiento BOT/SCSI (08/06/50)");
+        else if(r==-11)status("USB Mass Storage reconocido; SCSI no responde / unidad aun no lista");
+        else if(r==-12)status("USB Mass Storage: sector distinto de 512 B o capacidad no valida");
+        else if(r>=-4)status("USB presente; error en descriptor o direccion del dispositivo");
+        else status("USB presente; fallo de configuracion/transferencia, consultar puerto serie");
+        return r;
+    }
+    r=fatmount();
+    if(r){
+        kprintf("[vortex-usb] particion FAT32/exFAT no montada, codigo=%d\n",r);
+        status(r==-1?"USB Mass Storage, pero falla la lectura de sectores":
+                    "USB reconocido; volumen FAT32/exFAT no compatible o no encontrado");
+        return -2;
+    }
     FsNode *root=fs_root();
     FsNode *mount=fs_find(root,"Dispositivos");
     if(!mount)mount=fs_mkdir(root,"Dispositivos");
