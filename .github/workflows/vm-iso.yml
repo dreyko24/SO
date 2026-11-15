@@ -127,14 +127,16 @@ jobs:
           test -s /tmp/vortex-ci-debian.cpio
           cat >/tmp/vortex-web-commands.txt <<'CMDS'
           60|pantalla
-          @esperar 12
-          30|procesos
-          60|abrir xterm
-          @esperar 14
-          30|procesos
-          90|abrir firefox-esr https://example.com/
-          @esperar 18
-          30|procesos
+          @esperar 6
+          20|procesos
+          40|abrir xterm
+          @esperar 4
+          20|ejecutar /bin/cat /tmp/vortex-web.log
+          20|procesos
+          40|abrir firefox-esr https://example.com/
+          @esperar 6
+          20|ejecutar /bin/cat /tmp/vortex-web.log
+          20|procesos
           CMDS
           set +e
           VORTEX_PROMPT='vortex> ' KELF=kernel64/vortex-kernel64-text.elf \
@@ -151,8 +153,11 @@ jobs:
           grep -q 'pantalla: iniciando el servidor X' vortex-web-smoke.log || {
              echo 'FALLO: Xvfb no se pudo ejecutar'; exit 1;
           }
-          # Esto comprueba que se intenta arrancar Xvfb con Debian cargado.
-          # Aun NO verifica que Firefox haya dibujado una pagina web.
+          grep -q 'vortex-xinput: listo' vortex-web-smoke.log || {
+             echo 'FALLO: Xvfb no acepta clientes XTEST'; exit 1;
+          }
+          # El resultado de xterm y Firefox queda en vortex-web-smoke.log.
+          # NO confundir Xvfb operativo con navegador web funcional.
       - name: Guardar diagnostico X11 y Firefox
         if: always()
         uses: actions/upload-artifact@v4
@@ -169,7 +174,7 @@ jobs:
           set -euo pipefail
           tag="iso-latest"
           short="${GITHUB_SHA:0:7}"
-          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Kernel propio grafico de 32 y 64 bits. Debian y Firefox ESR/Xvfb incorporados en el modo 64 bits. Los arranques 32/64 se prueban en QEMU; el navegador grafico y USB fisico VMware siguen pendientes de validacion. Sin instalador de disco."
+          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Kernel propio grafico de 32 y 64 bits. Debian y Firefox ESR/Xvfb incorporados en el modo 64 bits. Los arranques 32/64 se prueban en QEMU; el servidor X arranca en QEMU, pero Firefox y xterm aun pueden fallar; sin garantia de navegacion web ni USB fisico en VMware. Sin instalador de disco."
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Vortex OS - ISO actual" --notes "$notes"
           fi
