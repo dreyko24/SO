@@ -194,6 +194,42 @@ static int enumerate(void){
     if(ctrl(0,0x80,6,0x0100,0,desc,8,1))return -1;
     if(desc[0]<8||desc[1]!=1)return -2;
     mpzero=desc[7];if(mpzero!=8&&mpzero!=16&&mpzero!=32&&mpzero!=64)return -3;
+    if(desc[4]==9){
+        /* VMware y algunas controladoras presentan un HUB USB 1.1 en el
+         * puerto raiz, y la memoria se conecta detras de el. Antes el
+         * controlador trataba el hub como si fuera el pendrive: -9 BOT.
+         * Explorar un nivel de hub full/low speed sin EHCI/xHCI. */
+        u8 hd[16],ps[4];int chosen=0;
+        if(ctrl(0,0,5,1,0,0,0,0))return -13;
+        waitms(50);
+        memset(hd,0,sizeof hd);
+        if(ctrl(1,0xa0,6,0x2900,0,hd,9,1)||hd[1]!=0x29)return -13;
+        int ports=hd[2];if(ports>8)ports=8;
+        for(int p=1;p<=ports;p++){
+            (void)ctrl(1,0x23,3,8,(u16)p,0,0,0); /* PORT_POWER */
+        }
+        waitms(140);
+        for(int p=1;p<=ports;p++){
+            memset(ps,0,sizeof ps);
+            if(ctrl(1,0xa3,0,0,(u16)p,ps,4,1)||(ps[0]&1u)==0)continue;
+            if(ctrl(1,0x23,3,4,(u16)p,0,0,0))continue; /* PORT_RESET */
+            waitms(100);
+            if(ctrl(1,0xa3,0,0,(u16)p,ps,4,1))continue;
+            if(!(ps[0]&1u))continue;
+            (void)ctrl(1,0x23,1,20,(u16)p,0,0,0); /* C_PORT_RESET */
+            low=!!(ps[1]&2u);
+            chosen=p;break;
+        }
+        if(!chosen)return -14;
+        kprintf("[vortex-usb] hub 1.1, puerto %d activo, velocidad %s\n",
+                chosen,low?"baja":"completa");
+        /* Nuevo dispositivo en el puerto del hub: direccion cero. */
+        address=2;mpzero=8;
+        waitms(50);memset(desc,0,sizeof desc);
+        if(ctrl(0,0x80,6,0x0100,0,desc,8,1))return -15;
+        if(desc[0]<8||desc[1]!=1)return -15;
+        mpzero=desc[7];if(mpzero!=8&&mpzero!=16&&mpzero!=32&&mpzero!=64)return -15;
+    }
     if(ctrl(0,0,5,address,0,0,0,0))return -4;
     waitms(20);
     if(ctrl(address,0x80,6,0x0200,0,desc,9,1))return -5;
@@ -451,7 +487,9 @@ int usb_storage_probe(void){
     if(r){
         kprintf("[vortex-usb] fallo de enumeracion etapa=%d, UHCI=%x puerto=%x\n",
                 r,(u32)io,(u32)port);
-        if(r==-9)status("USB visto, pero no tiene interfaz de almacenamiento BOT/SCSI (08/06/50)");
+        if(r==-14)status("Hub USB detectado, pero sin unidad accesible tras sus puertos");
+        else if(r==-13||r==-15)status("Hub USB detectado, fallo al activar o leer el dispositivo");
+        else if(r==-9)status("USB visto: no presenta almacenamiento BOT/SCSI en este puerto");
         else if(r==-11)status("USB Mass Storage reconocido; SCSI no responde / unidad aun no lista");
         else if(r==-12)status("USB Mass Storage: sector distinto de 512 B o capacidad no valida");
         else if(r>=-4)status("USB presente; error en descriptor o direccion del dispositivo");
