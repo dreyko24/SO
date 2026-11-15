@@ -16,19 +16,32 @@ rm -rf build/iso && mkdir -p build/iso/boot/grub out
 cp kernel/vortex-kernel.elf kernel/vortex-kernel-text.elf kernel64/vortex-kernel64.elf kernel64/vortex-kernel64-text.elf build/iso/boot/
 # rootfs (programas Linux + enlazador dinamico + libc del PC) como modulo de arranque; solo lo usa el kernel de 64 bits
 if python3 tools/mkrootfs.py build/iso/boot/rootfs.cpio; then ROOTFS=1; else ROOTFS=0; echo "[aviso] sin rootfs (falta libc estatica: sudo apt install libc6-dev). El ISO igual arranca, sin programas Linux."; fi
-# Debian real (opcional): se usa si ya existe build/debian.cpio.gz, o si se pide con  VORTEX_DEBIAN=1 bash tools/build-iso.sh
-# Se reutiliza un Debian ya creado antes (copia guardada en WSL o en otra carpeta de vortex en Descargas) para no volver a bajarlo.
-CACHE_DEB="$HOME/.cache/vortex/debian.cpio.gz"
-if [ "$VORTEX_DEBIAN" = 1 ] && [ ! -f build/debian.cpio.gz ]; then
-  mkdir -p build
-  if [ -f "$CACHE_DEB" ]; then cp "$CACHE_DEB" build/debian.cpio.gz; echo "[debian] reutilizando el Debian guardado"
-  else
-    VIEJO=$(ls -t /mnt/c/Users/*/Downloads/*/build/debian.cpio.gz /mnt/c/Users/*/Downloads/*/*/build/debian.cpio.gz /mnt/c/Users/*/Desktop/*/build/debian.cpio.gz /mnt/c/Users/*/Desktop/*/*/build/debian.cpio.gz 2>/dev/null | head -1)
-    if [ -n "$VIEJO" ] && gzip -t "$VIEJO" 2>/dev/null; then cp "$VIEJO" build/debian.cpio.gz; echo "[debian] reutilizando $VIEJO"
-    else bash tools/mkdebian.sh; fi
+# Debian real (opcional): la cache lleva huella del constructor y de los
+# archivos del rootfs. No reutilizar un Debian antiguo sin Firefox/X11.
+if [ "${VORTEX_DEBIAN:-0}" = 1 ]; then
+  DEB_KEY=$( {
+    sha256sum tools/mkdebian.sh
+    find tools/rootfs-es -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
+  } | sha256sum | cut -c1-24 )
+  CACHE_DEB="$HOME/.cache/vortex/debian-$DEB_KEY.cpio.gz"
+  STAMP=build/debian.source-key
+  if [ -f build/debian.cpio.gz ] && { [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != "$DEB_KEY" ]; }; then
+    echo "[debian] descartando modulo obsoleto, se requiere construir la version actual"
+    rm -f build/debian.cpio.gz
   fi
+  if [ ! -f build/debian.cpio.gz ]; then
+    if [ -f "$CACHE_DEB" ] && gzip -t "$CACHE_DEB" 2>/dev/null; then
+      cp "$CACHE_DEB" build/debian.cpio.gz
+      echo "[debian] cache validada para el codigo actual"
+    else
+      bash tools/mkdebian.sh
+      gzip -t build/debian.cpio.gz
+      mkdir -p "$(dirname "$CACHE_DEB")"
+      cp build/debian.cpio.gz "$CACHE_DEB"
+    fi
+  fi
+  printf '%s\n' "$DEB_KEY" > "$STAMP"
 fi
-if [ -f build/debian.cpio.gz ] && [ ! -f "$CACHE_DEB" ]; then mkdir -p "$(dirname "$CACHE_DEB")" && cp build/debian.cpio.gz "$CACHE_DEB"; fi
 if [ -f build/debian.cpio.gz ]; then
   cp build/debian.cpio.gz build/iso/boot/debian.cpio.gz
   python3 tools/mkrootfs.py --debian build/iso/boot/vortex-extra.cpio
