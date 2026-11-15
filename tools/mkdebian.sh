@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Crea build/debian.cpio.gz: un Debian 12 (bookworm) REAL con apt/dpkg, curl, busybox y los comandos en espanol de vortex.
+# Crea build/debian.cpio.gz: Debian 12 (bookworm) con Firefox ESR y Xvfb PREINSTALADOS.
+# El entorno Debian vive en la ISO de 64 bits; instalar navegadores en RAM
+# durante una sesion no los conserva despues de reiniciar.
 # Se usa como modulo de arranque de vortex 64 bits. Necesita sudo y debootstrap:  sudo apt install -y debootstrap cpio gzip
 set -e
 cd "$(dirname "$0")/.."
@@ -8,7 +10,7 @@ RAIZ=${VORTEX_DEBROOT:-/var/tmp/vortex-debroot}   # disco de Linux (en /mnt/c, N
 sudo rm -rf "$RAIZ"; mkdir -p build
 echo "[1/4] Descargando Debian base (unos minutos, necesita internet)..."
 sudo debootstrap --variant=minbase \
-  --include=busybox,curl,ca-certificates,xz-utils,less,nano,procps,xauth,gnupg \
+  --include=busybox,curl,ca-certificates,xz-utils,less,nano,procps,xauth,gnupg,firefox-esr,xvfb,xterm,x11-utils,x11-xserver-utils,fonts-dejavu-core,fonts-liberation,libgl1 \
   bookworm "$RAIZ" http://deb.debian.org/debian > build/debootstrap.log 2>&1 || { tail -30 build/debootstrap.log; exit 1; }
 echo "[2/4] Agregando comandos en espanol y ajustes de vortex..."
 sudo cp -a tools/rootfs-es/. "$RAIZ"/
