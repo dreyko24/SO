@@ -12,6 +12,9 @@ static int ready;
 int usb_storage_probe(void){return 0;}
 int usb_storage_rescan(void){return 0;}
 int usb_storage_ready(void){return ready;}
+unsigned usb_storage_capacity_mib(void){return 0;}
+unsigned usb_storage_file_count(void){return 0;}
+const char *usb_storage_format(void){return "No disponible";}
 const char *usb_storage_message(void){return "No hay USB fisico en el simulador host";}
 void usb_storage_poll(void){}
 #else
@@ -489,6 +492,9 @@ int usb_storage_rescan(void){
     return usb_storage_probe();
 }
 int usb_storage_ready(void){return ready;}
+unsigned usb_storage_capacity_mib(void){return ready?block_count>>11:0;}
+unsigned usb_storage_file_count(void){return ready?(unsigned)imported:0;}
+const char *usb_storage_format(void){return ready?(exfat_mode?"exFAT":"FAT32"):"No disponible";}
 const char *usb_storage_message(void){return info;}
 void usb_storage_poll(void){
     static u32 next_probe;
