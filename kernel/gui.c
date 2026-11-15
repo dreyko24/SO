@@ -2260,7 +2260,34 @@ static void draw_window(int wi,int focused){
             uint32_t off=hs+ncol*12;
             if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
                 int bw=(int)pw<cw?(int)pw:cw, bh=(int)ph<ch?(int)ph:ch;
-                blit32(cx,cy,(const uint32_t*)(const void*)(d+off),(int)(bpl/4),bw,bh);
+                const uint32_t *pixels=(const uint32_t*)(const void*)(d+off);
+                blit32(cx,cy,pixels,(int)(bpl/4),bw,bh);
+                /* El framebuffer de X puede estar creado pero vacio cuando
+                 * Firefox se ha cerrado. Mostrar diagnostico en lugar de
+                 * dejar una ventana negra sin explicacion. */
+                int painted=0;
+                for(int iy=1;iy<8&&!painted;iy++)for(int ix=1;ix<8;ix++){
+                    int sy=iy*bh/8,sx=ix*bw/8;
+                    if((pixels[sy*(bpl/4)+sx]&0xffffffu)!=0)painted=1;
+                }
+                if(!painted&&cw>250&&ch>150){
+                    rrect(cx+20,cy+20,cw-40,116,12,0x14233d,245);
+                    text_bold(cx+35,cy+33,"La pantalla X sigue vacia",0xffffff);
+                    text(cx+35,cy+57,"El navegador aun no ha mostrado una ventana.",0xd7e6ff);
+                    char msg[110]="Revisa el resultado en /tmp/vortex-web.log";
+                    FsNode *lf=fs_resolve(fs_root(),"/tmp/vortex-web.log");
+                    if(lf&&lf->data&&lf->size>0){
+                        int end=lf->size;
+                        while(end>0&&(lf->data[end-1]=='\n'||lf->data[end-1]=='\r'))end--;
+                        int begin=end;
+                        while(begin>0&&lf->data[begin-1]!='\n'&&end-begin<95)begin--;
+                        int n=end-begin;if(n>95)n=95;
+                        if(n>0){memcpy(msg,lf->data+begin,(size_t)n);msg[n]=0;}
+                    }
+                    while(k_strlen(msg)>1&&text_w(msg)>cw-74)msg[k_strlen(msg)-1]=0;
+                    text(cx+35,cy+83,msg,0xffc995);
+                    text(cx+35,cy+107,"No uses cuentas personales hasta validar el navegador.",0xb9cade);
+                }
             } else text(cx+20,cy+20,"El servidor X usa un formato que vortex aun no muestra (se necesita 32 bits).",0xd6dbe8);
         } else { text(cx+20,cy+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8); text(cx+20,cy+44,"Inicia: pantalla   (en la terminal)",C_DIM); }
         break; }
