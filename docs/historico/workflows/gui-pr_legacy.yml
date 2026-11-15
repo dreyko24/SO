@@ -1,0 +1,33 @@
+name: interfaz-grafica-pr
+on:
+  pull_request:
+    paths:
+      - 'kernel/**'
+      - 'kernel64/**'
+      - 'tools/hostgui*'
+      - '.github/workflows/gui-pr.yml'
+  workflow_dispatch:
+jobs:
+  compilar-y-renderizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc gcc-multilib make binutils python3-pil
+      - name: Compilar ambos kernels (incluida la GUI)
+        run: |
+          make -C kernel -j2
+          make -C kernel64 -j2
+      - name: Simulador grafico con sanitizadores
+        run: |
+          OUTDIR="$RUNNER_TEMP/kng-shots" python3 tools/hostgui.py
+      - name: Conservar capturas de prueba
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interfaz-grafica
+          path: ${{ runner.temp }}/kng-shots/*.png
+          if-no-files-found: ignore
