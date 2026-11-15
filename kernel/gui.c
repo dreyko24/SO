@@ -1751,9 +1751,34 @@ static void enc_quiz_next(Win *w){
 }
 /* Ilustraciones educativas dibujadas por Vortex, sin imagenes de terceros.
  * Los esquemas vectoriales se generan en el framebuffer incluso sin red. */
-static void enc_article_diagram(int category,int x,int y,int w,int h){
-    rrect(x,y,w,h,13,light_theme?0xe9f0f8:0x171c30,255);
-    if(category==1){ /* ciencia: el sistema solar */
+static void enc_article_diagram(const EncArticle *article,int x,int y,int w,int h){
+    int category=article->category;
+    rrect(x,y,w,h,13,light_theme?0xe1edf6:0x171c30,255);
+    if(!k_strcmp(article->title,"La celula")){
+        /* Dos tipos celulares: nucleo, membrana y citoplasma. */
+        int c1=x+w/3,c2=x+(2*w)/3,cy=y+44;
+        circle(c1,cy,32,0x62b5b3,255);circle(c1,cy,26,0xc1ead9,255);
+        circle(c1+4,cy-2,11,0x7d68a8,255);
+        rrect(c2-36,cy-30,72,60,10,0x438d65,255);
+        rrect(c2-31,cy-25,62,50,8,0xb7db95,255);
+        circle(c2,cy,10,0x7d68a8,255);
+        for(int i=0;i<3;i++)circle(c2-23+i*22,cy+15,4,0x4e987a,255);
+        text_ui(x+16,y+h-18,"Celula animal         Celula vegetal",C_TXT);
+    }else if(!k_strcmp(article->title,"ADN y herencia")){
+        for(int i=0;i<12;i++){
+            int px=x+35+i*(w-70)/12,dy=(i%4<2)?12:-12;
+            circle(px,y+44+dy,6,0x5bbab7,255);
+            circle(px,y+44-dy,6,0xb394df,255);
+            line(px,y+44+dy,px,y+44-dy,2,0xe9ba72,230);
+        }
+        text_ui(x+16,y+h-18,"Doble cadena de ADN",C_TXT);
+    }else if(!k_strcmp(article->title,"Ciclo del agua")){
+        circle(x+50,y+29,16,0xf6c268,255);
+        for(int i=0;i<3;i++)circle(x+w/2+i*17-15,y+20+(i&1)*7,17,0xb9d8ec,255);
+        for(int i=0;i<6;i++)line(x+w/2-30+i*15,y+50,x+w/2-36+i*15,y+68,2,0x57b1de,255);
+        line(x+35,y+76,x+w-35,y+76,3,0x52a5c7,255);
+        text_ui(x+16,y+h-18,"Evaporacion, nubes y lluvia",C_TXT);
+    }else if(category==1){ /* astronomia: estrellas y planetas */
         int cx=x+w/2,cy=y+h/2;
         circle(x+46,cy,26,0xf4b85c,255);circle(x+45,cy-3,19,0xffdc8c,255);
         for(int i=0;i<4;i++){
@@ -1948,7 +1973,7 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
         text_big(rx+20,ry+52,a->title,C_TXT);
         text_ui(rx+21,ry+88,a->subtitle,C_DIM);
         fill(rx+20,ry+120,rw-40,2,ACCENT,145);
-        enc_article_diagram(a->category,rx+20,ry+130,rw-40,96);
+        enc_article_diagram(a,rx+20,ry+130,rw-40,96);
         int yy=ry+238;
         int visible=enc_body_height(w);
         clip_set(rx+19,yy,rw-35,visible*18);
@@ -2520,14 +2545,32 @@ static void draw_window(int wi,int focused){
     }
 }
 
-/* Ventanas minimizadas recuperables incluso sin icono en el dock. */
-static int minimized_at(int px,int py){
-    if(py<1||py>=BARH)return -1;
+/* Cada ventana minimizada ocupa una ficha propia. El ancho se adapta al
+ * numero de ventanas para no ocultar ninguna detras del reloj central.
+ * Usar exactamente la misma geometria para dibujo y clic. */
+static int taskbar_minimized_count(void){
     int n=0;
     for(int k=0;k<nord;k++){
-        int wi=order[k];if(!wins[wi].minimized||wins[wi].workspace!=active_workspace)continue;
-        int x=300+n*105;if(x+101>=gw/2-48)break;
-        if(px>=x&&px<x+101)return wi;
+        Win *w=&wins[order[k]];
+        if(w->used&&w->minimized&&w->workspace==active_workspace)n++;
+    }
+    return n;
+}
+static int taskbar_item_width(void){
+    int n=taskbar_minimized_count();
+    if(!n)return 0;
+    int available=gw-350-300;
+    if(available<n)available=n;
+    return k_min(101,available/n);
+}
+static int minimized_at(int px,int py){
+    if(py<1||py>=BARH)return -1;
+    int width=taskbar_item_width(),n=0;
+    for(int k=0;k<nord;k++){
+        int wi=order[k];
+        if(!wins[wi].used||!wins[wi].minimized||wins[wi].workspace!=active_workspace)continue;
+        int x=300+n*width;
+        if(px>=x&&px<x+width)return wi;
         n++;
     }
     return -1;
@@ -2551,14 +2594,17 @@ static void draw_topbar(void){
         char n[2]={(char)('1'+i),0};
         text_ui_bold(wx+9,6,n,i==active_workspace?C_TXT:C_DIM);
     }
-    { int n=0;
+    { int n=0,width=taskbar_item_width();
       for(int k=0;k<nord;k++){Win *w=&wins[order[k]];
-        if(!w->minimized||w->workspace!=active_workspace)continue;
-        int x=300+n*105;
-        if(x+101>=gw/2-47)break;
-        rrect(x,3,101,BARH-6,8,light_theme?0xe2dfed:0x3b3448,255);
-        char label[14];k_strcpy(label,w->title,sizeof label);
-        text(x+6,6,label,C_TXT);n++;
+        if(!w->used||!w->minimized||w->workspace!=active_workspace)continue;
+        int x=300+n*width;
+        rrect(x+1,3,k_max(1,width-2),BARH-6,6,light_theme?0xd6e3f4:0x413653,255);
+        fill(x+2,7,2,BARH-14,ACCENT,255);
+        char label[40];k_strcpy(label,w->title,sizeof label);
+        while(k_strlen(label)>1&&text_ui_w(label)>width-10)label[k_strlen(label)-1]=0;
+        if(width>20)text_ui(x+6,6,label,C_TXT);
+        else fill(x+width/2,11,2,8,light_theme?0x263858:0xe2d7ff,255);
+        n++;
       }
     }
     char t[40]="";
@@ -2576,7 +2622,8 @@ static void draw_topbar(void){
         cat_int(t,sizeof t,clk_m);cat(t,sizeof t,am?" PM":" AM");
     }else{if(h<10)cat(t,sizeof t,"0");cat_int(t,sizeof t,h);cat(t,sizeof t,":");
         if(clk_m<10)cat(t,sizeof t,"0");cat_int(t,sizeof t,clk_m);}
-    text_ui_bold((gw-text_ui_w(t))/2,6,t,C_TXT);
+    /* Hora a la derecha de las fichas minimizadas, sin taparlas. */
+    text_ui_bold(gw-220-text_ui_w(t),6,t,C_TXT);
     rrect(gw-208,3,38,BARH-6,8,light_theme?0xe5e2ee:0x302a3a,255);
     rrect(gw-196,8,16,14,3,ACCENT,220);
     fill(gw-196,12,16,2,0xffffff,210);
@@ -3379,13 +3426,14 @@ static void app_click(Win *w,int lx,int ly){
             if(in_rect(lx,ly,231,105,99,28)){
                 w->enc_topic=-1;w->enc_scroll=0;dwin(w);return;
             }
-            if(in_rect(lx,ly,cw-160,ch-148,129,30)){
-                /* Siguiente dentro del índice filtrado, con vuelta al inicio. */
+            if(in_rect(lx,ly,cw-160,ch-54,129,30)){
+                /* El boton se dibuja en ch-54, no en ch-148.
+                 * Avanzar usando enc_article_open tambien guarda el progreso. */
                 int pos=-1,n=enc_count(w);
                 for(int k=0;k<n;k++)if(enc_index(w,k)==w->enc_topic){pos=k;break;}
                 int next=enc_index(w,pos<0?0:(pos+1)%k_max(1,n));
-                if(next>=0)w->enc_topic=next;
-                w->enc_scroll=0;dwin(w);return;
+                if(next>=0)enc_article_open(w,next);
+                return;
             }
         }else{
             int ry=94,top=ry+52,rh=ch-104;
