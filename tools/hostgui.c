@@ -507,6 +507,33 @@ int main(void){
       if(w->maxed||w->x!=oldx||w->y!=oldy||w->w!=oldw||w->h!=oldh){puts("FALLO restaurar tamano");return 1;}
       puts("VORTEX VENTANAS MINIMIZAR/MAXIMIZAR OK");
     }
+    closeall();
+    /* Tres aplicaciones minimizadas deben aparecer simultaneamente en
+     * la barra superior, con tres regiones de clic sin solaparse. */
+    { Win *a=open_app(A_FILES), *b=open_app(A_NOTES), *c=open_app(A_CALC);
+      int ai=(int)(a-wins),bi=(int)(b-wins),ci=(int)(c-wins);
+      win_minimize(a);win_minimize(b);win_minimize(c);
+      int wid=taskbar_item_width();
+      if(taskbar_minimized_count()!=3||wid<18){
+          puts("FALLO tres ventanas en la barra de tareas");return 1;
+      }
+      int t0=minimized_at(300+wid/2,14);
+      int t1=minimized_at(300+wid+wid/2,14);
+      int t2=minimized_at(300+2*wid+wid/2,14);
+      if(t0<0||t1<0||t2<0||t0==t1||t1==t2||t0==t2){
+          puts("FALLO clic individual entre minimizadas");return 1;
+      }
+      shot("31_tres_ventanas_minimizadas");
+      click(300+2*wid+wid/2,14);
+      if(wins[t2].minimized){puts("FALLO restaurar tercera minimizada");return 1;}
+      click(300+wid/2,14);
+      if(wins[t0].minimized){puts("FALLO restaurar primera minimizada");return 1;}
+      click(300+wid/2,14);
+      if(wins[t1].minimized||!(wins[ai].used&&wins[bi].used&&wins[ci].used)){
+          puts("FALLO restaurar multiples ventanas");return 1;
+      }
+      puts("VORTEX BARRA: TRES MINIMIZADAS VISIBLES Y RESTAURABLES OK");
+    }
     closeall(); dock(1);
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("example.test/dir/index.html\\"); }
     shot("05b_http_cargando");
@@ -886,6 +913,21 @@ int main(void){
           puts("FALLO abrir articulo educativo y guardar lectura");return 1;
       }
       shot("40_vortex_saber_articulo");
+      /* Regresion de una zona de clic que antes estaba 94px por encima
+       * del boton real Siguiente: pulsar el boton VISUAL y pasar de tema. */
+      { int cx,cy,cw,ch;crect(e,&cx,&cy,&cw,&ch);
+        click(cx+cw-95,cy+ch-39);
+        if(e->enc_topic!=1||!(e->enc_progress.articles&(1u<<1))){
+            puts("FALLO boton visible Siguiente en Saber");return 1;
+        }
+        click(cx+cw-95,cy+ch-39);
+        if(e->enc_topic!=2){puts("FALLO segunda leccion Saber");return 1;}
+        click(cx+cw-95,cy+ch-39);
+        if(e->enc_topic!=3||strcmp(ENC_ARTICLES[e->enc_topic].title,"La celula")){
+            puts("FALLO siguiente de Ciencias");return 1;
+        }
+        shot("40b_saber_celula_correspondiente");
+      }
       click(e->x+1+238+35,e->y+TB+94+11+13);
       if(e->enc_topic!=-1){puts("FALLO volver al indice");return 1;}
       typestr("inteligencia artificial");
