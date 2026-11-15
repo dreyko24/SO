@@ -2,7 +2,17 @@
 # abrir-x <programa> [argumentos]: espera a que el servidor X este listo y abre el programa en la pantalla X
 n=0
 while [ ! -S /tmp/.X11-unix/X0 ] && [ $n -lt 150 ]; do sleep 0.2; n=$((n+1)); done
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+  echo "Vortex: la pantalla X no inicio; no se puede abrir el programa." >&2
+  exit 1
+fi
 export DISPLAY=:0 HOME=${HOME:-/root}
+export GDK_BACKEND=x11 NO_AT_BRIDGE=1
+# Compatibilidad temporal con la ABI de procesos incompleta del kernel
+# Vortex. Firefox no tiene aislamiento de contenido verificado: NO usar
+# cuentas personales ni credenciales mientras se desarrolle el sandbox.
+export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1
+export MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1
 # Mantiene interfaz espanola si esta instalada; se respeta la configuracion explicita.
 : "${LANG:=es_ES.UTF-8}"
 export LANG SAL_USE_VCLPLUGIN=${SAL_USE_VCLPLUGIN:-gen}
