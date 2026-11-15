@@ -10,6 +10,8 @@ typedef struct {
 } HPage;
 /* Dibuja (o solo mide si draw=0) un subconjunto de HTML: h1 h2 p br b a ul li hr pre title.
  * Area de vista (x,y,w,h) en pantalla; scroll en pixeles. */
+/* Ajusta los colores del texto al fondo; el valor por defecto es oscuro. */
+void html_set_light_theme(int enabled);
 void html_render(const char *html, int len, int x, int y, int w, int h, int scroll, uint32_t link_col, int draw, HPage *out);
 const char *html_builtin(const char *url, int *len);           /* paginas vortex:// integradas; 0 si no existe */
 #endif
