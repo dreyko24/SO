@@ -1753,92 +1753,50 @@ static void enc_quiz_next(Win *w){
 }
 /* Ilustraciones educativas dibujadas por Vortex, sin imagenes de terceros.
  * Los esquemas vectoriales se generan en el framebuffer incluso sin red. */
+/* Cada articulo tiene una ilustracion propia y pertinente. Los dibujos se
+ * conservan offline en el kernel; nunca mostrar la escena de otra leccion. */
 static void enc_article_diagram(const EncArticle *article,int x,int y,int w,int h){
-    int category=article->category;
-    rrect(x,y,w,h,13,light_theme?0xe1edf6:0x171c30,255);
-    if(!k_strcmp(article->title,"La celula")){
-        /* Dos tipos celulares: nucleo, membrana y citoplasma. */
-        int c1=x+w/3,c2=x+(2*w)/3,cy=y+44;
-        circle(c1,cy,32,0x62b5b3,255);circle(c1,cy,26,0xc1ead9,255);
-        circle(c1+4,cy-2,11,0x7d68a8,255);
-        rrect(c2-36,cy-30,72,60,10,0x438d65,255);
-        rrect(c2-31,cy-25,62,50,8,0xb7db95,255);
-        circle(c2,cy,10,0x7d68a8,255);
-        for(int i=0;i<3;i++)circle(c2-23+i*22,cy+15,4,0x4e987a,255);
-        text_ui(x+16,y+h-18,"Celula animal         Celula vegetal",C_TXT);
-    }else if(!k_strcmp(article->title,"ADN y herencia")){
-        for(int i=0;i<12;i++){
-            int px=x+35+i*(w-70)/12,dy=(i%4<2)?12:-12;
-            circle(px,y+44+dy,6,0x5bbab7,255);
-            circle(px,y+44-dy,6,0xb394df,255);
-            line(px,y+44+dy,px,y+44-dy,2,0xe9ba72,230);
-        }
-        text_ui(x+16,y+h-18,"Doble cadena de ADN",C_TXT);
-    }else if(!k_strcmp(article->title,"Ciclo del agua")){
-        circle(x+50,y+29,16,0xf6c268,255);
-        for(int i=0;i<3;i++)circle(x+w/2+i*17-15,y+20+(i&1)*7,17,0xb9d8ec,255);
-        for(int i=0;i<6;i++)line(x+w/2-30+i*15,y+50,x+w/2-36+i*15,y+68,2,0x57b1de,255);
-        line(x+35,y+76,x+w-35,y+76,3,0x52a5c7,255);
-        text_ui(x+16,y+h-18,"Evaporacion, nubes y lluvia",C_TXT);
-    }else if(category==1){ /* astronomia: estrellas y planetas */
-        int cx=x+w/2,cy=y+h/2;
-        circle(x+46,cy,26,0xf4b85c,255);circle(x+45,cy-3,19,0xffdc8c,255);
-        for(int i=0;i<4;i++){
-            int px=x+130+i*(w-175)/4,rad=5+i*2;
-            circle(px,cy-(i&1?16:-18),rad,i==2?0x5abbe3:0xb5a6e2,255);
-            line(x+72,cy,px-8,cy-(i&1?16:-18),1,C_DIM,55);
-        }
-        text_ui(x+14,y+h-22,"Estrellas y planetas",C_DIM);
-    }else if(category==2){ /* historia: andenes escalonados */
-        for(int i=0;i<6;i++){
-            int px=x+28+i*(w-74)/6,yy=y+h-24-i*10;
-            rrect(px,yy,82,11,2,i&1?0x9b804b:0xc1a16f,255);
-            line(px+5,yy,px+66,yy,1,0xe4cb92,210);
-        }
-        rrect(x+34,y+14,46,32,5,0xd4b080,255);
-        rrect(x+49,y+25,14,21,2,0x6d4c44,255);
-        text_ui(x+91,y+18,"Ciudades, caminos y pueblos",C_TXT);
-    }else if(category==3){ /* geografia: cordillera y rio */
-        int base=y+h-25;
-        line(x+24,base,x+94,y+25,3,0x95a3bb,255);
-        line(x+94,y+25,x+165,base,3,0x95a3bb,255);
-        line(x+105,base,x+208,y+34,3,0x7787ad,255);
-        line(x+208,y+34,x+300,base,3,0x7787ad,255);
-        line(x+65,y+53,x+94,y+25,4,0xffffff,210);
-        line(x+94,y+25,x+124,y+54,4,0xffffff,210);
-        for(int i=0;i<14;i++)circle(x+130+i*16,base-7+(i%3)*3,2,0x53afd9,220);
-        text_ui(x+15,y+h-19,"Relieve y agua",C_DIM);
-    }else if(category==4){ /* tecnologia: microprocesador y buses */
-        int px=x+w/2-32,py=y+h/2-27;
-        rrect(px,py,64,55,10,0x3b9ba6,255);
-        rrect(px+9,py+9,46,36,6,0x14283b,255);
-        text_ui_bold(px+15,py+18,"CPU",0xd3f9f3);
-        for(int i=0;i<6;i++){
-            int cy=py+6+i*9;
-            line(px-27,cy,px,cy,2,0x74bac8,255);
-            line(px+64,cy,px+92,cy,2,0x74bac8,255);
-        }
-        text_ui(x+14,y+h-20,"Circuitos y comunicacion",C_DIM);
-    }else if(category==5){ /* cultura: libro abierto */
-        int px=x+w/2,py=y+22;
-        rrect(px-100,py,96,58,7,0xf0d8b0,255);
-        rrect(px+4,py,96,58,7,0xf7e9ca,255);
-        fill(px-1,py,3,58,0x9c6f46,255);
-        for(int j=0;j<4;j++){
-            fill(px-83,py+12+j*10,64,2,0x957d63,180);
-            fill(px+18,py+12+j*10,65,2,0x957d63,180);
-        }
-        text_ui(x+14,y+h-18,"Lectura y expresion",C_DIM);
-    }else if(category==6){ /* salud: cruz y simbolos de bienestar */
-        int px=x+w/2,py=y+15;
-        rrect(px-12,py,25,72,7,0x38a88a,255);
-        rrect(px-37,py+24,75,25,7,0x38a88a,255);
-        circle(x+60,y+42,15,0xec8797,255);
-        circle(x+w-65,y+42,15,0x77bfd5,255);
-        text_ui(x+17,y+h-18,"Cuerpo y bienestar",C_DIM);
-    }else{
-        text_ui(x+22,y+31,"Conocimiento para todos",C_TXT);
+    int topic=(int)(article-ENC_ARTICLES);
+    int cx=x+w/2,cy=y+40;
+    const char *label="Ilustracion educativa";
+    uint32_t bg=light_theme?0xe4f0fa:0x172337;
+    rrect(x,y,w,h,12,bg,255);
+    /* Goma de borrar visual y area util: fondo constante, escena propia. */
+    switch(topic){
+    case 0: /* Universo: galaxia espiral */ for(int i=0;i<22;i++){int px=cx+((i*47)%220)-110,py=cy+((i*29)%54)-27;circle(px,py,(i%3)+1,0xc3b9ff,240);}circle(cx,cy,14,0xf9d38d,255);line(cx-90,cy+20,cx+86,cy-22,2,0x8da7ee,170);label="Galaxias, estrellas y espacio";break;
+    case 1: /* Sistema solar */ circle(x+43,cy,27,0xffce67,255);for(int i=0;i<8;i++){int px=x+104+i*(w-158)/8;line(x+74,cy,px,cy,1,0x506688,75);circle(px,cy+(i%2?9:-9),3+(i%5),i==2?0x45bde5:0xb8a6ee,255);}label="El Sol y los ocho planetas";break;
+    case 2: /* Tierra: planeta azul y continentes */ circle(cx,cy,33,0x2c8ac9,255);circle(cx-10,cy-8,14,0x46b88f,255);circle(cx+16,cy+11,11,0x4ba57e,255);line(cx-48,cy+30,cx+50,cy+30,1,0xa7d6e8,160);label="Atmósfera, océanos y continentes";break;
+    case 3: /* Celula */ circle(cx-62,cy,29,0x62b5b3,255);circle(cx-62,cy,23,0xc1ead9,255);circle(cx-58,cy,9,0x7d68a8,255);rrect(cx+22,cy-27,70,54,9,0x469b68,255);rrect(cx+27,cy-22,60,44,6,0xb8d990,255);circle(cx+56,cy,9,0x7d68a8,255);label="Célula animal y vegetal";break;
+    case 4: /* ADN: doble hélice */ for(int i=0;i<17;i++){int dx=(i%4<2)?15:-15,px=x+45+i*(w-90)/17;circle(px,cy+dx,4,0x69cfc2,255);circle(px,cy-dx,4,0xbca5eb,255);line(px,cy+dx,px,cy-dx,2,0xf4ce82,210);}label="Doble hélice del ADN";break;
+    case 5: /* evolucion: arbol de la vida */ line(cx,cy+30,cx,cy-25,5,0x7dbd8e,255);line(cx,cy-15,cx-63,cy-30,3,0x7dbd8e,255);line(cx,cy-15,cx+62,cy-30,3,0x7dbd8e,255);for(int i=-1;i<=1;i++)circle(cx+i*62,cy-30,13,i==0?0xf7ca86:0x79c5b8,255);label="Ancestros y diversidad de especies";break;
+    case 6: /* matematicas */ rrect(cx-122,cy-25,78,53,7,0x274267,255);line(cx-112,cy+12,cx-52,cy-14,2,0x8fd6ee,255);circle(cx-52,cy-14,4,0xf4c873,255);text_big(cx+4,cy-18,"1+2=3",C_TXT);label="Números, formas y funciones";break;
+    case 7: /* agua: evaporacion lluvia */ circle(x+65,cy-22,17,0xf6c268,255);for(int i=0;i<3;i++)circle(cx-23+i*23,cy-16+(i%2)*7,18,0xb9d8ec,255);for(int i=0;i<8;i++)line(cx-48+i*12,cy+14,cx-53+i*12,cy+33,2,0x57b1de,255);line(x+55,cy+38,x+w-55,cy+38,4,0x3d9aca,255);label="Evaporación, nubes y lluvia";break;
+    case 8: /* primeras ciudades */ for(int i=0;i<5;i++){int px=cx-110+i*49; rrect(px,cy-10-(i%3)*13,36,45+(i%3)*13,2,0xc6a06c,255);rrect(px+11,cy+7,12,20,2,0x695044,255);}label="Las primeras ciudades y sus edificios";break;
+    case 9: /* incas: terrazas con sol */ circle(cx-92,cy-25,13,0xfacc72,255);for(int i=0;i<5;i++){int yy=cy-19+i*13;rrect(cx-65+i*8,yy,165-i*16,9,2,i%2?0x659565:0xb99459,255);}label="Terrazas agrícolas del Tawantinsuyu";break;
+    case 10: /* camino inca: puente de montana */ line(cx-140,cy+31,cx-43,cy-23,3,0x819cbd,255);line(cx-43,cy-23,cx+19,cy+31,3,0x819cbd,255);line(cx+19,cy+31,cx+88,cy-21,3,0x819cbd,255);for(int i=0;i<7;i++){int px=cx-72+i*23;line(px,cy+23,px+16,cy+23,3,0xc8a46a,255);}label="Qhapaq Ñan: caminos y puentes";break;
+    case 11: /* Revolucion industrial */ for(int i=0;i<3;i++){rrect(cx-116+i*64,cy-1,57,37,3,0x6f879d,255);rrect(cx-104+i*64,cy-31,13,30,2,0x879daf,255);circle(cx-97+i*64,cy-42,8,0xc3d2d9,110);}label="Fábricas, máquinas y vapor";break;
+    case 12: /* Independencia del Peru: bandera y fecha */ fill(cx-116,cy-30,47,60,0xc71f38,255);fill(cx-69,cy-30,47,60,0xfffdf5,255);fill(cx-22,cy-30,47,60,0xc71f38,255);line(cx-122,cy-37,cx-122,cy+36,3,0xb7c3d6,255);text_big(cx+51,cy-17,"1821",C_TXT);label="28 de julio: proclamación en Lima";break;
+    case 13: /* escritura: tablilla y pluma */rrect(cx-104,cy-33,85,66,7,0xc3a579,255);for(int i=0;i<3;i++)for(int j=0;j<4;j++)line(cx-91+j*18,cy-21+i*17,cx-83+j*18,cy-13+i*17,2,0x76593c,255);line(cx+9,cy+30,cx+102,cy-35,5,0xe6c891,255);label="De los primeros signos al alfabeto";break;
+    case 14: /* Sur America: mapa continental simplificado */line(cx-44,cy-35,cx+10,cy-25,5,0x6abb91,255);line(cx+10,cy-25,cx+29,cy-3,7,0x6abb91,255);line(cx+29,cy-3,cx+10,cy+16,7,0x6abb91,255);line(cx+10,cy+16,cx-10,cy+39,6,0x6abb91,255);line(cx-10,cy+39,cx-22,cy+50,5,0x6abb91,255);label="Diversidad del continente sudamericano";break;
+    case 15: /* Andes: cordillera */for(int i=0;i<3;i++){int px=cx-127+i*91;line(px,cy+36,px+46,cy-36,4,0x8aa4c0,255);line(px+46,cy-36,px+88,cy+36,4,0x8aa4c0,255);line(px+32,cy-14,px+46,cy-36,3,0xffffff,255);line(px+46,cy-36,px+59,cy-14,3,0xffffff,255);}label="Cordillera de los Andes";break;
+    case 16: /* Amazonia */for(int i=0;i<5;i++){int px=cx-104+i*51;line(px,cy+33,px,cy-3,4,0x866c4f,255);circle(px,cy-18,19,0x35a775,255);circle(px-9,cy-7,15,0x3b9369,255);}label="Selva amazónica y biodiversidad";break;
+    case 17: /* Oceanos: olas y pez */for(int i=0;i<3;i++)for(int j=0;j<5;j++)circle(cx-109+j*48+(i%2?10:0),cy-17+i*21,10,0x5eafd3,245);line(cx+12,cy,cx+54,cy-9,3,0xf0c280,255);line(cx+12,cy,cx+54,cy+9,3,0xf0c280,255);circle(cx-1,cy,8,0xf0c280,255);label="Corrientes, olas y fauna marina";break;
+    case 18: /* Clima peru */circle(cx-80,cy-22,18,0xf8cd7a,255);for(int i=0;i<3;i++)circle(cx+i*18-6,cy-18,15,0xa9c9e2,255);for(int i=0;i<5;i++)line(cx-28+i*15,cy+10,cx-33+i*15,cy+31,2,0x66b6df,255);line(cx+58,cy+32,cx+94,cy-13,4,0x8ea7ba,255);label="Costa, sierra y selva del Perú";break;
+    case 19: /* computadora */rrect(cx-70,cy-36,140,70,8,0x85c2e1,255);rrect(cx-64,cy-29,128,56,4,0x1c3b5c,255);line(cx-30,cy+42,cx+30,cy+42,4,0xb6d3e2,255);line(cx,cy+34,cx,cy+42,4,0xb6d3e2,255);label="Procesador, memoria y programas";break;
+    case 20: /* Internet: red de nodos */circle(cx,cy,24,0x4ba7c9,255);for(int i=0;i<6;i++){int px=cx+((i%3)-1)*95,py=cy+(i<3?-33:35);line(cx,cy,px,py,2,0x79c1dc,255);circle(px,py,10,i%2?0x8fd2b2:0xc1b4e6,255);}label="Red mundial de computadoras";break;
+    case 21: /* programacion */rrect(cx-111,cy-36,222,74,8,0x233c60,255);text_big(cx-89,cy-25,"< / >",0x91d8f1);text_ui(cx-83,cy+8,"print( hola_vortex );",0xd7eeff);label="Código, algoritmos y lógica";break;
+    case 22: /* IA: nodos capa */for(int j=0;j<3;j++){for(int i=0;i<3;i++){int px=cx-80+j*80,py=cy-25+i*26;circle(px,py,7,j==1?0xe9b1d6:0x84c9e1,255);if(j<2)for(int k=0;k<3;k++)line(px+8,py,px+72,cy-25+k*26,1,0x889bba,110);}}label="Redes neuronales y patrones";break;
+    case 23: /* seguridad */line(cx-49,cy-29,cx,cy-43,4,0x78b7d8,255);line(cx,cy-43,cx+49,cy-29,4,0x78b7d8,255);line(cx-49,cy-29,cx-34,cy+28,5,0x78b7d8,255);line(cx+49,cy-29,cx+34,cy+28,5,0x78b7d8,255);line(cx-34,cy+28,cx,cy+42,5,0x78b7d8,255);line(cx+34,cy+28,cx,cy+42,5,0x78b7d8,255);text_big(cx-13,cy-18,"V",0xfde9ad);label="Privacidad, claves y protección";break;
+    case 24: /* Quechua: saludo en los Andes */line(cx-130,cy+35,cx-70,cy-16,4,0x92a5c3,255);line(cx-70,cy-16,cx-12,cy+35,4,0x92a5c3,255);rrect(cx+4,cy-32,137,51,12,0x31647d,255);text_ui(cx+12,cy-19,"Rimaykullayki",0xffffff);label="Lenguas y culturas quechuas";break;
+    case 25: /* literatura: libro */rrect(cx-96,cy-31,91,66,6,0xf2dbac,255);rrect(cx+5,cy-31,91,66,6,0xffe9bc,255);fill(cx-2,cy-31,4,66,0xa57950,255);for(int i=0;i<4;i++){line(cx-80,cy-20+i*13,cx-19,cy-20+i*13,1,0x9d8765,210);line(cx+20,cy-20+i*13,cx+81,cy-20+i*13,1,0x9d8765,210);}label="Libros, poesía y narraciones";break;
+    case 26: /* arte: paleta de colores */circle(cx-40,cy,37,0xd6b18e,255);for(int i=0;i<5;i++)circle(cx-60+(i%3)*23,cy-14+(i/3)*26,8,i%2?0x73bce5:0xdb739e,255);line(cx+37,cy+35,cx+90,cy-36,6,0xd9d7d1,255);label="Pintura, fotografía y diseño";break;
+    case 27: /* musica: notas */line(cx-30,cy-27,cx-30,cy+15,3,0x92c6e0,255);line(cx+29,cy-39,cx+29,cy+9,3,0x92c6e0,255);line(cx-30,cy-27,cx+29,cy-39,5,0x92c6e0,255);circle(cx-39,cy+19,12,0xbca8ec,255);circle(cx+20,cy+14,12,0xbca8ec,255);label="Melodía, ritmo e instrumentos";break;
+    case 28: /* alimentacion */circle(cx,cy,37,0xf7f7ec,255);circle(cx,cy,31,0xb7dbe6,255);circle(cx-11,cy-9,13,0xe56465,255);circle(cx+17,cy+8,12,0x67ae73,255);line(cx-9,cy-25,cx-5,cy-34,3,0x65ac76,255);label="Frutas, verduras y alimentos";break;
+    case 29: /* actividad fisica: corredor */circle(cx+11,cy-28,10,0xf0c48c,255);line(cx+4,cy-17,cx-8,cy+6,5,0x72b4d9,255);line(cx-8,cy+6,cx-50,cy+28,5,0x72b4d9,255);line(cx-8,cy+6,cx+24,cy+33,5,0x72b4d9,255);line(cx+4,cy-11,cx-36,cy-17,4,0x72b4d9,255);line(cx+4,cy-11,cx+46,cy-23,4,0x72b4d9,255);label="Movimiento, deporte y bienestar";break;
+    case 30: /* prevencion salud */rrect(cx-17,cy-36,34,72,6,0x54bd9a,255);rrect(cx-45,cy-8,90,18,5,0x54bd9a,255);circle(cx-92,cy,15,0x7cb4d1,255);circle(cx+92,cy,15,0xe7a4ab,255);label="Vacunas, higiene y prevención";break;
+    default: label=article->title;break;
     }
+    text_ui(x+14,y+h-20,label,light_theme?0x274665:0xc0d5ed);
 }
 static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     /* Cabecera editorial y búsqueda, integrada en la paleta Vortex. */
