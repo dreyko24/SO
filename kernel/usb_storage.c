@@ -11,6 +11,7 @@
 static int ready;
 int usb_storage_probe(void){return 0;}
 int usb_storage_rescan(void){return 0;}
+const char *usb_storage_name(void){return "Unidad USB";}
 int usb_storage_ready(void){return ready;}
 unsigned usb_storage_capacity_mib(void){return 0;}
 unsigned usb_storage_file_count(void){return 0;}
@@ -39,6 +40,8 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
 static u16 io,port;static int low,found,ready,ever,probe_once;
 static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
 static char info[120]="Sin memoria USB FAT32/exFAT reconocida";
+static char usb_product[64]="Unidad USB";
+static int attached_hub,attached_hub_port;
 typedef struct {volatile u32 link,sts,token,buf,software[4];} TD;
 typedef struct {volatile u32 head,element,soft[2];} QH;
 static volatile u32 frame[1024] __attribute__((aligned(4096)));
@@ -190,7 +193,8 @@ static int portreset(void){
 }
 static int enumerate(void){
     u8 desc[256];memset(desc,0,sizeof desc);
-    mpzero=8;address=1;
+    mpzero=8;address=1;attached_hub=0;attached_hub_port=0;
+    k_strcpy(usb_product,"Unidad USB",sizeof usb_product);
     if(ctrl(0,0x80,6,0x0100,0,desc,8,1))return -1;
     if(desc[0]<8||desc[1]!=1)return -2;
     mpzero=desc[7];if(mpzero!=8&&mpzero!=16&&mpzero!=32&&mpzero!=64)return -3;
@@ -221,6 +225,7 @@ static int enumerate(void){
             chosen=p;break;
         }
         if(!chosen)return -14;
+        attached_hub=1;attached_hub_port=chosen;
         kprintf("[vortex-usb] hub 1.1, puerto %d activo, velocidad %s\n",
                 chosen,low?"baja":"completa");
         /* Nuevo dispositivo en el puerto del hub: direccion cero. */
@@ -232,6 +237,22 @@ static int enumerate(void){
     }
     if(ctrl(0,0,5,address,0,0,0,0))return -4;
     waitms(20);
+    /* Leer el nombre que declara el pendrive en su descriptor de producto.
+     * Si la memoria no publica cadenas, conservar "Unidad USB". */
+    { u8 dd[18],ss[128];memset(dd,0,sizeof dd);
+      if(!ctrl(address,0x80,6,0x0100,0,dd,18,1)&&dd[1]==1&&dd[15]){
+          memset(ss,0,sizeof ss);
+          if(!ctrl(address,0x80,6,(u16)(0x0300u|dd[15]),0x0409,ss,128,1)&&ss[1]==3){
+              int n=ss[0];if(n>126)n=126;
+              int j=0;for(int i=2;i+1<n&&j<(int)sizeof usb_product-1;i+=2){
+                  int c=ss[i]|((int)ss[i+1]<<8);
+                  usb_product[j++]=(c>=32&&c<127)?(char)c:'?';
+              }
+              usb_product[j]=0;
+              if(j<2)k_strcpy(usb_product,"Unidad USB",sizeof usb_product);
+          }
+      }
+    }
     if(ctrl(address,0x80,6,0x0200,0,desc,9,1))return -5;
     if(desc[1]!=2)return -6;
     int n=rd16(desc+2);if(n<18||n>256)return -7;
@@ -530,6 +551,7 @@ int usb_storage_rescan(void){
     return usb_storage_probe();
 }
 int usb_storage_ready(void){return ready;}
+const char *usb_storage_name(void){return usb_product;}
 unsigned usb_storage_capacity_mib(void){return ready?block_count>>11:0;}
 unsigned usb_storage_file_count(void){return ready?(unsigned)imported:0;}
 const char *usb_storage_format(void){return ready?(exfat_mode?"exFAT":"FAT32"):"No disponible";}
@@ -549,7 +571,12 @@ void usb_storage_poll(void){
         return;
     }
     if(!io||!port)return;
-    if(!(i16(port)&1)){
+    int connected=!!(i16(port)&1);
+    if(connected&&attached_hub&&attached_hub_port){
+        u8 st[4]={0};
+        if(ctrl(1,0xa3,0,0,(u16)attached_hub_port,st,4,1)||!(st[0]&1))connected=0;
+    }
+    if(!connected){
         ready=0;
         next_probe=now+200;
         status("USB desconectado; archivos mostrados son una instantanea");
