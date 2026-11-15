@@ -17,5 +17,14 @@ export MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1
 : "${LANG:=es_ES.UTF-8}"
 export LANG SAL_USE_VCLPLUGIN=${SAL_USE_VCLPLUGIN:-gen}
 # Evita aceleracion 3D no compatible con framebuffer virtual de Vortex.
-export LIBGL_ALWAYS_SOFTWARE=1
-exec "$@"
+export LIBGL_ALWAYS_SOFTWARE=1 MOZ_ENABLE_WAYLAND=0 MOZ_X11_EGL=0
+# Registrar la salida real para que Vortex muestre la causa si la ventana
+# permanece negra. Ejecutar y recoger salida, no ocultar procesos fallidos.
+log=/tmp/vortex-web.log
+printf 'Iniciando %s en DISPLAY=%s\n' "$1" "$DISPLAY" > "$log"
+"$@" >> "$log" 2>&1
+code=$?
+if [ "$code" -ne 0 ]; then
+  printf 'El programa termino con codigo %s\n' "$code" >> "$log"
+fi
+exit "$code"
