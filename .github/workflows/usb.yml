@@ -48,6 +48,14 @@ jobs:
           grep -Fq "[vortex-wallpaper] updated" usb-gui.log || { echo "FALLO: no se aplico la foto de USB como fondo"; exit 1; }
           test -s capturas/04-archivos-usb.png
           test -s capturas/06-fondo-desde-usb.png
+      - name: Pendrive FAT32 conectado tras un hub USB 1.1
+        run: |
+          # Simular el escenario donde el puerto raiz ve un HUB y la memoria
+          # esta conectada detras. Evita depender solo de pendrives directos.
+          python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -usb -drive if=none,id=stick,format=raw,file=pendrive.img -device usb-hub,bus=usb-bus.0,port=1 -device usb-storage,bus=usb-bus.0,port=1.1,drive=stick > hub-gui.log 2>&1
+          tail -110 hub-gui.log
+          grep -Fq "[vortex-usb] hub 1.1" hub-gui.log || { echo "FALLO: no encontro el hub intermedio"; exit 1; }
+          grep -Fq "USB FAT32 real leido" hub-gui.log || { echo "FALLO: no leyo la memoria detras del hub"; exit 1; }
       - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
         run: |
           python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
@@ -65,5 +73,6 @@ jobs:
           name: vortex-usb
           path: |
             usb-gui.log
+            hub-gui.log
             exfat-gui.log
             capturas/*.png
