@@ -2340,23 +2340,39 @@ static void draw_window(int wi,int focused){
         static const char *tabs[]={"Imagenes","Musica","Videos","USB"};
         for(int i=0;i<4;i++)button(cx+12+i*136,cy+12,130,28,tabs[i],w->media_tab==i);
         if(w->media_tab==3){
-            int n=usb_controllers();
-            text_bold(cx+20,cy+65,"Diagnostico USB",C_TXT);
-            char status[90]="Controladores PCI USB detectados: ";cat_int(status,90,n);
-            text(cx+20,cy+100,status,C_TXT);
-            if(n)text(cx+20,cy+128,usb_controller_name(usb_first_controller_type()),C_DIM);
-            text(cx+20,cy+176,usb_storage_message(),usb_storage_ready()?0x7ee787:0xffb86b);
-            if(usb_storage_ready()){
-                text(cx+20,cy+206,"FAT32/exFAT de unidad fisica en solo lectura.",C_DIM);
-                button(cx+20,cy+242,200,34,"Abrir dispositivo",1);
+            /* Pestaña de unidades, no una pantalla de registros PCI.
+             * La información tecnica queda en el registro serie del driver. */
+            int connected=usb_storage_ready(),n=usb_controllers();
+            text_bold(cx+20,cy+60,"Mis dispositivos USB",C_TXT);
+            text(cx+20,cy+88,"Conecta una memoria para ver y abrir sus archivos.",C_DIM);
+            rrect(cx+20,cy+115,cw-40,160,13,C_PANEL,255);
+            rrect(cx+36,cy+132,40,54,9,connected?0x2b9b80:0x64748b,255);
+            rrect(cx+45,cy+127,22,12,3,connected?0x2b9b80:0x64748b,255);
+            fill(cx+50,cy+139,4,9,0xffffff,195);
+            text_bold(cx+90,cy+127,connected?"Unidad USB disponible":"No se puede abrir la memoria",C_TXT);
+            if(connected){
+                char capacity[96]="Formato: ";cat(capacity,sizeof capacity,usb_storage_format());
+                cat(capacity,sizeof capacity,"     Capacidad: ");
+                cat_int(capacity,sizeof capacity,(int)usb_storage_capacity_mib());
+                cat(capacity,sizeof capacity," MiB");
+                text(cx+90,cy+156,capacity,C_DIM);
+                capacity[0]=0;cat_int(capacity,sizeof capacity,(int)usb_storage_file_count());
+                cat(capacity,sizeof capacity," elementos importados a Archivos");
+                text(cx+90,cy+178,capacity,C_DIM);
+                text(cx+36,cy+211,"Ruta: /Dispositivos/Unidad-USB",C_TXT);
+                text(cx+36,cy+239,"Acceso de solo lectura: no se modifica el pendrive.",C_DIM);
+                button(cx+20,cy+285,200,34,"Abrir archivos USB",1);
             }else{
-                text(cx+20,cy+205,"VMware: VM > Dispositivos extraibles > USB.",C_TXT);
-                text(cx+20,cy+226,"Selecciona Kingston y 'Conectar al invitado'.",C_DIM);
-                text(cx+20,cy+247,"USB VM: controlador USB 1.1 (UHCI); FAT32 o exFAT.",C_DIM);
-                text(cx+20,cy+268,"USB 2/3 (EHCI/xHCI) y NTFS no admitidos.",0xffb86b);
+                char msg[120];k_strcpy(msg,usb_storage_message(),sizeof msg);
+                while(k_strlen(msg)>3&&text_w(msg)>cw-100)msg[k_strlen(msg)-1]=0;
+                text(cx+36,cy+201,msg,light_theme?0x9f3b21:0xffc28b);
+                text(cx+36,cy+225,n?
+                    "La controladora aparece; el almacenamiento no responde.":
+                    "Vortex no encuentra una controladora USB compatible.",C_DIM);
+                button(cx+20,cy+285,222,34,"Conectar de nuevo",0);
             }
-            button(cx+20,cy+307,222,34,"Buscar USB conectado",0);
-            text(cx+20,cy+360,"Solo lectura. No se escribe ni formatea el USB.",C_DIM);
+            button(cx+20,cy+339,222,34,"Buscar USB conectado",0);
+            text(cx+20,cy+387,"VMware: conecta la memoria al invitado; FAT32/exFAT, USB 1.1.",C_DIM);
         }else{
             const char *dirs[]={"/Imagenes","/Musica","/Videos"};
             FsNode *dir=fs_resolve(fs_root(),dirs[w->media_tab]);
@@ -3243,8 +3259,19 @@ void gui_frame(void){
     } }
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
-    {static uint32_t usbnext;
-      if((int)(t-usbnext)>=0){usbnext=t+300;usb_storage_poll();}
+    {static uint32_t usbnext;static int usb_seen;
+      if((int)(t-usbnext)>=0){
+        usbnext=t+300;usb_storage_poll();
+        int ready=usb_storage_ready();
+        if(ready&&!usb_seen){
+          /* Al montar una memoria nueva, abrirla en Archivos: no hay que
+           * buscar la carpeta manualmente. Evitar reabrirla por cada frame. */
+          FsNode *d=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
+          if(d&&d->dir){Win *files=open_app(A_FILES);
+            if(files){files->dir=d;files->sel=0;files->scroll=0;dwin(files);}}
+        }
+        usb_seen=ready;
+      }
     }
     audio_tick();
     {static uint32_t next_audio;
@@ -3505,8 +3532,11 @@ static void app_click(Win *w,int lx,int ly){
             if(i==3)(void)usb_storage_probe();
             dwin(w);return;}
         if(w->media_tab==3){
-            if(in_rect(lx,ly,20,307,222,34)){(void)usb_storage_rescan();dwin(w);return;}
-            if(usb_storage_ready()&&in_rect(lx,ly,20,242,200,34)){
+            if(in_rect(lx,ly,20,339,222,34)||
+               (!usb_storage_ready()&&in_rect(lx,ly,20,285,222,34))){
+                (void)usb_storage_rescan();dwin(w);return;
+            }
+            if(usb_storage_ready()&&in_rect(lx,ly,20,285,200,34)){
                 FsNode *root=fs_resolve(fs_root(),"/Dispositivos/Unidad-USB");
                 if(root){Win *f=open_app(A_FILES);if(f){f->dir=root;f->scroll=0;f->sel=0;}}
                 dwin(w);return;
