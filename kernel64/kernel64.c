@@ -368,7 +368,8 @@ static void x_start(void){
     char geo[40]; { int n=0; int v1=gw; char t[12]; int k=0; while(v1){ t[k++]=(char)('0'+v1%10); v1/=10; } while(k) geo[n++]=t[--k]; geo[n++]='x'; v1=gh; k=0; while(v1){ t[k++]=(char)('0'+v1%10); v1/=10; } while(k) geo[n++]=t[--k]; const char *e="x24"; while(*e) geo[n++]=*e++; geo[n]=0; }
     char *a[16]; int n=0; a[n++]="Xvfb"; a[n++]=":0"; a[n++]="-screen"; a[n++]="0"; a[n++]=geo; a[n++]="-fbdir"; a[n++]="/var/lib/xvfb"; a[n++]="-ac"; a[n++]="-nolisten"; a[n++]="tcp";
     kprintf("pantalla: iniciando el servidor X (%s)...\n",geo);
-    proc_exec(xvfb,n,a,1);
+    int xpid=proc_exec(xvfb,n,a,1);
+    if(xpid<0){ kprintf("pantalla: Xvfb no pudo iniciarse. Revisa memoria y ejecutables de Debian.\n"); return; }
     if(find_program("vortex-xinput",xin,sizeof xin)){ char *b[2]={"vortex-xinput",0}; proc_exec(xin,1,b,1); }
     else kprintf("pantalla: falta vortex-xinput (teclado y raton no llegaran a los programas)\n");
     x_up=1;
