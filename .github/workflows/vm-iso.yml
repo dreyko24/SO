@@ -21,6 +21,10 @@ on:
       - 'kernel/video.c'
       - 'kernel/gfx.c'
       - 'tools/build-iso.sh'
+      - 'tools/mkdebian.sh'
+      - 'tools/rootfs-es/**'
+      - 'kernel/html.c'
+      - 'kernel/html.h'
   workflow_dispatch:
 permissions:
   contents: write
