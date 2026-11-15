@@ -70,7 +70,16 @@ def listo():
     with lock:
         b = bytes(buf)
         q = time.time() - last[0]
-        if b.endswith(PROMPT) and q > 0.7: return True
+        if q > 0.7:
+            if b.endswith(PROMPT): return True
+            # El kernel puede imprimir "[proceso N termino...]" DESPUES
+            # del prompt de un lanzamiento en segundo plano. Eso no
+            # debe provocar un timeout falso del controlador de QEMU.
+            p = b.rfind(PROMPT)
+            if p >= 0:
+                tail = b[p + len(PROMPT):].strip()
+                if tail.startswith(b'[proceso ') and b'termino con codigo' in tail and b'\\n' not in tail:
+                    return True
         if cmd_actual[0].rstrip().endswith('&'):          # programa en segundo plano: basta con que vuelva el indicador
             i = b.find(cmd_actual[0].encode())
             return i >= 0 and b.find(PROMPT, i) >= 0 and q > 0.2
