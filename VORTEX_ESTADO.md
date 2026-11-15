@@ -92,6 +92,17 @@ Se han aplicado modificaciones **directamente en `main`** a partir de las prueba
 - **Web Debian:** `tools/mkdebian.sh` ahora incluye Firefox ESR, Xvfb y herramientas X11 en nuevas ISOs Debian; el lanzador detecta fallos de arranque de X y aplica ajustes provisionales para Firefox. **No afirmar que el navegador grafico en VMware ya funciona:** solo una prueba real con ISO nueva puede confirmarlo. Sandbox de navegador y aislamiento seguros siguen pendientes.
 - **Persistencia:** los cambios de `apt` hechos durante una sesión no persisten porque `kernel64/sys_fs.inc` marca la mayoría de las rutas Debian como no persistentes. Incluir Firefox en la ISO evita reinstalar ese paquete, pero **no** equivale a conservar cualquier otra instalación. La persistencia general de Debian sigue pendiente de diseño y prueba.
 
+### Correcciones comprobadas tras las pruebas del 15 de noviembre
+
+Se mantuvo **un único Vortex OS sobre `main`**, sin crear nuevas ramas ni variantes del sistema. Las capturas de evidencia de estas correcciones proceden del artefacto del workflow `vortex-escritorio-host` y no de imágenes históricas de `docs/`.
+
+- **Tema claro:** paleta y fondo independiente del oscuro, controles con mayor contraste, HTML con colores según el tema. Captura nueva `29_modo_claro.png`.
+- **Vortex Saber (31 artículos):** un diagrama vectorial distinto y contextualizado por artículo, no por categoría; ejemplo de Independencia del Perú con la bandera y 1821. El test `tools/hostgui.c` recorre los 31 y comprueba que las imágenes no se repiten. **Son diagramas originales, no fotografías reales ni una biblioteca visual definitiva.**
+- **Actividad interactiva:** `Mision Cosmos` con nave controlada por teclado/ratón, cuatro cuerpos celestes, barra de objetivos, tiempo y logro persistente en progreso Saber. Se mantiene también el juego de memoria; falta una biblioteca de juegos moderna más amplia.
+- **USB:** interfaz `Mis dispositivos USB` con nombre leído del descriptor, formato, capacidad, elementos y botón `Abrir archivos USB`. Autoapertura del explorador al montar, rescaneo manual, driver UHCI con acceso a memorias tras hub USB 1.1. La suite `vortex-usb-mass-storage` comprobó FAT32, exFAT y FAT32 detrás de un hub en QEMU (`run 43667887328`). **No se ha comprobado Kingston real en VMware** ni se han implementado EHCI/xHCI o NTFS.
+- **Navegador:** Debian de 64 bits incluye Firefox ESR y Xvfb; Xvfb y `vortex-xinput` sí se ejecutaron bajo QEMU. No obstante, en la prueba `run 43668316179`, `xterm` finalizó con código 32 y `firefox-esr` con 255: **la navegación gráfica no funciona aún**. El wrapper ahora registra `/tmp/vortex-web.log` y deja el error visible para continuar la depuración; no confundir instalación con funcionamiento.
+- **ISO única:** la publicación `iso-latest` se actualizó en el commit `2bd6db4`, después de arrancar kernels gráficos de 64 y 32 bits en QEMU. Cualquier commit posterior que cambie el sistema requiere nueva ejecución del workflow antes de ofrecer su ISO como validada. Las instalaciones adicionales `apt` de una sesión siguen sin persistencia general.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
 1. **USB real:** host EHCI/xHCI, HID, DMA/IRQ y hotplug, recuperación al desconectar, escritura/montaje robustos, pruebas sobre varios controladores y pendrives; no asumir que UHCI QEMU implica USB 3 físico.
