@@ -264,6 +264,17 @@ static void fx_glow(Fx *f,int nx,int ny,int gx,int gy,int R,uint32_t col,int str
 }
 static uint32_t wall_px(int v,int x,int y,int W,int H){
     int nx=x*1024/W, ny=y*1024/H; Fx f;
+    /* El modo claro tiene su propio fondo y no una copia lavada del oscuro. */
+    if(light_theme){
+        f=fx_of(v==0?0xf6f9ff:v==1?0xe9f5ff:0xfdf8f2);
+        fx_mix(&f,v==0?0xdbe8f9:v==1?0xcce6f7:0xf5e5d5,
+                  k_min(3800,(nx+ny)*2));
+        fx_glow(&f,nx,ny,140,100,600,0xffffff,215);
+        fx_glow(&f,nx,ny,950,850,700,0xd4dffa,142);
+        int o[3];
+        for(int i=0;i<3;i++){o[i]=f.c[i]>>8;if(o[i]>255)o[i]=255;}
+        return ((uint32_t)o[0]<<16)|((uint32_t)o[1]<<8)|(uint32_t)o[2];
+    }
     if(v==0){ /* Paleta cálida naranja + ciruela, degradado original para Vortex. */
         f=fx_of(0x2c123f);
         fx_mix(&f,0x531f61,k_min(2500,(nx+ny)*2));
@@ -280,7 +291,7 @@ static uint32_t wall_px(int v,int x,int y,int W,int H){
     int d=BAYER[(y&3)*4+(x&3)]*16+8, o[3];
     for(int i=0;i<3;i++){ o[i]=(f.c[i]+d)>>8; if(o[i]>255) o[i]=255; if(o[i]<0) o[i]=0; }
     uint32_t pixel=((uint32_t)o[0]<<16)|((uint32_t)o[1]<<8)|(uint32_t)o[2];
-    return light_theme?mix(pixel,0xf8fbff,216):pixel;
+    return pixel;
 }
 #define THW 96
 #define THH 60
@@ -2124,15 +2135,15 @@ static void draw_window(int wi,int focused){
     rrect(x+1,y+1,w->w-2,w->h-2,16,C_BG,255);
     clip_set(x+1,y+1,w->w-2,TB-1);
     rrect(x+1,y+1,w->w-2,TB+10,16,
-        light_theme?(focused?0xf1eff7:0xe7e5ed):(focused?0x34303e:0x292431),255);
+        light_theme?(focused?0xe6eefb:0xe1e8f4):(focused?0x34303e:0x292431),255);
     /* Acento sutil en lugar del anticuado borde morado completo. */
     fill(x+16,y+3,42,2,focused?ACCENT:0x827589,focused?195:60);
     clip_reset();
     fill(x+1,y+TB-1,w->w-2,1,0xffffff,22);
     /* Tres acciones independientes: minimizar, maximizar/restaurar y cerrar. */
-    rrect(x+w->w-92,y+5,23,20,12,light_theme?0xdad8e2:0x494451,255);
+    rrect(x+w->w-92,y+5,23,20,12,light_theme?0xd3deed:0x494451,255);
     line(x+w->w-86,y+18,x+w->w-76,y+18,2,0xe7f0ff,255);
-    rrect(x+w->w-62,y+5,23,20,12,light_theme?0xdad8e2:0x494451,255);
+    rrect(x+w->w-62,y+5,23,20,12,light_theme?0xd3deed:0x494451,255);
     line(x+w->w-56,y+10,x+w->w-46,y+10,1,0xe7f0ff,255);
     line(x+w->w-56,y+10,x+w->w-56,y+19,1,0xe7f0ff,255);
     line(x+w->w-46,y+10,x+w->w-46,y+19,1,0xe7f0ff,255);
@@ -2587,12 +2598,12 @@ static int minimized_at(int px,int py){
 }
 /* ---------------- barra superior y dock ---------------- */
 static void draw_topbar(void){
-    uint32_t bar=light_theme?0xf8f7fb:0x1b1925;
+    uint32_t bar=light_theme?0xf8fbff:0x1b1925;
     fill(0,0,gw,BARH,bar,255);
     fill(0,BARH-1,gw,1,light_theme?0xa7a2b2:0x716078,70);
     /* GNOME Activities: entrada principal visible y clicable, sin marca
      * externa: mantenemos el identificador Vortex del sistema. */
-    rrect(9,2,117,BARH-5,10,appmenu_open?ACCENT:(light_theme?0xe5e2ef:0x302a3a),255);
+    rrect(9,2,117,BARH-5,10,appmenu_open?ACCENT:(light_theme?0xe0e9f6:0x302a3a),255);
     circle(24,BARH/2,5,appmenu_open?0xffffff:ACCENT,255);
     text_ui_bold(37,6,"Actividades",appmenu_open?0xffffff:C_TXT);
     text_ui_bold(147,6,"Vortex OS",C_DIM);
@@ -2727,7 +2738,7 @@ static void draw_dock(void){
     if(!dock_available())return;
     int bx,by,bw,bh;dock_geom(&bx,&by,&bw,&bh);
     fill(bx+10,by+bh-3,bw-20,7,0x09040d,48);
-    rrect(bx,by,bw,bh,23,light_theme?0xe2dfeb:0x1a1423,241);
+    rrect(bx,by,bw,bh,23,light_theme?0xe5edf8:0x1a1423,241);
     rrect(bx+1,by+1,bw-2,bh-2,22,C_DASH,250);
     fill(bx+14,by+10,bw-28,1,0xffffff,25);
     for(int i=0;i<NDOCK;i++){
