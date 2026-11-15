@@ -2424,7 +2424,10 @@ static void draw_window(int wi,int focused){
             rrect(cx+36,cy+132,40,54,9,connected?0x2b9b80:0x64748b,255);
             rrect(cx+45,cy+127,22,12,3,connected?0x2b9b80:0x64748b,255);
             fill(cx+50,cy+139,4,9,0xffffff,195);
-            text_bold(cx+90,cy+127,connected?"Unidad USB disponible":"No se puede abrir la memoria",C_TXT);
+            { char name[64];k_strcpy(name,connected?usb_storage_name():"No se puede abrir la memoria",sizeof name);
+              while(k_strlen(name)>2&&text_w(name)>cw-125)name[k_strlen(name)-1]=0;
+              text_bold(cx+90,cy+127,name,C_TXT);
+            }
             if(connected){
                 char capacity[96]="Formato: ";cat(capacity,sizeof capacity,usb_storage_format());
                 cat(capacity,sizeof capacity,"     Capacidad: ");
