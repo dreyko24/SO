@@ -44,7 +44,7 @@ typedef struct {
     int enc_category,enc_topic,enc_scroll,enc_search_len;
     int enc_quiz,enc_qindex,enc_qanswer,enc_qscore;
     int enc_game,enc_game_first,enc_game_pending,enc_game_matches,enc_game_turns;
-    unsigned enc_game_revealed;
+    unsigned enc_game_revealed;uint32_t enc_game_started;
     VortexSaberProgress enc_progress;
     int cal_year,cal_month,cal_day,cal_edit,cal_len;
     char cal_text[100];
@@ -1699,7 +1699,7 @@ static void enc_memory_start(Win *w){
     w->enc_game=1;w->enc_quiz=0;
     w->enc_game_revealed=0;w->enc_game_first=-1;
     w->enc_game_pending=-1;w->enc_game_matches=0;w->enc_game_turns=0;
-    w->enc_scroll=0;dwin(w);
+    w->enc_game_started=kticks();w->enc_scroll=0;dwin(w);
 }
 static void enc_memory_flip(Win *w,int id){
     if(!w->enc_game||id<0||id>=8||w->enc_game_matches==4||
@@ -1874,13 +1874,17 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
     int rx=cx+218,rw=cw-230,ry=cy+94,rh=ch-104;
     rrect(rx,ry,rw,rh,16,C_TILE,255);
     if(w->enc_game){
-        text_ui_bold(rx+20,ry+16,"Memoria de conceptos",C_TXT);
-        char score[60]="Parejas: ";
+        text_ui_bold(rx+20,ry+16,"Memoria visual",C_TXT);
+        char score[96]="Parejas: ";
         cat_int(score,sizeof score,w->enc_game_matches);
-        cat(score,sizeof score," / 4  Intentos: ");
+        cat(score,sizeof score,"/4   Intentos: ");
         cat_int(score,sizeof score,w->enc_game_turns);
+        cat(score,sizeof score,"   Tiempo: ");
+        cat_int(score,sizeof score,(int)((kticks()-w->enc_game_started)/100));
+        cat(score,sizeof score," s");
         text_ui(rx+20,ry+43,score,C_DIM);
-        fill(rx+20,ry+71,rw-40,2,ACCENT,165);
+        rrect(rx+20,ry+70,rw-40,5,2,C_BORDER,255);
+        if(w->enc_game_matches)rrect(rx+20,ry+70,(rw-40)*w->enc_game_matches/4,5,2,0x29b67d,255);
         int cardw=(rw-55)/4;
         for(int id=0;id<8;id++){
             int ix=id%4,iy=id/4;
@@ -1891,10 +1895,38 @@ static void enc_render(const Win *w,int cx,int cy,int cw,int ch){
                         up?ACCENT:C_PANEL;
             rrect(px,py,cardw,96,13,bc,255);
             if(up){
-                text_ui(px+8,py+30,ENC_MEMORY_TEXT[id],0xffffff);
+                /* Icono de cada concepto, renderizado por el kernel sin
+                 * imagenes externas; el juego ya no es solo texto. */
+                int kind=enc_memory_pair(id),ixc=px+cardw/2,iyc=py+31;
+                if(kind==0){
+                    circle(ixc,iyc,17,0xffd577,255);
+                    circle(ixc,iyc,10,0xffecaf,255);
+                    for(int q=-2;q<=2;q++)line(ixc+q*8,iyc-24,ixc+q*8,iyc-20,2,0xffe8a1,255);
+                }else if(kind==1){
+                    line(ixc-24,iyc+14,ixc,iyc-20,4,0xbad7ff,255);
+                    line(ixc,iyc-20,ixc+24,iyc+14,4,0xbad7ff,255);
+                    line(ixc-11,iyc-4,ixc,iyc-20,3,0xffffff,255);
+                    line(ixc,iyc-20,ixc+11,iyc-4,3,0xffffff,255);
+                }else if(kind==2){
+                    for(int q=0;q<5;q++){
+                        int dx=q*9-18,ofs=(q&1)?8:-8;
+                        circle(ixc+dx,iyc+ofs,4,0xe8bee9,255);
+                        circle(ixc+dx,iyc-ofs,4,0xb5efdf,255);
+                        line(ixc+dx,iyc+ofs,ixc+dx,iyc-ofs,1,0xffffff,205);
+                    }
+                }else{
+                    rrect(ixc-22,iyc-16,44,31,6,0x9ad4ed,255);
+                    rrect(ixc-18,iyc-12,36,23,3,0x1f4a64,255);
+                    fill(ixc-6,iyc+15,12,5,0x9ad4ed,255);
+                }
+                clip_set(px+5,py+57,cardw-10,25);
+                text_ui(px+6,py+65,ENC_MEMORY_TEXT[id],0xffffff);
+                clip_set(cx,cy,cw,ch);
             }else{
+                rrect(px+8,py+9,cardw-16,78,10,light_theme?0xb9c9e2:0x302b45,185);
                 char number[5]={(char)('1'+id),0,0,0,0};
                 text_big(px+cardw/2-8,py+29,number,C_TXT);
+                fill(px+cardw/2-10,py+66,20,3,ACCENT,200);
             }
         }
         if(w->enc_game_matches==4)
