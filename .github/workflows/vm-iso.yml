@@ -129,13 +129,19 @@ jobs:
           60|pantalla
           @esperar 6
           20|procesos
-          40|abrir xterm
+          # xdpyinfo es un cliente X11 real que NO necesita pseudoterminal
+          30|abrir xdpyinfo
+          @esperar 3
+          20|ejecutar /usr/bin/tail -n 12 /tmp/vortex-web.log
+          # xterm requiere PTY; documentar el error sin confundirlo con Xvfb
+          30|abrir xterm
+          @esperar 3
+          20|ejecutar /bin/cat /tmp/vortex-web.log
+          20|rastro 1
+          30|abrir firefox-esr https://example.com/
           @esperar 4
           20|ejecutar /bin/cat /tmp/vortex-web.log
-          20|procesos
-          40|abrir firefox-esr https://example.com/
-          @esperar 6
-          20|ejecutar /bin/cat /tmp/vortex-web.log
+          20|rastro 0
           20|procesos
           CMDS
           set +e
@@ -156,7 +162,8 @@ jobs:
           grep -q 'vortex-xinput: listo' vortex-web-smoke.log || {
              echo 'FALLO: Xvfb no acepta clientes XTEST'; exit 1;
           }
-          # El resultado de xterm y Firefox queda en vortex-web-smoke.log.
+          # xdpyinfo, xterm y Firefox muestran errores en el log, y
+          # rastro 1 imprime las llamadas fallidas al puerto serie.
           # NO confundir Xvfb operativo con navegador web funcional.
       - name: Guardar diagnostico X11 y Firefox
         if: always()
