@@ -7,6 +7,14 @@ on:
     paths:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
+      # Los cambios en el nucleo propio de 64 bits también deben generar
+      # la ISO única; antes Makefile/proc64.c quedaban fuera del filtro.
+      - 'kernel64/Makefile'
+      - 'kernel64/kernel64.c'
+      - 'kernel64/proc64.c'
+      - 'kernel64/sys_*.inc'
+      - 'kernel64/*.S'
+      - 'kernel64/sock.c'
       - 'kernel/encyclopedia.h'
       - 'kernel/saber_progress.h'
       - 'kernel/ps2_mouse.h'
@@ -71,6 +79,9 @@ jobs:
           grep -aFq 'Iniciando escritorio' vortex-64.log || {
             tail -80 vortex-64.log; echo 'FALLO: no arranco modo grafico de 64 bits'; exit 1;
           }
+          if grep -aFq '[PANIC]' vortex-64.log; then
+            tail -100 vortex-64.log; echo 'FALLO: el nucleo 64 bits tuvo una excepcion'; exit 1;
+          fi
           echo 'Vortex 64 bits grafico: OK'
       - name: Verificar segundo modo grafico de la misma imagen (32 bits)
         shell: bash
