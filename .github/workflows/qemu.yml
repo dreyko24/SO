@@ -77,6 +77,12 @@ jobs:
           echo "=== proc64 ==="; cat proc64.log
           grep -q "termino con codigo 42" proc64.log || { echo "FALLO: programa sin libc"; exit 1; }
           echo "PRUEBA hola (sin libc): OK"
+          # El codigo de usuario comprueba ARCH_GET_GS, ARCH_SET_GS,
+          # acceso real a %gs:0 y rechazo seguro de base no canonica.
+          grep -q 'arch_prctl GS ok' proc64.log || {
+            echo "FALLO: arch_prctl GS y segmentacion TLS"; exit 1;
+          }
+          echo "PRUEBA ABI GS desde ring 3: OK"
           n=$(grep -c "malloc 1 MB ok" proc64.log || true)
           echo "glibc malloc OK: $n (esperado 3)"
           test "$n" -eq 3 || { echo "FALLO: memoria en programas glibc"; exit 1; }
