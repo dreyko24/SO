@@ -117,7 +117,7 @@ datos privados en esta versión experimental.
 
 ## Limitaciones actuales (sin rodeos)
 - El navegador nativo muestra un subconjunto de HTML sobre HTTP.
-- Firefox ESR en Debian 12 ha renderizado páginas HTTP y HTTPS locales en QEMU. El acceso HTTPS externo y el aislamiento del navegador siguen pendientes de validación.
+- Firefox ESR en Debian 12 mostró resultados públicos de Google y YouTube por HTTPS en el modo de 64 bits de Vortex, con QEMU. La carga de YouTube tardó varios minutos en la prueba. La reproducción de video y el aislamiento del navegador siguen pendientes de validación. [Pruebas y capturas](VORTEX_ESTADO.md#búsquedas-públicas-desde-firefox--20-de-noviembre-de-2026).
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
 - El teclado y ratón nativos usan principalmente PS/2. USB Mass Storage **solo soporta UHCI con FAT32 o exFAT de lectura e instantánea**, no XHCI/EHCI ni NTFS; aun falta validar pendrives fisicos. Se admiten teclados US/Latam/ES.
