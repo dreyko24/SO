@@ -140,6 +140,12 @@ jobs:
           # entrega GRUB; para -kernel hay que extraerlos antes.
           gzip -dc build/iso/boot/debian.cpio.gz > /tmp/vortex-ci-debian.cpio
           test -s /tmp/vortex-ci-debian.cpio
+          # Receptor de evidencias XWD: captura real del servidor X invitado.
+          mkdir -p subidas
+          python3 tools/ci_upload.py 18091 > vortex-web-upload.log 2>&1 &
+          upload_pid=$!
+          trap 'kill "$upload_pid" 2>/dev/null || true' EXIT
+          sleep 1
           cat >/tmp/vortex-web-commands.txt <<'CMDS'
           60|pantalla
           @esperar 6
@@ -164,6 +170,11 @@ jobs:
           20|procesos
           @esperar 8
           20|procesos
+          # Evidencia de GUI real: ventanas registradas en X11 y framebuffer
+          # XWD nativo, obtenido del Xvfb que se ejecuta en Vortex.
+          40|ejecutar /usr/bin/xwininfo -root -tree
+          50|ejecutar /bin/sh -c "gzip -1 -c /var/lib/xvfb/Xvfb_screen0 > /tmp/vortex-firefox.xwd.gz"
+          75|ejecutar /usr/bin/curl -fsS -m 65 -T /tmp/vortex-firefox.xwd.gz http://10.0.2.2:18091/vortex-firefox.xwd.gz
           CMDS
           set +e
           VORTEX_PROMPT='vortex> ' KELF=kernel64/vortex-kernel64-text.elf \
@@ -191,6 +202,20 @@ jobs:
           if grep -Eq "Couldn't load XPCOM|wasm_rt_syscall_set_segue_base error" vortex-web-smoke.log; then
              echo 'FALLO: Firefox volvio a fallar en XPCOM o ARCH_SET_GS'; exit 1;
           fi
+          # Convertir la memoria de video real en captura, si hubo transferencia.
+          # Si falla, el artefacto conserva los registros sin declarar GUI OK.
+          if test -s subidas/vortex-firefox.xwd.gz; then
+            if gzip -dc subidas/vortex-firefox.xwd.gz > /tmp/vortex-firefox.xwd; then
+              python3 tools/xwd2png.py /tmp/vortex-firefox.xwd vortex-firefox.png || echo 'AVISO: conversion XWD fallida'
+            fi
+          else
+            echo 'AVISO: sin captura XWD; no se ha validado el render de Firefox'
+          fi
+          if grep -Eq '0x[[:xdigit:]]+ "[^"]*(Mozilla Firefox|Firefox)' vortex-web-smoke.log; then
+            echo 'Firefox: ventana X11 con titulo Firefox observada (HTTPS aun pendiente)'
+          else
+            echo 'AVISO: no se observo ventana X11 de Firefox; solo procesos y Xvfb'
+          fi
           # Presencia real del padre y subprocesos (sin confundirlo con UI validada).
           grep -q '/usr/bin/firefox-esr' vortex-web-smoke.log || {
              echo 'FALLO: no se observo el ejecutable real de Firefox'; exit 1;
@@ -208,7 +233,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vortex-web-smoke
-          path: vortex-web-smoke.log
+          path: |
+            vortex-web-smoke.log
+            vortex-web-upload.log
+            vortex-firefox.png
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
