@@ -125,6 +125,13 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - **Prueba GS y binario obsoleto:** la verificación GS inicialmente no se ejecutó en `44734584640` porque el `user/hola.elf` **versionado** prevalecía sobre el fuente cambiado debido a fechas de checkout. `kernel64/Makefile` ahora fuerza la compilación del ELF antes de incorporarlo al kernel; la prueba vuelve a validarse mediante `arranque-qemu`. No confundir el fallo del test obsoleto con una refutación de la implementación GS.
 - **Cadena de CI:** los trabajos que construyen un rootfs de usuario o una ISO se fijan a `ubuntu-24.04` y compilan con `-march=x86-64`. Los trabajos con Ubuntu 26.04 habían fallado al rechazar correctamente los ELF `x86-64-v3`, no por una regresión USB/audio/GUI demostrada. La nueva revisión de CI debe verificar las suites afectadas antes de marcar todo como aprobado.
 
+### Evidencia visual de Firefox — 20 de noviembre de 2026
+
+- La ejecución `vortex-iso-unica` **44739481838**, commit `6d80b9d`, terminó correctamente y publicó ISO tras comprobar el arranque gráfico de ambos núcleos, Xvfb, XTEST y `xdpyinfo`. Se recuperó la captura XWD real de la pantalla Xvfb (`vortex-web-smoke`, artefacto `14630496549`).
+- **Análisis de píxeles del PNG real:** 1280×800, exactamente **1.024.000 píxeles negros, cero píxeles de otro color**. `xwininfo -root -tree` solo identificó un cliente `Firefox` de **10×10 píxeles**, y no apareció `Web Content` en las tres muestras. El título de ventana NO equivale a una interfaz usable. **Firefox sigue sin renderizar** en esa prueba, sin HTTPS ni navegación validada.
+- La prueba XWD ahora analiza contenido real y avisa cuando el framebuffer está negro o tiene menos del 1% de píxeles visibles; no debe confundirse el éxito de construir la ISO con éxito de Firefox. No usar el navegador para credenciales.
+- Cambios incrementales en `main`: `a9f95e9` filtra del rastreo ordinario el `EAGAIN` esperado en IPC; `4f0138f` toma varias muestras de Firefox; `f60a9f8` y `d8960a7` corrigen la respuesta POSIX de `F_GETFL` y `F_SETFL` con pruebas de archivos/tuberías. Estos avances conservan el kernel Vortex.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
 1. **USB real:** host EHCI/xHCI, HID, DMA/IRQ y hotplug, recuperación al desconectar, escritura/montaje robustos, pruebas sobre varios controladores y pendrives; no asumir que UHCI QEMU implica USB 3 físico.

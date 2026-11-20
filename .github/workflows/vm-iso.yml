@@ -206,13 +206,13 @@ jobs:
           # Si falla, el artefacto conserva los registros sin declarar GUI OK.
           if test -s subidas/vortex-firefox.xwd.gz; then
             if gzip -dc subidas/vortex-firefox.xwd.gz > /tmp/vortex-firefox.xwd; then
-              python3 tools/xwd2png.py /tmp/vortex-firefox.xwd vortex-firefox.png || echo 'AVISO: conversion XWD fallida'
+              python3 tools/xwd2png.py /tmp/vortex-firefox.xwd vortex-firefox.png || echo 'AVISO: Firefox sin render visible o conversion XWD fallida; la ISO NO valida navegacion'
             fi
           else
             echo 'AVISO: sin captura XWD; no se ha validado el render de Firefox'
           fi
           if grep -Eq '0x[[:xdigit:]]+ "[^"]*(Mozilla Firefox|Firefox)' vortex-web-smoke.log; then
-            echo 'Firefox: ventana X11 con titulo Firefox observada (HTTPS aun pendiente)'
+            echo 'Firefox: entrada X11 con titulo Firefox observada; comprobar dimensiones y pixeles antes de afirmar GUI'
           else
             echo 'AVISO: no se observo ventana X11 de Firefox; solo procesos y Xvfb'
           fi
