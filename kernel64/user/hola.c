@@ -15,6 +15,20 @@ void _start(void){
     if(m>0){ int *q=(int*)m; q[0]=1234; q[4000]=5678; say("mmap ok, valores="); num(q[0]+q[4000]); say("\n"); } else { say("mmap FALLO "); num(m); say("\n"); }
     struct iov v[2]={{"writev ",7},{"ok\n",3}}; sc(20,1,(long)v,2);
     char un[390]; for(int i=0;i<390;i++) un[i]=0; sc(63,(long)un,0,0); say("uname: "); say(un); say(" "); say(un+130); say("\n");
+    /* ARCH_SET_GS=0x1001 y ARCH_GET_GS=0x1004: Firefox usa GS
+     * para su runtime Wasm. Verificar MSR real, no solo el retorno 0. */
+    static u64 gs_value=0x564f525445584753ul;
+    u64 original_gs=0, observed_gs=0, gs_read=0;
+    long gs_ok=sc(158,0x1004,(long)&original_gs,0)==0;
+    if(gs_ok) gs_ok=sc(158,0x1001,(long)&gs_value,0)==0;
+    if(gs_ok) gs_ok=sc(158,0x1004,(long)&observed_gs,0)==0;
+    if(gs_ok){
+        __asm__ volatile("movq %%gs:0,%0":"=r"(gs_read));
+        gs_ok=observed_gs==(u64)&gs_value && gs_read==gs_value;
+    }
+    if(gs_ok) gs_ok=sc(158,0x1001,-1,0)==-22;  /* nunca WRMSR no canonico */
+    sc(158,0x1001,(long)original_gs,0);
+    say(gs_ok?"arch_prctl GS ok\\n":"arch_prctl GS FALLO\\n");
     sc(60,42,0,0);
     for(;;);
 }
