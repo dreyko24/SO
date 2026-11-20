@@ -1,0 +1,11 @@
+# Prueba local con Firefox ESR. Servir tools/ci/firefox en el puerto indicado.
+# funciones.webm se generó con FFmpeg. Fuentes color de 160x90 a 10 fps,
+# un segundo de 0xff0000 y otro de 0x00ff00, concatenadas con libvpx sin audio.
+20|red
+20|run firefox-esr --version
+60|pantalla
+20|run mkdir -p /tmp/web-funciones
+30|abrir firefox-esr --no-remote --profile /tmp/web-funciones http://10.0.2.2:18192/funciones.html
+@esperar 145
+35|run xwininfo -root -tree
+35|run tail -n 30 /tmp/vortex-web.log

@@ -14,6 +14,8 @@ on:
       - 'tools/mkrootfs.py'
       - 'tools/ci_drive.py'
       - 'tools/ci/firefox/**'
+      - 'tools/ci/firefox-funciones.sh'
+      - 'tools/ci/firefox-funciones.txt'
       - 'tools/xwd2png.py'
       - 'tests/test_xwd2png.py'
       - 'kernel64/kernel64.c'
@@ -238,6 +240,10 @@ jobs:
           # xdpyinfo, xterm y Firefox muestran errores en el log, y
           # rastro 1 imprime las llamadas fallidas al puerto serie.
           # NO confundir Xvfb operativo con navegador web funcional.
+      - name: Verificar navegación y video WebM en Firefox
+        run: |
+          bash tools/ci/firefox-funciones.sh kernel64/vortex-kernel64-text.elf \
+            /tmp/vortex-ci-debian.cpio build/iso/boot/vortex-extra.cpio vortex-web-funciones
       - name: Guardar diagnostico X11 y Firefox
         if: always()
         uses: actions/upload-artifact@v4
@@ -248,6 +254,7 @@ jobs:
             vortex-web-upload.log
             vortex-web-http.log
             vortex-firefox.png
+            vortex-web-funciones/*.log
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)

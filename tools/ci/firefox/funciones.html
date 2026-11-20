@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Vortex Firefox funciones PENDIENTE</title>
+<link rel="icon" href="data:,">
+<h1>Prueba de funciones de Firefox en Vortex OS</h1>
+<p id="estado">Esperando JavaScript…</p>
+<video id="video" src="funciones.webm" width="160" height="90" muted playsinline preload="auto"></video>
+<script>
+  "use strict";
+
+  const token = "vortex-firefox-prueba";
+  const url = new URL(location.href);
+  const estado = document.querySelector("#estado");
+
+  function comprobar(condicion, mensaje) {
+    if (!condicion) throw new Error(mensaje);
+  }
+
+  function esperarVideo(video, evento) {
+    return new Promise((resolver, rechazar) => {
+      const tiempo = setTimeout(() => terminar(new Error(`${evento}: tiempo agotado`)), 20000);
+      const listo = () => terminar();
+      const error = () => terminar(new Error(`video: código ${video.error?.code}`));
+      function terminar(fallo) {
+        clearTimeout(tiempo);
+        video.removeEventListener(evento, listo);
+        video.removeEventListener("error", error);
+        if (fallo) rechazar(fallo);
+        else resolver();
+      }
+      video.addEventListener(evento, listo);
+      video.addEventListener("error", error);
+      if (video.error) error();
+    });
+  }
+
+  async function probarVideo() {
+    const video = document.querySelector("#video");
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) await esperarVideo(video, "loadeddata");
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    comprobar(canvas.width === 160 && canvas.height === 90, "dimensiones de video incorrectas");
+    const contexto = canvas.getContext("2d");
+
+    async function cuadroEn(segundos) {
+      const buscado = esperarVideo(video, "seeked");
+      video.currentTime = segundos;
+      await buscado;
+      contexto.drawImage(video, 0, 0);
+      return contexto.getImageData(80, 45, 1, 1).data;
+    }
+
+    const [r1, g1, b1] = await cuadroEn(0.3);
+    comprobar(r1 > 180 && g1 < 80 && b1 < 80, `cuadro rojo: ${r1},${g1},${b1}`);
+    const [r2, g2, b2] = await cuadroEn(1.3);
+    comprobar(r2 < 80 && g2 > 180 && b2 < 80, `cuadro verde: ${r2},${g2},${b2}`);
+
+    const fin = esperarVideo(video, "ended");
+    await Promise.all([fin, video.play()]);
+    comprobar(video.ended && video.currentTime >= 1.9, "el WebM no llegó al final");
+  }
+
+  const resultados = new URLSearchParams();
+  async function probar(nombre, prueba) {
+    try {
+      await prueba();
+      resultados.set(nombre, "OK");
+    } catch (error) {
+      resultados.set(nombre, error.message);
+    }
+    estado.textContent = Array.from(resultados, ([clave, valor]) => `${clave}: ${valor}`).join(" | ");
+  }
+
+  async function iniciar() {
+    if (!url.searchParams.has("segunda")) {
+      sessionStorage.setItem(token, "sesion");
+      localStorage.setItem(token, "local");
+      url.searchParams.set("segunda", "1");
+      location.replace(url);
+      return;
+    }
+    await probar("sessionStorage", () => comprobar(sessionStorage.getItem(token) === "sesion", "sin valor tras navegar"));
+    await probar("localStorage", () => comprobar(localStorage.getItem(token) === "local", "sin valor tras navegar"));
+    await probar("fetch", async () => {
+      const respuesta = await fetch("funciones-dato.txt", {cache: "no-store"});
+      comprobar(respuesta.ok && (await respuesta.text()).trim() === token, "respuesta de red incorrecta");
+    });
+    await probar("webm", probarVideo);
+    const resultado = Array.from(resultados.values()).every(valor => valor === "OK") ? "OK" : "FALLO";
+    document.title = `Vortex Firefox funciones ${resultado}`;
+    resultados.set("resultado", resultado);
+    await fetch(`funciones-dato.txt?${resultados}`, {cache: "no-store"});
+  }
+
+  iniciar().catch(error => {
+    estado.textContent = error.message;
+    document.title = "Vortex Firefox funciones FALLO";
+  });
+</script>
