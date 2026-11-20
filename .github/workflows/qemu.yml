@@ -42,6 +42,35 @@ jobs:
       - name: Programas Linux en ring 3 (64 bits)
         run: |
           python3 tools/mkrootfs.py rootfs.cpio
+          # Identificar el opcode real antes de modificar el kernel: las
+          # versiones actuales de glibc del runner pueden exigir otra ISA.
+          python3 - <<'PY'
+          from pathlib import Path
+          b=Path("rootfs.cpio").read_bytes()
+          wanted={"bin/hola-pie","bin/hola-static","bin/multi-pie",
+                  "bin/multi-static","bin/vortex-xinput","lib64/ld-linux-x86-64.so.2"}
+          at=0; root=Path("/tmp/vortex-elf")
+          while at+110<=len(b) and b[at:at+6]==b"070701":
+              h=b[at:at+110]; size=int(h[54:62],16); nl=int(h[94:102],16)
+              at+=110; name=b[at:at+nl].split(b"\\0",1)[0].decode()
+              at=(at+nl+3)&~3
+              if name in wanted:
+                  p=root/name; p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(b[at:at+size])
+              at=(at+size+3)&~3
+              if name=="TRAILER!!!": break
+          PY
+          echo '=== glibc host y requisitos ISA de ELF ==='
+          ldd --version | head -1
+          for binary in /tmp/vortex-elf/bin/* /tmp/vortex-elf/lib64/*; do
+            echo "ELF: $binary"
+            readelf -n "$binary" | grep -A4 -E 'ISA needed|GNU_PROPERTY_X86' | head -9 || true
+          done
+          echo '=== opcodes de fallo de glibc en QEMU ==='
+          objdump -d -M intel --start-address=0x4031e0 --stop-address=0x403250 /tmp/vortex-elf/bin/hola-static
+          objdump -d -M intel --start-address=0x92e0 --stop-address=0x93a0 /tmp/vortex-elf/bin/hola-pie
+          objdump -d -M intel --start-address=0x24c80 --stop-address=0x24d10 /tmp/vortex-elf/lib64/ld-linux-x86-64.so.2
+          objdump -d -M intel --start-address=0x4038e0 --stop-address=0x403960 /tmp/vortex-elf/bin/vortex-xinput
           ( sleep 4; echo "programas"; sleep 1; echo "ejecutar /bin/hola"; sleep 3; echo "ejecutar /bin/hola-pie a b"; sleep 4; echo "ejecutar /bin/hola-static x"; sleep 4; echo "ejecutar /bin/hola-dyn y z"; sleep 6; echo "ejecutar /bin/multi-static"; sleep 10; echo "ejecutar /bin/multi-pie"; sleep 10; echo "ejecutar /bin/multi-dyn"; sleep 14; echo "procesos"; sleep 1; echo "uptime"; sleep 2 ) | timeout 100 qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf -initrd rootfs.cpio -display none -serial stdio -m 512M > proc64.log 2>&1 || true
           echo "=== proc64 ==="; cat proc64.log
           grep -q "termino con codigo 42" proc64.log || { echo "FALLO: programa sin libc"; exit 1; }
