@@ -158,6 +158,12 @@ jobs:
           20|ejecutar /bin/cat /tmp/vortex-web.log
           20|rastro 0
           20|procesos
+          # Firefox inicia muchos hilos: registrar ventanas temporales adicionales
+          # para distinguir un Web Content tardio de un fallo de arranque.
+          @esperar 8
+          20|procesos
+          @esperar 8
+          20|procesos
           CMDS
           set +e
           VORTEX_PROMPT='vortex> ' KELF=kernel64/vortex-kernel64-text.elf \
@@ -185,10 +191,14 @@ jobs:
           if grep -Eq "Couldn't load XPCOM|wasm_rt_syscall_set_segue_base error" vortex-web-smoke.log; then
              echo 'FALLO: Firefox volvio a fallar en XPCOM o ARCH_SET_GS'; exit 1;
           fi
+          # Presencia real del padre y subprocesos (sin confundirlo con UI validada).
+          grep -q '/usr/bin/firefox-esr' vortex-web-smoke.log || {
+             echo 'FALLO: no se observo el ejecutable real de Firefox'; exit 1;
+          }
           if grep -q 'Web Content' vortex-web-smoke.log; then
-             echo 'Firefox: proceso real Web Content observado (navegacion aun sin validar)'
+             echo 'Firefox: proceso Web Content observado, render/HTTPS todavia sin validar'
           else
-             echo 'AVISO: no se observo un proceso Web Content; Firefox sigue pendiente'
+             echo 'AVISO: Firefox padre e IPC presentes pero sin proceso Web Content tras tres muestras'
           fi
           # xdpyinfo, xterm y Firefox muestran errores en el log, y
           # rastro 1 imprime las llamadas fallidas al puerto serie.
