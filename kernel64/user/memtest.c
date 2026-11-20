@@ -93,6 +93,12 @@ static void test_mem(void){
 static void test_files(void){
     mkdir("/tmp/mt",0755);
     int fd=open("/tmp/mt/grande.bin",O_RDWR|O_CREAT|O_TRUNC,0644); CHECK(fd>=0,"crear archivo");
+    CHECK(fd>=0&&(fcntl(fd,F_GETFL)&O_ACCMODE)==O_RDWR,"F_GETFL conserva O_RDWR");
+    { int p[2]; int ok=pipe(p)==0;
+      if(ok){ ok=(fcntl(p[0],F_GETFL)&O_ACCMODE)==O_RDONLY
+                  &&(fcntl(p[1],F_GETFL)&O_ACCMODE)==O_WRONLY;
+              close(p[0]); close(p[1]); }
+      CHECK(ok,"F_GETFL distingue extremos de pipe"); }
     static char blk[4096]; for(int i=0;i<4096;i++) blk[i]=(char)(i*7);
     int ok=1; for(int i=0;i<768;i++){ blk[0]=(char)i; if(write(fd,blk,4096)!=4096){ ok=0; break; } }
     CHECK(ok,"escribir 3 MB en bloques de 4 KB");
@@ -104,7 +110,10 @@ static void test_files(void){
     CHECK(ftruncate(fd,1<<20)==0,"ftruncate agranda"); char z=1; pread(fd,&z,1,5000); CHECK(z==0,"lo agrandado esta en ceros");
     close(fd);
 
-    fd=open("/tmp/mt/ap.txt",O_WRONLY|O_CREAT|O_TRUNC|O_APPEND,0644); write(fd,"uno\n",4); close(fd);
+    fd=open("/tmp/mt/ap.txt",O_WRONLY|O_CREAT|O_TRUNC|O_APPEND,0644);
+    CHECK(fd>=0&&(fcntl(fd,F_GETFL)&O_ACCMODE)==O_WRONLY
+        &&(fcntl(fd,F_GETFL)&O_APPEND),"F_GETFL conserva O_WRONLY y O_APPEND");
+    write(fd,"uno\n",4); close(fd);
     fd=open("/tmp/mt/ap.txt",O_WRONLY|O_APPEND); write(fd,"dos\n",4); close(fd);
     fd=open("/tmp/mt/ap.txt",O_RDONLY); char ap[16]={0}; read(fd,ap,15); close(fd); CHECK(!strcmp(ap,"uno\ndos\n"),"O_APPEND");
     CHECK(open("/tmp/mt/ap.txt",O_CREAT|O_EXCL|O_WRONLY,0644)<0&&errno==EEXIST,"O_EXCL falla si existe");

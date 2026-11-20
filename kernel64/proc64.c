@@ -777,7 +777,14 @@ static u64 sys_dispatch(struct regs *r){
         if(a2==0||a2==1030){ int n=fd_alloc(CP,(int)a3); if(n<0) return RET_ERR(EMFILE); fd_dup_into(&CP->fd[n],&CP->fd[a1]); if(a2==1030) CP->fd[n].cloexec=1; return (u64)n; }
         if(a2==1) return CP->fd[a1].cloexec;
         if(a2==2){ CP->fd[a1].cloexec=(u8)(a3&1); return 0; }
-        if(a2==3){ return (u64)(CP->fd[a1].flags&~3)|2; }
+        if(a2==3){ /* F_GETFL: conservar el modo real de acceso de open(), no forzar O_RDWR. */
+            FD *f=&CP->fd[a1]; int fl=f->flags;
+            if(f->type==3) fl&=~3;                           /* extremo lector de pipe */
+            else if(f->type==4) fl=(fl&~3)|1;                 /* extremo escritor de pipe */
+            else if(f->type==5||f->type==6||f->type==7||f->type==8||f->type==12)
+                fl=(fl&~3)|2;                                /* socket, eventfd, epoll, timerfd, memfd */
+            return (u64)fl;
+        }
         if(a2==4){ CP->fd[a1].flags=(CP->fd[a1].flags&~0x800)|(int)(a3&0x800); return 0; }
         if(a2==5||a2==36){ short lt=2; if(a3&&ucopy_to(CP,a3,&lt,2)) return RET_ERR(EFAULT); return 0; }      /* F_GETLK: nadie tiene el cerrojo */
         return 0; }
