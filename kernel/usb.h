@@ -1,5 +1,5 @@
 /* Deteccion PCI no invasiva de controladores USB.
- * Vortex OS aun no implementa enumeracion USB ni USB Mass Storage.
+ * La enumeracion UHCI y la importacion de archivos se hacen en usb_storage.c.
  */
 #ifndef VORTEX_USB_H
 #define VORTEX_USB_H

@@ -56,6 +56,10 @@ jobs:
           tail -110 hub-gui.log
           grep -Fq "[vortex-usb] hub 1.1" hub-gui.log || { echo "FALLO: no encontro el hub intermedio"; exit 1; }
           grep -Fq "USB FAT32 real leido" hub-gui.log || { echo "FALLO: no leyo la memoria detras del hub"; exit 1; }
+      - name: Hotplug UHCI con un teclado conectado antes del pendrive
+        run: |
+          set -o pipefail
+          python3 tools/ci_usb_topology.py usb-boot.iso pendrive.img | tee usb-topology.log
       - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
         run: |
           python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
@@ -75,4 +79,5 @@ jobs:
             usb-gui.log
             hub-gui.log
             exfat-gui.log
+            usb-topology.log
             capturas/*.png

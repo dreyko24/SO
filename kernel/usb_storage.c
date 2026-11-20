@@ -1,5 +1,5 @@
 /* Vortex OS USB Mass Storage nativo: UHCI (PCI), BOT/SCSI, FAT32/exFAT solo lectura.
- * No se usa BIOS ni Linux. Soporta raiz USB fisica conectada a controlador UHCI.
+ * No se usa BIOS ni Linux. Soporta puertos raiz UHCI y un nivel de hub USB.
  * No escribe jamas al USB. Los archivos importados son una instantanea de la unidad.
  */
 #include "usb_storage.h"
@@ -37,11 +37,12 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
     o32(0xCF8,0x80000000u|((u32)b<<16)|((u32)d<<11)|((u32)f<<8)|((u32)reg&0xfcu));
     o32(0xCFC,val);
 }
-static u16 io,port;static int low,found,ready,ever,probe_once;
+static u16 io,port;static int low,ready,probe_once;
 static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
 static char info[120]="Sin memoria USB FAT32/exFAT reconocida";
 static char usb_product[64]="Unidad USB";
-static int attached_hub,attached_hub_port;
+static int attached_hub_port;
+static u8 hub_mpzero;
 typedef struct {volatile u32 link,sts,token,buf,software[4];} TD;
 typedef struct {volatile u32 head,element,soft[2];} QH;
 static volatile u32 frame[1024] __attribute__((aligned(4096)));
@@ -178,65 +179,57 @@ static int init(void){
     o16(io+0,0x00c1); /* RUN/STOP, Configure Flag, Max Packet */
     waitms(40);return 0;
 }
-static int portreset(void){
-    for(int p=0;p<2;p++){
-        u16 a=(u16)(io+0x10+p*2);
-        if(!(i16(a)&1))continue;
-        o16(a,0x0200);waitms(60);
-        o16(a,0);waitms(20);
-        o16(a,0x0006);waitms(15);
-        u16 s=i16(a);
-        if(!(s&4))continue;
-        low=!!(s&0x0100);port=a;return 0;
-    }
-    return -1;
+static int portreset(u16 a){
+    o16(a,0x0200);waitms(60);
+    o16(a,0);waitms(20);
+    o16(a,0x0006);waitms(15);
+    u16 s=i16(a);
+    if((s&5)!=5)return -1;
+    low=!!(s&0x0100);
+    return 0;
 }
-static int enumerate(void){
-    u8 desc[256];memset(desc,0,sizeof desc);
-    mpzero=8;address=1;attached_hub=0;attached_hub_port=0;
-    k_strcpy(usb_product,"Unidad USB",sizeof usb_product);
+static int assign_address(u8 dev,u8 desc[8]){
+    memset(desc,0,8);
+    mpzero=8;
     if(ctrl(0,0x80,6,0x0100,0,desc,8,1))return -1;
     if(desc[0]<8||desc[1]!=1)return -2;
     mpzero=desc[7];if(mpzero!=8&&mpzero!=16&&mpzero!=32&&mpzero!=64)return -3;
-    if(desc[4]==9){
-        /* VMware y algunas controladoras presentan un HUB USB 1.1 en el
-         * puerto raiz, y la memoria se conecta detras de el. Antes el
-         * controlador trataba el hub como si fuera el pendrive: -9 BOT.
-         * Explorar un nivel de hub full/low speed sin EHCI/xHCI. */
-        u8 hd[16],ps[4];int chosen=0;
-        if(ctrl(0,0,5,1,0,0,0,0))return -13;
-        waitms(50);
-        memset(hd,0,sizeof hd);
-        if(ctrl(1,0xa0,6,0x2900,0,hd,9,1)||hd[1]!=0x29)return -13;
-        int ports=hd[2];if(ports>8)ports=8;
-        for(int p=1;p<=ports;p++){
-            (void)ctrl(1,0x23,3,8,(u16)p,0,0,0); /* PORT_POWER */
-        }
-        waitms(140);
-        for(int p=1;p<=ports;p++){
-            memset(ps,0,sizeof ps);
-            if(ctrl(1,0xa3,0,0,(u16)p,ps,4,1)||(ps[0]&1u)==0)continue;
-            if(ctrl(1,0x23,3,4,(u16)p,0,0,0))continue; /* PORT_RESET */
-            waitms(100);
-            if(ctrl(1,0xa3,0,0,(u16)p,ps,4,1))continue;
-            if(!(ps[0]&1u))continue;
-            (void)ctrl(1,0x23,1,20,(u16)p,0,0,0); /* C_PORT_RESET */
-            low=!!(ps[1]&2u);
-            chosen=p;break;
-        }
-        if(!chosen)return -14;
-        attached_hub=1;attached_hub_port=chosen;
-        kprintf("[vortex-usb] hub 1.1, puerto %d activo, velocidad %s\n",
-                chosen,low?"baja":"completa");
-        /* Nuevo dispositivo en el puerto del hub: direccion cero. */
-        address=2;mpzero=8;
-        waitms(50);memset(desc,0,sizeof desc);
-        if(ctrl(0,0x80,6,0x0100,0,desc,8,1))return -15;
-        if(desc[0]<8||desc[1]!=1)return -15;
-        mpzero=desc[7];if(mpzero!=8&&mpzero!=16&&mpzero!=32&&mpzero!=64)return -15;
-    }
-    if(ctrl(0,0,5,address,0,0,0,0))return -4;
+    if(ctrl(0,0,5,dev,0,0,0,0))return -4;
     waitms(20);
+    return 0;
+}
+static int storage_config(void){
+    u8 desc[256]={0};
+    if(ctrl(address,0x80,6,0x0200,0,desc,9,1))return -5;
+    if(desc[0]!=9||desc[1]!=2||!desc[5])return -6;
+    int n=rd16(desc+2);if(n<18||n>256)return -7;
+    if(ctrl(address,0x80,6,0x0200,0,desc,n,1))return -8;
+    int classok=0,hid=0;epin=epout=0;
+    for(int p=0;p+2<=n;){
+        int len=desc[p],type=desc[p+1];if(len<2||p+len>n)break;
+        if(type==4&&len>=9){
+            classok=desc[p+3]==0&&desc[p+5]==8&&desc[p+6]==6&&desc[p+7]==0x50;
+            if(desc[p+5]==3)hid=1;
+            if(classok){ifnum=desc[p+2];epin=epout=0;}
+        }
+        if(type==5&&len>=7&&classok&&(desc[p+3]&3)==2){
+            int m=rd16(desc+p+4);
+            if(m>0&&m<=64){
+                if(desc[p+2]&0x80){epin=desc[p+2]&15;mpin=(u8)m;}
+                else{epout=desc[p+2]&15;mpout=(u8)m;}
+                if(epin&&epout)return desc[5];
+            }
+        }
+        p+=len;
+    }
+    if(hid)kprintf("[vortex-usb] periferico HID detectado; controlador de entrada no disponible\n");
+    return -9;
+}
+static int enumerate_storage(u8 dev){
+    address=dev;
+    int conf=storage_config();
+    if(conf<0)return conf;
+    k_strcpy(usb_product,"Unidad USB",sizeof usb_product);
     /* Leer el nombre que declara el pendrive en su descriptor de producto.
      * Si la memoria no publica cadenas, conservar "Unidad USB". */
     { u8 dd[18],ss[128];memset(dd,0,sizeof dd);
@@ -257,25 +250,6 @@ static int enumerate(void){
           }
       }
     }
-    if(ctrl(address,0x80,6,0x0200,0,desc,9,1))return -5;
-    if(desc[1]!=2)return -6;
-    int n=rd16(desc+2);if(n<18||n>256)return -7;
-    if(ctrl(address,0x80,6,0x0200,0,desc,n,1))return -8;
-    int conf=desc[5],classok=0;epin=epout=0;
-    for(int p=0;p+2<=n;){
-        int len=desc[p],type=desc[p+1];if(len<2||p+len>n)break;
-        if(type==4&&len>=9){
-            classok=desc[p+5]==8&&desc[p+6]==6&&desc[p+7]==0x50;
-            if(classok)ifnum=desc[p+2];
-        }
-        if(type==5&&len>=7&&classok&&(desc[p+3]&3)==2){
-            int m=rd16(desc+p+4);if(m<=0||m>64){p+=len;continue;}
-            if(desc[p+2]&0x80){epin=desc[p+2]&15;mpin=(u8)m;}
-            else{epout=desc[p+2]&15;mpout=(u8)m;}
-        }
-        p+=len;
-    }
-    if(!epin||!epout)return -9;
     if(ctrl(address,0,9,(u16)conf,0,0,0,0))return -10;
     tgin=tgout=0;
     /* Tras SET_CONFIGURATION algunos pendrives reales necesitan varios
@@ -336,6 +310,83 @@ static int fatmount(void){
     kprintf("[vortex-usb] BPB part=%u root=%u spc=%u fat=%u first=%u end=%u\n",
             part,root_cluster,sectors_per_cluster,fat_sector,first_data,volume_end);
     return 0;
+}
+static int mount_device(u8 dev){
+    int r=enumerate_storage(dev);
+    if(r)return r;
+    r=fatmount();
+    if(!r)return 0;
+    kprintf("[vortex-usb] particion FAT32/exFAT no montada, codigo=%d\n",r);
+    return r==-1?-16:-17;
+}
+enum {
+    HUB_PORT_ENABLE=1, HUB_PORT_RESET=4, HUB_PORT_POWER=8,
+    HUB_C_PORT_CONNECTION=16, HUB_C_PORT_RESET=20
+};
+static int hub_feature(u8 request,u16 feature,u16 p){
+    return ctrl(1,0x23,request,feature,p,0,0,0);
+}
+static int hub_reset_port(u16 p,u8 status[4]){
+    if(hub_feature(3,HUB_PORT_RESET,p))return -1;
+    waitms(100);
+    if(ctrl(1,0xa3,0,0,p,status,4,1)||(status[0]&3u)!=3u)return -1;
+    if(hub_feature(1,HUB_C_PORT_RESET,p))return -1;
+    return hub_feature(1,HUB_C_PORT_CONNECTION,p);
+}
+static int mount_hub(void){
+    u8 config[9]={0},desc[9]={0};
+    if(ctrl(1,0x80,6,0x0200,0,config,9,1)||
+       config[0]!=9||config[1]!=2||!config[5]||
+       ctrl(1,0,9,config[5],0,0,0,0))return -13;
+    if(ctrl(1,0xa0,6,0x2900,0,desc,9,1)||desc[1]!=0x29)return -13;
+    int ports=desc[2];if(ports>8)ports=8;
+    hub_mpzero=mpzero;
+    for(u16 p=1;p<=ports;p++){
+        if(hub_feature(1,HUB_PORT_ENABLE,p))return -13;
+        (void)hub_feature(3,HUB_PORT_POWER,p);
+    }
+    int power_ms=desc[5]*2;
+    waitms(power_ms>140?power_ms:140);
+    int error=-14;
+    for(u16 p=1;p<=ports;p++){
+        u8 status[4]={0};
+        if(ctrl(1,0xa3,0,0,p,status,4,1)||!(status[0]&1u))continue;
+        if(!hub_reset_port(p,status)){
+            low=!!(status[1]&2u);
+            kprintf("[vortex-usb] hub 1.1, puerto %d activo, velocidad %s\n",
+                    p,low?"baja":"completa");
+            int r=assign_address(2,desc);
+            r=r?-15:mount_device(2);
+            if(!r){attached_hub_port=p;return 0;}
+            error=r;
+        }
+        low=0;
+        mpzero=hub_mpzero;
+        /* Aislar el dispositivo rechazado antes de reutilizar las direcciones 0 y 2. */
+        if(hub_feature(1,HUB_PORT_ENABLE,p))return error;
+    }
+    return error;
+}
+static int probe_ports(void){
+    int error=0;
+    attached_hub_port=0;
+    for(int p=0;p<2;p++){
+        u16 candidate=(u16)(io+0x10+p*2);
+        if(!(i16(candidate)&1u))continue;
+        port=candidate;
+        int r=-1;
+        if(!portreset(port)){
+            u8 desc[8];
+            r=assign_address(1,desc);
+            if(!r)r=desc[4]==9?mount_hub():mount_device(1);
+            if(!r)return 1;
+        }
+        /* Deshabilitar este puerto antes de enumerar el siguiente en direccion cero. */
+        o16(port,0x000a);
+        if(i16(port)&4u)return r;
+        error=r;
+    }
+    return error;
 }
 static u32 fatnext(u32 cluster){
     if(cluster<2||(u64)cluster>=(u64)cluster_count+2u||cluster/128u>=fat_size)
@@ -507,26 +558,21 @@ int usb_storage_probe(void){
     if(ready)return 1;
     probe_once=1;
     if(init()){status("USB: no hay controlador UHCI disponible");return 0;}
-    if(portreset()){status("UHCI detectado, sin dispositivo conectado");return 0;}
-    int r=enumerate();
-    if(r){
+    int r=probe_ports();
+    if(!r){status("UHCI detectado, sin dispositivo conectado");return 0;}
+    if(r<0){
         kprintf("[vortex-usb] fallo de enumeracion etapa=%d, UHCI=%x puerto=%x\n",
                 r,(u32)io,(u32)port);
         if(r==-14)status("Hub USB detectado, pero sin unidad accesible tras sus puertos");
         else if(r==-13||r==-15)status("Hub USB detectado, fallo al activar o leer el dispositivo");
-        else if(r==-9)status("USB visto: no presenta almacenamiento BOT/SCSI en este puerto");
+        else if(r==-9)status("USB visto: no presenta almacenamiento BOT/SCSI compatible");
         else if(r==-11)status("USB Mass Storage reconocido; SCSI no responde / unidad aun no lista");
         else if(r==-12)status("USB Mass Storage: sector distinto de 512 B o capacidad no valida");
+        else if(r==-16)status("USB Mass Storage, pero falla la lectura de sectores");
+        else if(r==-17)status("USB reconocido; volumen FAT32/exFAT no compatible o no encontrado");
         else if(r>=-4)status("USB presente; error en descriptor o direccion del dispositivo");
         else status("USB presente; fallo de configuracion/transferencia, consultar puerto serie");
-        return r;
-    }
-    r=fatmount();
-    if(r){
-        kprintf("[vortex-usb] particion FAT32/exFAT no montada, codigo=%d\n",r);
-        status(r==-1?"USB Mass Storage, pero falla la lectura de sectores":
-                    "USB reconocido; volumen FAT32/exFAT no compatible o no encontrado");
-        return -2;
+        return r==-16||r==-17?-2:r;
     }
     FsNode *root=fs_root();
     FsNode *mount=fs_find(root,"Dispositivos");
@@ -542,7 +588,7 @@ int usb_storage_probe(void){
     dir->dev=1;imported=depth_count=0;
     if(exfat_mode)readdir_exfat(root_cluster,0,0,dir,0);
     else readdir_usb(root_cluster,dir,0);
-    ready=1;found=1;ever=1;
+    ready=1;
     kprintf("[vortex-usb] importados=%d entradas, raiz=%u\n",imported,root_cluster);
     status(exfat_mode?"USB exFAT real leido en /Dispositivos/Unidad-USB (solo lectura)":
                       "USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
@@ -575,10 +621,18 @@ void usb_storage_poll(void){
         return;
     }
     if(!io||!port)return;
-    int connected=!!(i16(port)&1);
-    if(connected&&attached_hub&&attached_hub_port){
+    /* CSC detecta tambien una desconexion y reconexion entre dos sondeos. */
+    int connected=(i16(port)&7u)==5u;
+    if(connected&&attached_hub_port){
         u8 st[4]={0};
-        if(ctrl(1,0xa3,0,0,(u16)attached_hub_port,st,4,1)||!(st[0]&1))connected=0;
+        u8 device_mpzero=mpzero;
+        int device_low=low;
+        mpzero=hub_mpzero;
+        low=0;
+        if(ctrl(1,0xa3,0,0,(u16)attached_hub_port,st,4,1)||
+           (st[0]&3u)!=3u||(st[2]&1u))connected=0;
+        mpzero=device_mpzero;
+        low=device_low;
     }
     if(!connected){
         ready=0;
