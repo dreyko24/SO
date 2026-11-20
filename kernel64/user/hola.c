@@ -28,7 +28,7 @@ void _start(void){
     }
     if(gs_ok) gs_ok=sc(158,0x1001,-1,0)==-22;  /* nunca WRMSR no canonico */
     sc(158,0x1001,(long)original_gs,0);
-    say(gs_ok?"arch_prctl GS ok\\n":"arch_prctl GS FALLO\\n");
+    say(gs_ok?"arch_prctl GS ok\n":"arch_prctl GS FALLO\n");
     sc(60,42,0,0);
     for(;;);
 }
