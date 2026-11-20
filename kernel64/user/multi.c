@@ -1,14 +1,62 @@
 /* multi.c — prueba de varios procesos e hilos con glibc normal: fork, wait, pipe, execve, pthreads, mutex, sleep, kill. */
+#include <errno.h>
+#include <linux/futex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
+#include <time.h>
 #define SAY(...) do{ printf(__VA_ARGS__); fflush(stdout); }while(0)
 static int counter; static pthread_mutex_t mu=PTHREAD_MUTEX_INITIALIZER;
 static void *work(void *a){ for(int i=0;i<1000;i++){ pthread_mutex_lock(&mu); counter++; pthread_mutex_unlock(&mu); } return (void*)((long)a*2); }
+
+static void futex_test_alarm(int sig){ (void)sig; }
+
+static int futex_deadline_test(void){
+    static const struct { int op; clockid_t clock; const char *name; } cases[]={
+        {FUTEX_WAIT, CLOCK_MONOTONIC, "relativo"},
+        {FUTEX_WAIT_BITSET, CLOCK_MONOTONIC, "monotonico absoluto"},
+        {FUTEX_WAIT_BITSET|FUTEX_CLOCK_REALTIME, CLOCK_REALTIME, "realtime absoluto"},
+    };
+    struct sigaction sa={.sa_handler=futex_test_alarm}, saved;
+    sigemptyset(&sa.sa_mask);
+    if(sigaction(SIGALRM,&sa,&saved)) return 0;
+    int word=0, ok=1;
+    for(unsigned i=0;i<sizeof cases/sizeof *cases;i++){
+        struct timespec timeout={0}, start, end;
+        if(clock_gettime(CLOCK_MONOTONIC,&start) ||
+           (cases[i].op!=FUTEX_WAIT && clock_gettime(cases[i].clock,&timeout))){
+            SAY("futex %s: FALLO leyendo el reloj\n",cases[i].name);
+            ok=0;
+            continue;
+        }
+        timeout.tv_nsec+=50000000;
+        if(timeout.tv_nsec>=1000000000){ timeout.tv_sec++; timeout.tv_nsec-=1000000000; }
+        alarm(2);
+        long rc=syscall(SYS_futex,&word,cases[i].op|FUTEX_PRIVATE_FLAG,0,&timeout,NULL,FUTEX_BITSET_MATCH_ANY);
+        int err=errno;
+        alarm(0);
+        if(clock_gettime(CLOCK_MONOTONIC,&end)){ ok=0; continue; }
+        long elapsed=(end.tv_sec-start.tv_sec)*1000+(end.tv_nsec-start.tv_nsec)/1000000;
+        if(rc!=-1 || err!=ETIMEDOUT || elapsed<40 || elapsed>=1000){
+            SAY("futex %s: FALLO rc=%ld errno=%d tiempo=%ld ms\n",cases[i].name,rc,err,elapsed);
+            ok=0;
+        }
+    }
+    struct timespec invalid={0,1000000000};
+    if(syscall(SYS_futex,&word,FUTEX_WAIT_PRIVATE,0,&invalid,NULL,0)!=-1 || errno!=EINVAL){
+        SAY("futex: FALLO al validar tv_nsec\n");
+        ok=0;
+    }
+    sigaction(SIGALRM,&saved,NULL);
+    if(ok) SAY("futex: plazos relativos y absolutos OK\n");
+    return ok;
+}
+
 int main(int argc,char **argv){
     if(argc>1&&!strcmp(argv[1],"hijo")){ SAY("  [exec] programa nuevo cargado, argc=%d\n",argc); return 7; }
     int ok=0;
@@ -34,6 +82,7 @@ int main(int argc,char **argv){
     if(p==0){ for(;;) usleep(10000); }
     usleep(30000); kill(p,SIGKILL); waitpid(p,&st,0);
     if(WIFSIGNALED(st)&&WTERMSIG(st)==SIGKILL){ SAY("kill OK\n"); ok++; } else SAY("kill FALLO st=%d\n",st);
-    SAY(ok==6?"TODO OK (6/6)\n":"HAY FALLOS (%d/6)\n",ok);
-    return ok==6?0:1;
+    ok+=futex_deadline_test();
+    SAY(ok==7?"TODO OK (7/7)\n":"HAY FALLOS (%d/7)\n",ok);
+    return ok==7?0:1;
 }

@@ -20,6 +20,7 @@ typedef uint64_t u64; typedef uint32_t u32; typedef uint16_t u16; typedef uint8_
 void kprintf(const char *f,...);
 int  kgetc(void);
 uint32_t kticks(void);
+uint64_t kticks64(void);
 void k_write_console(const char *s,int n);
 void isr_handler64(void *r);
 
@@ -85,6 +86,7 @@ enum { T_FREE, T_READY, T_SLEEP, T_WAIT, T_READ, T_FUTEX, T_PIPE, T_ZOMBIE, T_FN
 typedef struct Task {
     int tid, pid, ppid, state, leader, killed, exit_code, wait_pid, bg, fg, timedout, pipe_fd; Proc *pr; u8 *kstk; u64 ksp; struct regs *frame;
     u64 wake_at, fut_key, clear_tid, fs_base, gs_base; char name[24];
+    int fut_realtime;
     u64 sigpend, sigmask, sigsaved; int has_saved, sysnr, in_sig; u64 alt_sp, alt_size;
     int (*wait_fn)(struct Task*); int wa_fd, wa_mask, wa_n; u64 wa_p1, wa_p2, wa_p3;
     u8 fx[512] __attribute__((aligned(16)));
@@ -209,8 +211,19 @@ static int pipe_ready(Task *t){
     FD *f=&t->pr->fd[t->pipe_fd]; if(f->type!=3&&f->type!=4) return 1; struct Pipe *p=f->pipe;
     return f->type==3 ? (p->count>0||p->writers<=0) : (p->count<PIPESZ||p->readers<=0);
 }
+
+static u64 futex_ticks(u64 seconds,u64 fraction){
+    if(seconds>(UINT64_MAX-fraction)/100) return UINT64_MAX;
+    return seconds*100+fraction;
+}
+static u64 futex_realtime_ticks(u64 monotonic_ticks){
+    return futex_ticks(wall_sec(),monotonic_ticks%100);
+}
+
 static void poll_wakeups(void){
-    u32 now=kticks(); int any_read=0, any_fg=0;
+    u64 monotonic_ticks=kticks64(), realtime_ticks=0;
+    u32 now=(u32)monotonic_ticks;
+    int any_read=0, any_fg=0;
     for(int i=0;i<MAXT;i++){ Task *t=&tasks[i];
         if(t->state==T_FREE) continue;
         if(t->leader&&t->pr&&t->pr->alarm_at&&t->state!=T_ZOMBIE&&(int)(now-(u32)t->pr->alarm_at)>=0){
@@ -226,8 +239,12 @@ static void poll_wakeups(void){
         if(t->leader&&(t->fg||t->bg==2)) any_fg=1;
         if(t->killed||(t->sigpend&~t->sigmask)){ t->state=T_READY; continue; }
         if(t->state==T_SLEEP&&(int)(now-(u32)t->wake_at)>=0) t->state=T_READY;
-        else if(t->state==T_FUTEX&&t->wake_at&&(int)(now-(u32)t->wake_at)>=0){ t->wake_at=0; t->fut_key=0; t->timedout=1; t->state=T_READY; }
-        else if(t->state==T_PIPE&&pipe_ready(t)) t->state=T_READY;
+        else if(t->state==T_FUTEX&&t->wake_at){
+            if(t->fut_realtime&&!realtime_ticks) realtime_ticks=futex_realtime_ticks(monotonic_ticks);
+            if(t->wake_at<=(t->fut_realtime?realtime_ticks:monotonic_ticks)){
+                t->fut_key=0; t->timedout=1; t->state=T_READY;
+            }
+        } else if(t->state==T_PIPE&&pipe_ready(t)) t->state=T_READY;
         else if(t->state==T_FN){ if(t->wait_fn(t)) t->state=T_READY; else if(t->wake_at&&(int)(now-(u32)t->wake_at)>=0){ t->timedout=1; t->state=T_READY; } }
         else if(t->state==T_WAIT){
             for(int j=0;j<MAXT;j++){ Task *c=&tasks[j]; if(c->state==T_ZOMBIE&&c->leader&&c->ppid==t->pid&&(t->wait_pid<=0||c->pid==t->wait_pid)){ t->state=T_READY; break; } }
@@ -680,10 +697,25 @@ static u64 sys_futex(u64 uaddr,u64 op,u64 val,u64 timeout_va){
     if(cmd==0||cmd==9){                                  /* WAIT / WAIT_BITSET */
         u32 cv; if(ucopy_from(CP,&cv,uaddr,4)) return RET_ERR(EFAULT);
         if(cv!=(u32)val) return RET_ERR(EAGAIN);
-        cur->fut_key=(u64)(uintptr_t)CP+uaddr; cur->wake_at=0; cur->timedout=0;
-        if(timeout_va){ u64 t[2]; if(ucopy_from(CP,t,timeout_va,16)) return RET_ERR(EFAULT); u32 tk=(u32)(t[0]*100+t[1]/10000000ull); if(!tk) tk=1; cur->wake_at=(u64)(kticks()+tk); }
+        u64 deadline=0;
+        int realtime=cmd==9&&(op&0x100);                 /* FUTEX_CLOCK_REALTIME */
+        if(timeout_va){
+            int64_t ts[2];
+            if(ucopy_from(CP,ts,timeout_va,sizeof ts)) return RET_ERR(EFAULT);
+            if(ts[0]<0||ts[1]<0||ts[1]>=1000000000) return RET_ERR(EINVAL);
+            u64 now=kticks64();
+            if(realtime) now=futex_realtime_ticks(now);
+            /* WAIT recibe una duracion, WAIT_BITSET un instante absoluto.
+             * Redondear al siguiente tick evita vencer antes del plazo. */
+            deadline=futex_ticks((u64)ts[0],(ts[1]+9999999)/10000000);
+            if(cmd==0) deadline=deadline>UINT64_MAX-now?UINT64_MAX:deadline+now;
+            if(deadline<=now) return RET_ERR(ETIMEDOUT);
+        }
         if(INTR()) return RET_ERR(EINTR);
+        cur->fut_key=(u64)(uintptr_t)CP+uaddr;
+        cur->wake_at=deadline; cur->fut_realtime=realtime; cur->timedout=0;
         block(T_FUTEX);
+        cur->wake_at=0;
         if(cur->timedout){ cur->timedout=0; return RET_ERR(ETIMEDOUT); }
         if(cur->fut_key){ cur->fut_key=0; if(INTR()) return RET_ERR(EINTR); }
         return 0;
@@ -883,7 +915,7 @@ static u64 sys_dispatch(struct regs *r){
     case 84: return sys_unlinkat(AT_FDCWD_L,a1,0x200);
     case 87: return sys_unlinkat(AT_FDCWD_L,a1,0);
     case 217: return sys_getdents64(a1,a2,a3);
-    case 96: { u64 t[2]; u32 k=kticks(); t[0]=wall_sec(); t[1]=(u64)(k%100)*10000; return a1&&ucopy_to(CP,a1,t,16)?RET_ERR(EFAULT):0; }
+    case 96: { u64 k=kticks64(), t[2]; t[0]=wall_sec(); t[1]=(k%100)*10000; return a1&&ucopy_to(CP,a1,t,16)?RET_ERR(EFAULT):0; }
     case 99: { u8 si[112]; memset(si,0,sizeof si); *(u64*)si=kticks()/100; *(u64*)(si+32)=256ull<<20; *(u64*)(si+40)=128ull<<20; *(u32*)(si+104)=1; return ucopy_to(CP,a1,si,sizeof si)?RET_ERR(EFAULT):0; }
     case 102: case 104: case 107: case 108: case 112: case 105: case 106: return 0;
     case 110: return (u64)cur->ppid;

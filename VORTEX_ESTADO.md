@@ -132,6 +132,12 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - La prueba XWD ahora analiza contenido real y avisa cuando el framebuffer está negro o tiene menos del 1% de píxeles visibles; no debe confundirse el éxito de construir la ISO con éxito de Firefox. No usar el navegador para credenciales.
 - Cambios incrementales en `main`: `a9f95e9` filtra del rastreo ordinario el `EAGAIN` esperado en IPC; `4f0138f` toma varias muestras de Firefox; `f60a9f8` y `d8960a7` corrigen la respuesta POSIX de `F_GETFL` y `F_SETFL` con pruebas de archivos/tuberías. Estos avances conservan el kernel Vortex.
 
+### Plazos de futex en la ABI de 64 bits — 20 de noviembre de 2026
+
+- El kernel Vortex interpreta `FUTEX_WAIT` como una espera relativa y `FUTEX_WAIT_BITSET` como un plazo absoluto según el reloj monotónico o `FUTEX_CLOCK_REALTIME`. Valida `timespec` y usa el contador de 64 bits del PIT para conservar los plazos largos. La resolución sigue siendo de 10 ms.
+- La regresión en `kernel64/user/multi.c` solicita esperas de 50 ms desde ring 3. En `ea664b1`, la espera absoluta monotónica duró 1.160 ms y la de tiempo real retornó de inmediato. Con la corrección, las variantes ELF estática, PIE estática y dinámica completaron `7/7` en QEMU. La prueba se ejecuta en `arranque-qemu`.
+- Una prueba local con Debian de `iso-latest` (`ea664b1`) y una espera mayor mostró la ventana de Firefox de 1152×720 con una pestaña vacía. La captura tomada tras aplicar la corrección mostró los mismos píxeles. El renderizado del contenido de una página, HTTPS y el aislamiento del navegador siguen pendientes de validación.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
 1. **USB real:** host EHCI/xHCI, HID, DMA/IRQ y hotplug, recuperación al desconectar, escritura/montaje robustos, pruebas sobre varios controladores y pendrives; no asumir que UHCI QEMU implica USB 3 físico.

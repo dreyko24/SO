@@ -97,7 +97,7 @@ static void pic_init(void){
 }
 static const char *exc_names[]={"Division por cero","Debug","NMI","Breakpoint","Overflow","Bound","Opcode invalido","Sin FPU","Doble falta","",
     "TSS invalido","Segmento ausente","Falta de pila","Proteccion general","Falta de pagina"};
-static volatile uint32_t ticks;
+static volatile uint64_t ticks;
 int  proc_exec(char *path,int argc,char **argv,int bg);
 void proc_list(void);
 void proc_ps(void);
@@ -405,7 +405,7 @@ static void run(char *l){
     else if(streq(l,"mem")) kprintf("RAM usable: %lu KB | heap: %lu KB\n",ram_kb,heap_total/1024);
     else if(streq(l,"probar-ram")) cmd_probar_ram();
     else if(streq(l,"heap")){ u64 u,f,m; heap_stats(&u,&f,&m); kprintf("heap: total %lu KB | usado %lu B | libre %lu B | bloque libre mayor %lu B\n",heap_total/1024,u,f,m); }
-    else if(streq(l,"uptime")) kprintf("%u.%u s\n",ticks/100,(ticks%100)/10);
+    else if(streq(l,"uptime")){ u64 now=ticks; kprintf("%lu.%u s\n",now/100,(unsigned)((now%100)/10)); }
     else if(startswith(l,"ejecutar ")||startswith(l,"run ")){
         char *a[48]; int bg=0; char *p=l; while(*p&&*p!=' ') p++;
         int n=tokenize(p,a,48);
@@ -432,6 +432,7 @@ static void run(char *l){
 void kserial_puts(const char *s){ while(*s){ if(*s=='\n') serial_put('\r'); serial_put(*s++); } }   /* solo al puerto serie (indicador de la terminal grafica, para las pruebas automaticas) */
 void k_write_console(const char *s,int n){ for(int i=0;i<n;i++) putc(s[i]); }
 uint32_t kticks(void){ return ticks; }
+uint64_t kticks64(void){ return ticks; }
 int kgetc(void){ return getc_nb(); }
 void kshell_exec(char *l){ if(net_cmd(l)) return; run(l); }
 void proc_stdin_char(int c);
