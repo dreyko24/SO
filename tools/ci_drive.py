@@ -72,6 +72,14 @@ def listo():
         q = time.time() - last[0]
         if q > 0.7:
             if b.endswith(PROMPT): return True
+            # Tras limpiar buf para cada comando, el primer prompt POSTERIOR
+            # al eco del comando demuestra que el shell recupero el control.
+            # Firefox y xterm pueden imprimir trazas despues de ese prompt;
+            # no confundir esa salida asincrona con una VM colgada.
+            sent = cmd_actual[0].encode()
+            pos = b.find(sent) if sent else -1
+            if pos >= 0 and b.find(PROMPT, pos + len(sent)) >= 0:
+                return True
             # El kernel puede imprimir "[proceso N termino...]" DESPUES
             # del prompt de un lanzamiento en segundo plano. Eso no
             # debe provocar un timeout falso del controlador de QEMU.
