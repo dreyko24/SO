@@ -176,6 +176,14 @@ int main(void){
           "abrir firefox-esr https://www.google.com/search?q=universidades+peruanas")){
           puts("FALLO Firefox Google con búsqueda de texto");return 1;
       }
+      const char *long_query="recursos para aprender historia y ciencias naturales con actividades para estudiantes de primaria en las escuelas del Peru";
+      k_strcpy(web->ebuf,long_query,sizeof web->ebuf);
+      web->elen=k_strlen(web->ebuf);
+      host_last_shell[0]=0;browser_go_typed(web);
+      if(strcmp(host_last_shell,
+          "abrir firefox-esr https://www.google.com/search?q=recursos+para+aprender+historia+y+ciencias+naturales+con+actividades+para+estudiantes+de+primaria+en+las+escuelas+del+Peru")){
+          puts("FALLO Firefox Google recorta una búsqueda larga");return 1;
+      }
       /* El boton de navegador moderno debe aceptar Firefox instalado.
        * No debe intentar reinstalar Chromium cuando Firefox ya funciona. */
       host_last_shell[0]=0;

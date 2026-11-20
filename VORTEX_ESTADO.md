@@ -153,6 +153,11 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - La regresión de `vortex-iso-unica` consulta Xvfb con `xdpyinfo`, lo detiene en la VM y vuelve a consultar al servidor a través de `abrir`. Exige dos conexiones XTEST y comprueba que repetir `pantalla` reutilice el servidor activo.
 - El compositor comprueba los píxeles del área visible antes de mostrar el aviso de pantalla vacía. La regresión de escritorio conserva el aviso para un XWD negro y comprueba que una ventana pequeña permanezca visible.
 
+### Búsquedas públicas desde Firefox — 20 de noviembre de 2026
+
+- Firefox ESR ejecutado en el kernel Vortex de 64 bits mostró resultados reales de Google para `Vortex OS` en QEMU, sin cuenta. La prueba usó el proxy del entorno y una CA importada únicamente en el perfil desechable de la VM.
+- Se corrigió el recorte de búsquedas largas entre el navegador nativo y el lanzador de Firefox. `tools/hostgui.c` verifica la URL completa recibida por el lanzador. `tools/ci/firefox-internet.txt` prueba Google y YouTube desde la red de QEMU con dos perfiles nuevos, registra las respuestas HTTP y captura lo que Firefox dibuja.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
 1. **USB real:** host EHCI/xHCI, HID, DMA/IRQ y hotplug, recuperación al desconectar, escritura/montaje robustos, pruebas sobre varios controladores y pendrives; no asumir que UHCI QEMU implica USB 3 físico.

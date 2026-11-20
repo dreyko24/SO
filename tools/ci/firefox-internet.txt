@@ -1,0 +1,15 @@
+# Diagnóstico manual con Debian y 6 GB. Consultas públicas con perfiles nuevos.
+@esperar 7
+20|red
+40|run curl -sSL -m 25 -o /dev/null -w 'GOOGLE_HTTP=%{http_code}\n' https://www.google.com/search?q=Vortex+OS
+40|run curl -sSL -m 25 -o /dev/null -w 'YOUTUBE_HTTP=%{http_code}\n' https://www.youtube.com/
+20|run mkdir -p /tmp/web-google /tmp/web-youtube
+60|pantalla
+30|abrir firefox-esr --no-remote --profile /tmp/web-google https://www.google.com/search?q=Vortex+OS
+@esperar 130
+35|run xwininfo -root -tree
+120|run curl -fsS -m 95 -T /var/lib/xvfb/Xvfb_screen0 http://10.0.2.2:18091/google.xwd
+30|abrir firefox-esr --no-remote --profile /tmp/web-youtube https://www.youtube.com/results?search_query=sistema+solar
+@esperar 130
+35|run xwininfo -root -tree
+120|run curl -fsS -m 95 -T /var/lib/xvfb/Xvfb_screen0 http://10.0.2.2:18091/youtube.xwd
