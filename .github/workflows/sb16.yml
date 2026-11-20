@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   sb16:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4

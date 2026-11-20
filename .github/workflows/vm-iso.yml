@@ -180,6 +180,16 @@ jobs:
           grep -q 'red, green, blue masks:' vortex-web-smoke.log || {
              echo 'FALLO: xdpyinfo no verifico la comunicacion con X11'; exit 1;
           }
+          # Regresiones ya demostradas: Firefox debe superar carga XPCOM
+          # y ARCH_SET_GS. La presencia del proceso no prueba navegacion.
+          if grep -Eq "Couldn't load XPCOM|wasm_rt_syscall_set_segue_base error" vortex-web-smoke.log; then
+             echo 'FALLO: Firefox volvio a fallar en XPCOM o ARCH_SET_GS'; exit 1;
+          fi
+          if grep -q 'Web Content' vortex-web-smoke.log; then
+             echo 'Firefox: proceso real Web Content observado (navegacion aun sin validar)'
+          else
+             echo 'AVISO: no se observo un proceso Web Content; Firefox sigue pendiente'
+          fi
           # xdpyinfo, xterm y Firefox muestran errores en el log, y
           # rastro 1 imprime las llamadas fallidas al puerto serie.
           # NO confundir Xvfb operativo con navegador web funcional.

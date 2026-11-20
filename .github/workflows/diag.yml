@@ -8,7 +8,7 @@ on:
       grafico: { description: "modo grafico (ISO con GRUB, escritorio y terminal grafica)", default: "no" }
 jobs:
   diag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4

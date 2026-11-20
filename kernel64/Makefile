@@ -23,7 +23,11 @@ boot64.o: boot64.S
 	$(CC) -m64 -c $< -o $@
 boot64-text.o: boot64.S
 	$(CC) -m64 -DNOVIDEO -c $< -o $@
-user/hola.elf: user/hola.c
+# El antiguo user/hola.elf versionado puede quedar mas nuevo que el
+# fuente al hacer checkout: no reutilizar nunca un ELF de prueba obsoleto.
+.PHONY: vortex-force-hola
+vortex-force-hola:
+user/hola.elf: user/hola.c vortex-force-hola
 	$(CC) $(UFLAGS) -o $@ $<
 user/hola-glibc.elf: user/hola-glibc.c
 	$(CC) -O2 -static-pie -o $@ $<
