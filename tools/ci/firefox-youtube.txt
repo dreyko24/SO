@@ -7,5 +7,8 @@
 30|abrir firefox-esr --no-remote --profile /tmp/web-youtube https://www.youtube.com/results?search_query=sistema+solar
 @esperar 190
 35|run xwininfo -root -tree
+120|run curl -fsS -m 95 -T /var/lib/xvfb/Xvfb_screen0 http://10.0.2.2:18091/youtube-inicio.xwd
+@esperar 230
+35|run xwininfo -root -tree
 35|run tail -n 30 /tmp/vortex-web.log
 120|run curl -fsS -m 95 -T /var/lib/xvfb/Xvfb_screen0 http://10.0.2.2:18091/youtube.xwd

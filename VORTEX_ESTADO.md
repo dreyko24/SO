@@ -157,6 +157,7 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 - Firefox ESR ejecutado en el kernel Vortex de 64 bits mostró resultados reales de Google para `Vortex OS` sin cuenta, primero con el proxy del entorno y después con la red NAT de QEMU en GitHub Actions. En esa segunda prueba, `curl` recibió HTTP 200 de Google y de la portada de YouTube. La segunda ventana de Firefox quedó en 1×1 y la captura seguía mostrando Google. [Diagnóstico y capturas](https://github.com/dreyko24/SO/actions/runs/44768622775).
 - Se corrigió el recorte de búsquedas largas entre el navegador nativo y el lanzador de Firefox. `tools/hostgui.c` verifica la URL completa recibida por el lanzador. `tools/ci/firefox-internet.txt` y `tools/ci/firefox-youtube.txt` abren un sitio por VM, registran la respuesta HTTP y capturan lo que Firefox dibuja.
+- La VM dedicada a YouTube dibujó la barra y la consulta `sistema solar` en Firefox tras 190 segundos. La lista de resultados seguía vacía en esa captura. La traza registró tráfico HTTPS desde Firefox a YouTube y sus recursos. [Diagnóstico de YouTube](https://github.com/dreyko24/SO/actions/runs/44770582689).
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
