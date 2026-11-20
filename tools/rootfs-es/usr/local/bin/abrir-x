@@ -1,8 +1,16 @@
 #!/bin/sh
 # abrir-x <programa> [argumentos]: espera a que el servidor X este listo y abre el programa en la pantalla X
-n=0
-while [ ! -S /tmp/.X11-unix/X0 ] && [ $n -lt 150 ]; do sleep 0.2; n=$((n+1)); done
-if [ ! -S /tmp/.X11-unix/X0 ]; then
+pantalla_lista() {
+  if command -v vortex-xinput >/dev/null 2>&1; then
+    # El nodo X0 puede sobrevivir a Xvfb. Esperar una conexión real.
+    vortex-xinput --wait
+    return
+  fi
+  n=0
+  while [ ! -S /tmp/.X11-unix/X0 ] && [ "$n" -lt 150 ]; do sleep 0.2; n=$((n+1)); done
+  test -S /tmp/.X11-unix/X0
+}
+if ! pantalla_lista; then
   echo "Vortex: la pantalla X no inicio; no se puede abrir el programa." >&2
   exit 1
 fi

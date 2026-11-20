@@ -189,6 +189,39 @@ int main(void){
       }
       puts("VORTEX WEB: CHROMIUM Y FIREFOX ESR HTTPS REAL, GOOGLE Y BUSQUEDAS OK");
     }
+    {
+      enum { XW=320, XH=200, HEADER=100 };
+      unsigned char *xwd=calloc(1,HEADER+XW*XH*4);
+      if(!xwd) return 1;
+      xwd[3]=HEADER;
+      xwd[18]=XW>>8; xwd[19]=XW&255;
+      xwd[23]=XH;
+      xwd[47]=32;
+      xwd[50]=(XW*4)>>8; xwd[51]=(XW*4)&255;
+      FsNode *root=fs_root(), *var=fs_find(root,"var"), *fixture=0;
+      if(!var) fixture=var=fs_mkdir(root,"var");
+      FsNode *lib=var?fs_find(var,"lib"):0;
+      if(!lib&&var){ lib=fs_mkdir(var,"lib"); if(!fixture) fixture=lib; }
+      FsNode *dir=lib?fs_mkdir(lib,"xvfb"):0;
+      FsNode *screen=dir?fs_create(dir,"Xvfb_screen0",(char*)xwd,HEADER+XW*XH*4):0;
+      if(!screen){ free(xwd); puts("FALLO crear framebuffer X"); return 1; }
+      gui_open_xscreen(XW,XH); gui_frame();
+      int x,y,w,h; crect(&wins[win_top()],&x,&y,&w,&h);
+      if((fb[(y+35)*W+x+35]&0xffffffu)==0){
+          free(xwd); puts("FALLO falta aviso de framebuffer X vacio"); return 1;
+      }
+      uint32_t *pixels=(uint32_t*)(xwd+HEADER);
+      for(int py=26;py<38;py++) for(int px=30;px<42;px++) pixels[py*XW+px]=0x26a69a;
+      int err=fs_write(screen,(char*)xwd,HEADER+XW*XH*4);
+      free(xwd);
+      if(err) return 1;
+      T+=4; gui_frame();
+      if((fb[(y+35)*W+x+35]&0xffffffu)!=0x26a69a){
+          puts("FALLO el aviso X tapa una ventana pequeña"); return 1;
+      }
+      closeall(); fs_remove(fixture?fixture:dir);
+      puts("VORTEX X11: AVISO PARA XWD NEGRO Y CONTENIDO PEQUEÑO VISIBLE OK");
+    }
     /* Multitarea por teclado: ciclo completo, retroceso, y estado
      * intacto al volver a una ventana minimizada. */
     {

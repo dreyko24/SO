@@ -149,7 +149,9 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 ### Recuperación de Xvfb en QEMU — 20 de noviembre de 2026
 
 - `pantalla` y `abrir` comprueban los procesos de Xvfb y del puente XTEST. Si Xvfb termina, la siguiente solicitud arranca otro servidor y sustituye su puente. Si solo termina el puente, el kernel relanza ese proceso con el servidor activo.
-- La regresión de `vortex-iso-unica` consulta Xvfb con `xdpyinfo`, lo detiene en la VM y comprueba que vuelva a responder tras ejecutar `pantalla`. Exige dos conexiones XTEST y comprueba que repetir `pantalla` reutilice el servidor activo.
+- `abrir-x` espera a que el socket de X11 acepte la conexión. Esto cubre la carrera en el escritorio en la que un socket de Xvfb anterior seguía presente y `xmessage` terminaba con `Can't open display` antes de que el servidor nuevo estuviera listo.
+- La regresión de `vortex-iso-unica` consulta Xvfb con `xdpyinfo`, lo detiene en la VM y vuelve a consultar al servidor a través de `abrir`. Exige dos conexiones XTEST y comprueba que repetir `pantalla` reutilice el servidor activo.
+- El compositor comprueba los píxeles del área visible antes de mostrar el aviso de pantalla vacía. La regresión de escritorio conserva el aviso para un XWD negro y comprueba que una ventana pequeña permanezca visible.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 

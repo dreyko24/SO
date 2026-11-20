@@ -18,10 +18,22 @@ static int xs;
 static int rd_all(int fd,void *b,size_t n){ size_t d=0; while(d<n){ ssize_t r=read(fd,(char*)b+d,n-d); if(r<=0){ if(r<0&&errno==EINTR) continue; return -1; } d+=(size_t)r; } return 0; }
 static int wr_all(int fd,const void *b,size_t n){ size_t d=0; while(d<n){ ssize_t r=write(fd,(const char*)b+d,n-d); if(r<=0){ if(r<0&&errno==EINTR) continue; return -1; } d+=(size_t)r; } return 0; }
 
-static int xconnect(int disp){
-    int s=socket(AF_UNIX,SOCK_STREAM,0); if(s<0) return -1;
+static int display_socket(int disp,int flags){
+    int s=socket(AF_UNIX,SOCK_STREAM|flags,0); if(s<0) return -1;
     struct sockaddr_un a; memset(&a,0,sizeof a); a.sun_family=AF_UNIX; snprintf(a.sun_path,sizeof a.sun_path,"/tmp/.X11-unix/X%d",disp);
     if(connect(s,(struct sockaddr*)&a,sizeof a)<0){ close(s); return -1; }
+    return s;
+}
+static int wait_display(int disp){
+    for(int i=0;i<300;i++){
+        int s=display_socket(disp,SOCK_NONBLOCK);
+        if(s>=0){ close(s); return 0; }
+        usleep(100000);
+    }
+    return 1;
+}
+static int xconnect(int disp){
+    int s=display_socket(disp,0); if(s<0) return -1;
     uint8_t req[12]={'l',0,11,0,0,0,0,0,0,0,0,0};                       /* orden little-endian, protocolo 11.0, sin autorizacion (Xvfb -ac) */
     if(wr_all(s,req,sizeof req)) { close(s); return -1; }
     uint8_t h[8]; if(rd_all(s,h,8)||h[0]!=1){ close(s); return -1; }
@@ -44,6 +56,7 @@ static void fake(int type,int detail,int x,int y){
 static void drain(void){ uint8_t b[512]; int fl=fcntl(xs,F_GETFL); fcntl(xs,F_SETFL,fl|O_NONBLOCK); while(read(xs,b,sizeof b)>0); fcntl(xs,F_SETFL,fl); }
 
 int main(int argc,char **argv){
+    if(argc>1&&!strcmp(argv[1],"--wait")) return wait_display(argc>2?atoi(argv[2]):0);
     int disp=argc>1?atoi(argv[1]):0;
     for(int i=0;i<200;i++){ xs=xconnect(disp); if(xs>=0) break; usleep(100000); }       /* espera a que el servidor X este listo (hasta 20 s) */
     if(xs<0){ fprintf(stderr,"vortex-xinput: no se pudo conectar al servidor X :%d\n",disp); return 1; }

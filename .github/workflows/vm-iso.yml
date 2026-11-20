@@ -158,8 +158,8 @@ jobs:
           # Terminar el Xvfb de esta VM desde el PID que el servidor registró.
           25|ejecutar /bin/sh -c 'kill -KILL $(cat /tmp/.X0-lock) && echo VORTEX_XVFB_DETENIDO'
           @esperar 3
-          60|pantalla
-          45|run sh -c 'for i in $(seq 20);do xdpyinfo -display :0 >/dev/null 2>&1 && echo X11_RECUPERADO && exit;sleep 1;done;exit 1'
+          45|abrir xdpyinfo
+          65|run sh -c 'for i in $(seq 40);do grep -qs "^name of display:" /tmp/vortex-web.log && echo X11_OK && exit;sleep 1;done;exit 1'
           20|pantalla
           # xterm requiere PTY; documentar el error sin confundirlo con Xvfb
           30|abrir xterm
@@ -200,7 +200,7 @@ jobs:
           grep -aq '^VORTEX_XVFB_DETENIDO[[:space:]]*$' vortex-web-smoke.log || {
              echo 'FALLO: la prueba no pudo detener Xvfb'; exit 1;
           }
-          grep -aq '^X11_RECUPERADO[[:space:]]*$' vortex-web-smoke.log || {
+          grep -aq '^X11_OK[[:space:]]*$' vortex-web-smoke.log || {
              echo 'FALLO: xdpyinfo no verificó la recuperación de Xvfb'; exit 1;
           }
           test "$(grep -ac 'pantalla: iniciando el servidor X' vortex-web-smoke.log)" -eq 2 || {

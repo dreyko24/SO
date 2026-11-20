@@ -2257,23 +2257,23 @@ static void draw_window(int wi,int focused){
         if(d&&xf->size>=100){
             #define BE32(o) ((uint32_t)d[o]<<24|(uint32_t)d[(o)+1]<<16|(uint32_t)d[(o)+2]<<8|(uint32_t)d[(o)+3])
             uint32_t hs=BE32(0), pw=BE32(16), ph=BE32(20), bpp=BE32(44), bpl=BE32(48), ncol=BE32(76);
-            uint32_t off=hs+ncol*12;
-            if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
+            uint64_t off=(uint64_t)hs+(uint64_t)ncol*12;
+            if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&hs>=100&&!(off&3)&&!(bpl&3)&&bpl>=pw*4&&
+               off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
                 int bw=(int)pw<cw?(int)pw:cw, bh=(int)ph<ch?(int)ph:ch;
+                int stride=(int)(bpl/4);
                 const uint32_t *pixels=(const uint32_t*)(const void*)(d+off);
-                blit32(cx,cy,pixels,(int)(bpl/4),bw,bh);
-                /* El framebuffer de X puede estar creado pero vacio cuando
-                 * Firefox se ha cerrado. Mostrar diagnostico en lugar de
-                 * dejar una ventana negra sin explicacion. */
+                /* La primera región pintada puede ser una ventana pequeña en un borde. */
                 int painted=0;
-                for(int iy=1;iy<8&&!painted;iy++)for(int ix=1;ix<8;ix++){
-                    int sy=iy*bh/8,sx=ix*bw/8;
-                    if((pixels[sy*(bpl/4)+sx]&0xffffffu)!=0)painted=1;
+                for(int iy=0;iy<bh&&!painted;iy++){
+                    const uint32_t *row=pixels+(size_t)iy*stride;
+                    for(int ix=0;ix<bw;ix++) if(row[ix]&0xffffffu){ painted=1; break; }
                 }
-                if(!painted&&cw>250&&ch>150){
+                if(painted) blit32(cx,cy,pixels,stride,bw,bh);
+                else if(cw>250&&ch>150){
                     rrect(cx+20,cy+20,cw-40,116,12,0x14233d,245);
                     text_bold(cx+35,cy+33,"La pantalla X sigue vacia",0xffffff);
-                    text(cx+35,cy+57,"El navegador aun no ha mostrado una ventana.",0xd7e6ff);
+                    text(cx+35,cy+57,"Inicia una aplicacion de Linux con abrir.",0xd7e6ff);
                     char msg[110]="Revisa el resultado en /tmp/vortex-web.log";
                     FsNode *lf=fs_resolve(fs_root(),"/tmp/vortex-web.log");
                     if(lf&&lf->data&&lf->size>0){
