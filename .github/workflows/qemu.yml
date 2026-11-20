@@ -7,7 +7,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   boot:
-    runs-on: ubuntu-latest
+    # El rootfs se enlaza contra la glibc del runner. ubuntu-latest (26.04)
+    # introdujo ELF x86-64-v3 que disparan SIGILL en QEMU base.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Herramientas
