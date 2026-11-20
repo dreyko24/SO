@@ -950,7 +950,13 @@ void kernel_entry(struct regs *r){
         u64 nr0=r->rax,b1=r->rdi,b2=r->rsi;
         if(krastro&&(nr0==59||krastro>1)) rastro_log(nr0,b1,b2,0,1,0,0,0);
         u64 rv=sys_dispatch(r);
-        if(krastro&&rv!=EXEC_DONE&&(krastro>1||((long)rv<0&&(long)rv>-4096&&nr0!=61&&nr0!=7&&nr0!=232&&nr0!=202))) rastro_log(nr0,b1,b2,rv,0,r->rdx,r->r10,r->r8);
+        /* EAGAIN de recvmsg/recvfrom forma parte del bucle normal no bloqueante
+         * de Firefox/IPC. Imprimir cada intento saturaba serie y distorsionaba
+         * la prueba. Nivel 2 conserva el registro completo para diagnostico fino. */
+        long err=(long)rv;
+        int es_esperable=(err==-EAGAIN && (nr0==45||nr0==47));
+        if(krastro&&rv!=EXEC_DONE&&(krastro>1||(err<0&&err>-4096&&!es_esperable&&nr0!=61&&nr0!=7&&nr0!=232&&nr0!=202)))
+            rastro_log(nr0,b1,b2,rv,0,r->rdx,r->r10,r->r8);
         if(rv!=EXEC_DONE) r->rax=rv;
     } else if(r->int_no<32){
         u64 cr2=0; if(r->int_no==14) __asm__ volatile("mov %%cr2,%0":"=r"(cr2));
