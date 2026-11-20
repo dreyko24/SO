@@ -1183,6 +1183,62 @@ int main(void){
               (unsigned long long)area,W*H);
       puts("VORTEX BUSQUEDA Y REDIBUJADO INCREMENTAL OK");
     }
+    /* La tienda se encuentra desde Actividades y ejecuta el instalador real. */
+    {
+      dock(0);
+      typestr("tienda");
+      gui_key('\n');
+      int top=win_top();
+      if(top<0||wins[top].type!=A_PROGS){
+          puts("FALLO Tienda de aplicaciones visible en Actividades");return 1;
+      }
+      Win *store=&wins[top];
+      typestr("mtpaint");
+      host_last_shell[0]=0;
+      click(store->x+store->w-59,store->y+TB+162);
+      if(host_last_shell[0]){
+          puts("FALLO Tienda ejecuta una instalación sin Debian");return 1;
+      }
+      FsNode *root=fs_root(), *usr=fs_find(root,"usr");
+      if(!usr)usr=fs_mkdir(root,"usr");
+      FsNode *usrbin=fs_find(usr,"bin"), *local=fs_find(usr,"local");
+      if(!usrbin)usrbin=fs_mkdir(usr,"bin");
+      if(!local)local=fs_mkdir(usr,"local");
+      FsNode *localbin=fs_find(local,"bin");
+      if(!localbin)localbin=fs_mkdir(local,"bin");
+      FsNode *installer=fs_create(localbin,"instalar","#",1);
+      FsNode *apt=fs_create(usrbin,"apt-get","#",1);
+      if(!installer||!apt){puts("FALLO preparar Tienda con Debian");return 1;}
+      click(store->x+store->w-59,store->y+TB+162);
+      if(strcmp(host_last_shell,"instalar mtpaint")){
+          puts("FALLO Tienda no entrega el paquete al instalador");return 1;
+      }
+      Win *terminal=&wins[win_top()];
+      if(terminal->type!=A_TERM){puts("FALLO Tienda no muestra el progreso de la instalación");return 1;}
+      click(terminal->x+terminal->w-20,terminal->y+TB/2);
+      FsNode *editor=fs_create(usrbin,"mtpaint","#",1);
+      if(!editor){puts("FALLO preparar mtPaint instalado");return 1;}
+      click(store->x+store->w-59,store->y+TB+162);
+      if(strcmp(host_last_shell,"abrir mtpaint")){
+          puts("FALLO Tienda no abre la aplicación instalada");return 1;
+      }
+      gui_key(27);
+      int tab=(store->w-2-32)/STORE_NCATS;
+      click(store->x+17+STORE_GRAPHICS*tab+tab/2,store->y+TB+73);
+      if(store_count(store)!=3||strcmp(PAPPS[store_item(store,0)].name,"mtPaint")){
+          puts("FALLO Tienda no filtra las aplicaciones gráficas");return 1;
+      }
+      shot("62_tienda_aplicaciones");
+      T+=110;gui_frame();
+      uint64_t pixels=gui_painted_pixels;
+      T+=110;gui_frame();
+      if(gui_painted_pixels!=pixels){
+          puts("FALLO Tienda redibuja el catálogo sin cambios");return 1;
+      }
+      fs_remove(editor);fs_remove(apt);fs_remove(installer);
+      closeall();
+      puts("VORTEX TIENDA: BUSCAR, INSTALAR Y ABRIR OK");
+    }
     click(W-26,14);
     if(!power_menu_open){puts("FALLO menu energia");return 1;}
     shot("25_menu_energia");

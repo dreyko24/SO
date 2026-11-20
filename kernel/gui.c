@@ -37,6 +37,9 @@ typedef struct {
     char grid[TH][TW]; int tr, tc; char in[256]; int inlen; FsNode *cwd;          /* terminal */
     int busy, bpid, esc, escp, escv[6], escq, savr, savc;                         /* terminal: programa pegado, secuencias ANSI */
     int xw, xh; uint32_t xnext; int xlx, xly;                                     /* pantalla X (servidor Xvfb) */
+    int store_cat, store_search_len;
+    char store_search[40];
+    uint32_t store_state;
     FsNode *dir, *sel, *last; int scroll; uint32_t lastclick;                    /* archivos / visor */
     FsNode *file;                                                                /* visor */
     VImage picture; int media_tab; int image_zoom; /* multimedia */
@@ -489,20 +492,64 @@ void gui_open_terminal(void){ open_app(A_TERM); dirty=1; }                    /*
 int  gui_screen_size(int *w,int *h){ if(!gw) return -1; *w=gw; *h=gh; return 0; }
 
 static Win *term_target;
-/* ---------------- Programas de Linux: lanzador de los programas reales instalados con 'instalar' ---------------- */
-typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; } PApp;
+/* ---------------- Tienda de aplicaciones Debian ---------------- */
+enum { STORE_ALL, STORE_MEDIA, STORE_GRAPHICS, STORE_WEB, STORE_OFFICE, STORE_UTIL, STORE_EXTERNAL };
+static const char *const STORE_CATS[]={"Todas","Multimedia","Graficos","Internet","Oficina","Utilidades"};
+enum { P_BRAVE, P_CHROME, P_OPERA, P_FIREFOX, P_CHROMIUM, P_LIBREOFFICE };
+typedef struct { const char *name, *desc, *cmd, *inst, *path; uint32_t col; int cat; } PApp;
 static const PApp PAPPS[]={
-    {"Brave","Navegador web","brave","instalar brave","/usr/bin/brave-browser",0xf97316},
-    {"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x4285f4},
-    {"Opera","Navegador web","opera","instalar opera","/usr/bin/opera",0xef4444},
-    {"Firefox","Navegador web","firefox-esr","instalar firefox","/usr/bin/firefox-esr",0xf59e0b},
-    {"Chromium","Navegador web","vortex-chromium","instalar chromium","/usr/bin/chromium",0x3b82f6},
-    {"LibreOffice","Textos, hojas y presentaciones","libreoffice","instalar libreoffice","/usr/bin/libreoffice",0x22c55e},
-    {"OpenOffice","Textos, hojas y presentaciones","openoffice","instalar openoffice","/opt/openoffice4/program/soffice",0x38bdf8},
-    {"Terminal X","Terminal con ventana de X","xterm","instalar xterm","/usr/bin/xterm",0x8a8fa8},
+    [P_BRAVE]={"Brave","Navegador web","brave","instalar brave","/usr/bin/brave-browser",0xc45125,STORE_EXTERNAL},
+    [P_CHROME]={"Google Chrome","Navegador web","chrome","instalar chrome","/usr/bin/google-chrome-stable",0x3c66ac,STORE_EXTERNAL},
+    [P_OPERA]={"Opera","Navegador web","opera","instalar opera","/usr/bin/opera",0xb63754,STORE_EXTERNAL},
+    [P_FIREFOX]={"Firefox","Navegador web","firefox-esr","instalar firefox","/usr/bin/firefox-esr",0xb05b26,STORE_WEB},
+    [P_CHROMIUM]={"Chromium","Navegador web","vortex-chromium","instalar chromium","/usr/bin/chromium",0x375fae,STORE_WEB},
+    [P_LIBREOFFICE]={"LibreOffice","Textos, hojas y diapositivas","libreoffice","instalar libreoffice","/usr/bin/libreoffice",0x327961,STORE_OFFICE},
+    {"OpenOffice","Textos, hojas y diapositivas","openoffice","instalar openoffice","/opt/openoffice4/program/soffice",0x2c678b,STORE_EXTERNAL},
+    {"Terminal X","Terminal con ventana X11","xterm","instalar xterm","/usr/bin/xterm",0x535a79,STORE_UTIL},
+    {"Audacious","Reproductor de musica","audacious","instalar audacious audacious-plugins","/usr/bin/audacious",0x8c479e,STORE_MEDIA},
+    {"mpv","Reproductor de video","mpv --vo=x11 --idle=yes --force-window=yes","instalar mpv","/usr/bin/mpv",0x7a4ba1,STORE_MEDIA},
+    {"mtPaint","Editor ligero de imagenes","mtpaint","instalar mtpaint","/usr/bin/mtpaint",0x326c89,STORE_GRAPHICS},
+    {"GIMP","Edicion de fotos e imagenes","gimp","instalar gimp","/usr/bin/gimp",0x5e6781,STORE_GRAPHICS},
+    {"Inkscape","Dibujo vectorial y archivos SVG","inkscape","instalar inkscape","/usr/bin/inkscape",0x4f5681,STORE_GRAPHICS},
 };
 #define NPAPPS ((int)(sizeof PAPPS/sizeof *PAPPS))
-static int papp_installed(int i){ FsNode *f=fs_resolve(fs_root(),PAPPS[i].path); return f&&!f->dir; }
+#define STORE_NCATS ((int)(sizeof STORE_CATS/sizeof *STORE_CATS))
+#define STORE_RUNTIME (1u<<31)
+#define STORE_TOP 130
+#define STORE_ROW 64
+_Static_assert(NPAPPS<31,"El estado de la tienda requiere un bit por programa");
+static int papp_exists(const char *path){ FsNode *f=fs_resolve(fs_root(),path); return f&&!f->dir; }
+static int papp_installed(int i){ return papp_exists(PAPPS[i].path); }
+static int app_match(const char *hay,const char *needle);
+static int store_matches(const Win *w,int item){
+    const PApp *app=&PAPPS[item];
+    return app->cat!=STORE_EXTERNAL&&(!w->store_cat||w->store_cat==app->cat)&&
+        (app_match(app->name,w->store_search)||app_match(app->desc,w->store_search));
+}
+static int store_count(const Win *w){
+    int n=0;
+    for(int i=0;i<NPAPPS;i++) n+=store_matches(w,i);
+    return n;
+}
+static int store_item(const Win *w,int row){
+    for(int i=0;i<NPAPPS;i++) if(store_matches(w,i)&&row--==0) return i;
+    return -1;
+}
+static int store_rows(int height){ return k_max(0,(height-STORE_TOP-46)/STORE_ROW); }
+static int store_scroll_max(const Win *w,int height){ return k_max(0,store_count(w)-store_rows(height)); }
+static uint32_t store_snapshot(void){
+    static uint32_t generation=UINT32_MAX, state;
+    uint32_t now=fs_gen();
+    if(generation!=now){
+        generation=now;
+        state=0;
+#if defined(__x86_64__)
+        if(papp_exists("/usr/local/bin/instalar")&&papp_exists("/usr/bin/apt-get")) state=STORE_RUNTIME;
+        for(int i=0;i<NPAPPS;i++) if(PAPPS[i].cat!=STORE_EXTERNAL&&papp_installed(i)) state|=1u<<i;
+#endif
+    }
+    return state;
+}
 static void render(void);
 static void run_in_terminal(const char *cmd){ Win *t=open_app(A_TERM); if(!t||t->busy) return; for(const char *q=cmd;*q;q++) gui_key((unsigned char)*q); gui_key('\n'); }
 void gui_open_installer(void){ run_in_terminal("instalar-sistema"); }
@@ -534,7 +581,7 @@ static void browser_google_query(const char *q,char *out,int max){
 /* Seleccionar un motor real que ya exista, no exigir Chromium como única
  * opción. El navegador nativo conserva su alcance HTTP/HTML reducido. */
 static int browser_modern_index(void){
-    static const int order[]={4,3,1,0,2}; /* Chromium, Firefox, Chrome, Brave, Opera */
+    static const int order[]={P_CHROMIUM,P_FIREFOX,P_CHROME,P_BRAVE,P_OPERA};
     for(int i=0;i<(int)(sizeof order/sizeof order[0]);i++)
         if(papp_installed(order[i]))return order[i];
     return -1;
@@ -585,7 +632,7 @@ static Win *open_app(int type){
     case A_NOTES:    w->w=520; w->h=400; set_title(w,"Notas"); break;
     case A_CALC:     w->w=272; w->h=TB+1+316; set_title(w,"Calculadora"); w->cdec=-1; break;
     case A_MONITOR:  w->w=420; w->h=TB+1+300; set_title(w,"Monitor del sistema"); break;
-    case A_PROGS:    w->w=560; w->h=TB+1+388; set_title(w,"Programas de Linux"); break;
+    case A_PROGS:    w->w=610; w->h=TB+1+504; set_title(w,"Tienda de aplicaciones"); break;
     case A_OFFICE:   w->w=540; w->h=TB+1+500; set_title(w,"LibreOffice - Oficina"); break;
     case A_ENCARTA:  w->w=770; w->h=575; w->enc_topic=-1;w->enc_qanswer=-1;
                      set_title(w,"Vortex Saber - Enciclopedia");break;
@@ -1449,6 +1496,7 @@ static void win_min_dimensions(const Win *w,int *minw,int *minh){
     case A_SNAKE:mw=SGW*SCELL+2;mh=TB+1+34+SGH*SCELL;break;
     case A_AUDIO:mw=520;mh=275;break;
     case A_OFFICE:mw=540;mh=TB+1+500;break;
+    case A_PROGS:mw=466;mh=340;break;
     case A_ENCARTA:mw=600;mh=480;break;
     case A_CALENDAR:mw=615;mh=530;break;
     case A_VIDEO:mw=480;mh=340;break;
@@ -2202,6 +2250,43 @@ static int notification_click(void){
     }
     return 1;
 }
+static void store_draw(Win *w,int x,int y,int width,int height){
+    const uint32_t state=store_snapshot();
+    w->store_state=state;
+    int tab=(width-32)/STORE_NCATS;
+    const char *search=w->store_search_len?w->store_search:"Buscar en la tienda";
+    while(*search&&text_ui_w(search)>width-166)search++;
+    rrect(x+16,y+12,width-140,35,8,C_TILE,255);
+    text_ui(x+29,y+20,search,w->store_search_len?C_TXT:C_DIM);
+    if(state&STORE_RUNTIME)button(x+width-112,y+12,96,35,"Actualizar",0);
+    for(int i=0;i<STORE_NCATS;i++){
+        int left=x+16+i*tab, selected=i==w->store_cat;
+        rrect(left,y+57,tab-5,32,8,selected?ACCENT:C_TILE,255);
+        text_ui(left+(tab-5-text_ui_w(STORE_CATS[i]))/2,y+64,STORE_CATS[i],selected?0xffffff:C_TXT);
+    }
+    text_ui(x+16,y+101,(state&STORE_RUNTIME)?"Catalogo de aplicaciones Debian":"Requiere Vortex de 64 bits con Debian",C_DIM);
+    int max=store_scroll_max(w,height), rows=store_rows(height);
+    if(w->scroll>max)w->scroll=max;
+    if(!store_count(w))text_ui(x+16,y+STORE_TOP+15,"Sin resultados",C_DIM);
+    for(int row=0;row<rows;row++){
+        int i=store_item(w,w->scroll+row);
+        if(i<0)break;
+        const PApp *app=&PAPPS[i];
+        int top=y+STORE_TOP+row*STORE_ROW;
+        int installed=(state&(1u<<i))!=0;
+        rrect(x+16,top,width-32,STORE_ROW-7,9,C_TILE,255);
+        rrect(x+28,top+11,36,36,8,app->col,255);
+        char letter[2]={app->name[0],0};
+        text_bold(x+42,top+20,letter,0xffffff);
+        text_ui_bold(x+78,top+8,app->name,C_TXT);
+        text_ui(x+78,top+31,app->desc,C_DIM);
+        if(installed||(state&STORE_RUNTIME))
+            button(x+width-108,top+15,79,28,installed?"Abrir":"Instalar",!installed);
+    }
+    if(w->scroll>0)button(x+16,y+height-39,88,27,"Anterior",0);
+    if(w->scroll<max)button(x+width-104,y+height-39,88,27,"Siguiente",0);
+}
+
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
     if(!w->fullscreen){
@@ -2486,23 +2571,11 @@ static void draw_window(int wi,int focused){
         if(w->page.title[0]){ char t[40]="Navegador - "; cat(t,40,w->page.title); k_strcpy(w->title,t,40); }
         if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
         break; }
-    case A_PROGS:{
-        text_bold(cx+16,cy+12,"Programas de Linux",C_TXT);
-        text(cx+16,cy+34,"Son los programas reales de Debian. Se instalan con: instalar <nombre>",C_DIM);
-        button(cx+cw-196,cy+8,86,24,"Pantalla X",0); button(cx+cw-100,cy+8,84,24,"Actualizar",1);
-        int cwid=(cw-48)/2;
-        for(int i=0;i<NPAPPS;i++){
-            int x=cx+16+(i%2)*(cwid+16), y=cy+64+(i/2)*76, inst=papp_installed(i);
-            rrect(x,y,cwid,66,13,C_TILE,255);
-            circle(x+32,y+33,17,PAPPS[i].col,255); { char ini[2]={PAPPS[i].name[0],0}; text_bold(x+27,y+25,ini,0xffffff); }
-            text_bold(x+60,y+8,PAPPS[i].name,C_TXT); text(x+60,y+26,PAPPS[i].desc,C_DIM);
-            text(x+60,y+44,inst?"Instalado - clic para abrir":"No instalado - clic para instalar",inst?0x7ee787:0xf59e0b);
-        }
-        break; }
+    case A_PROGS: store_draw(w,cx,cy,cw,ch); break;
     case A_OFFICE:{
         static const char *labels[]={"Writer - Documentos","Calc - Hojas de calculo","Impress - Presentaciones","Draw - Dibujos","Math - Formulas"};
         text_bold(cx+18,cy+18,"Suite LibreOffice",C_TXT);
-        int installed=papp_installed(5);
+        int installed=papp_installed(P_LIBREOFFICE);
         text(cx+18,cy+46,installed?"Instalado":"No instalado: requiere Vortex 64 + Debian",installed?0x7ee787:0xf59e0b);
         text(cx+18,cy+68,"Programas Debian ejecutados por el kernel propio.",C_DIM);
         for(int i=0;i<5;i++)button(cx+18,cy+102+i*54,cw-36,43,labels[i],installed);
@@ -2891,7 +2964,8 @@ static const AppMenuEntry APPMENU[]={
     {"Snake",A_SNAKE,0,MC_JUEGOS,6},
     {"Acerca de",A_ABOUT,0,MC_SISTEMA,15},
     {"Enciclopedia",A_ENCARTA,0,MC_EDUCACION,16},
-    {"Calendario",A_CALENDAR,0,MC_UTIL,17}
+    {"Calendario",A_CALENDAR,0,MC_UTIL,17},
+    {"Tienda",A_PROGS,0,MC_SISTEMA,18}
 };
 #define APPMENU_N ((int)(sizeof APPMENU/sizeof(APPMENU[0])))
 #define APPMENU_CATS ((int)(sizeof APP_CATS/sizeof APP_CATS[0]))
@@ -2923,8 +2997,13 @@ static int app_match(const char *hay,const char *needle){
     return 0;
 }
 static int appmenu_index(int nth){
-    for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&(app_match(APPMENU[i].label,app_search)||app_match(vortex_ui_translate(APPMENU[i].label,ui_lang),app_search))){
-        if(!nth)return i;nth--;
+    for(int i=0;i<APPMENU_N;i++){
+        /* En Todas ya se muestra el acceso de la cabecera. */
+        if(APPMENU[i].app==A_PROGS&&!app_search_len&&appmenu_cat==MC_ALL)continue;
+        if(!app_search_len&&appmenu_cat!=MC_ALL&&APPMENU[i].cat!=appmenu_cat)continue;
+        if(!app_match(APPMENU[i].label,app_search)&&!app_match(vortex_ui_translate(APPMENU[i].label,ui_lang),app_search))continue;
+        if(!nth)return i;
+        nth--;
     }
     return -1;
 }
@@ -2976,6 +3055,11 @@ static void appmenu_tile_icon(const AppMenuEntry *e,int x,int y){
         fill(x+15,y+6,4,10,0x9a8eb8,255);
         fill(x+32,y+6,4,10,0x9a8eb8,255);
         text_ui_bold(x+19,y+24,"14",0x2c2637);break;
+    case 18: /* tienda */
+        rrect(x+13,y+10,26,26,10,0xc998ed,255);
+        rrect(x+17,y+14,18,21,8,0x2a3052,255);
+        rrect(x+10,y+20,32,24,5,0xc998ed,255);
+        vortex_logo(x+17,y+24,18,255);break;
     case 16: /* Vortex Saber: libro ilustrado original */
         rrect(x+7,y+9,38,34,7,0xe95420,255);
         rrect(x+10,y+11,15,29,3,0xffe5ca,255);
@@ -3000,7 +3084,7 @@ static void appmenu_draw(void){
     rrect(x+13,y+14,40,40,13,0x532250,255);
     vortex_logo(x+18,y+20,31,255);
     text_big(x+64,y+17,"Actividades",C_TXT);
-    text(x+w-176,y+27,"Vortex Flow",C_DIM);
+    button(x+w-124,y+19,105,30,"Tienda",0);
     fill(x+156,y+69,w-174,1,0xffffff,26);
     rrect(x+9,y+66,143,h-78,14,light_theme?0xeae7ef:0x302a3c,255);
     rrect(x+164,y+67,w-187,35,14,light_theme?0xdad6e4:0x16131f,255);
@@ -3016,9 +3100,7 @@ static void appmenu_draw(void){
         text_ui_bold(x+29,row+10,APP_CATS[i],i==appmenu_cat?0xffffff:C_TXT);
     }
     int left=x+156,top=y+122,cw=(w-177)/4,rh=(h-134)/4;
-    int count=0;for(int i=0;i<APPMENU_N;i++)if((app_search_len||appmenu_cat==MC_ALL||APPMENU[i].cat==appmenu_cat)&&
-        (app_match(APPMENU[i].label,app_search)||app_match(vortex_ui_translate(APPMENU[i].label,ui_lang),app_search)))count++;
-    if(!count)text_ui(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
+    if(appmenu_index(0)<0)text_ui(x+186,y+190,"Sin resultados. Prueba otra busqueda.",C_DIM);
     for(int n=0;n<APPMENU_N;n++){
         int idx=appmenu_index(n);if(idx<0)break;
         int col=n%4,row=n/4,cx=left+col*cw,cy=top+row*rh;
@@ -3333,7 +3415,10 @@ void gui_frame(void){
          * Al restaurarla, el primer frame pendiente se pinta inmediatamente. */
         if(xw->minimized||xw->workspace!=active_workspace) continue;
         if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); }
-        else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){ xw->xnext=t+100; dwin(xw); }
+        else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){
+            xw->xnext=t+100;
+            if(xw->store_state!=store_snapshot())dwin(xw);
+        }
     } }
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
@@ -3495,6 +3580,51 @@ static void browser_click(Win *w,int lx,int ly,int cw,int ch){
         }
     }
     dirty=1;
+}
+static void store_step(Win *w,int delta,int height){
+    int next=k_max(0,k_min(w->scroll+delta,store_scroll_max(w,height)));
+    if(next==w->scroll)return;
+    w->scroll=next;dwin(w);
+}
+static void store_click(Win *w,int x,int y,int width,int height){
+    uint32_t state=store_snapshot();
+    if(in_rect(x,y,width-112,12,96,35)){
+        if(state&STORE_RUNTIME)run_in_terminal("actualizar");
+        return;
+    }
+    int tab=(width-32)/STORE_NCATS;
+    for(int i=0;i<STORE_NCATS;i++)if(in_rect(x,y,16+i*tab,57,tab-5,32)){
+        w->store_cat=i;w->scroll=0;dwin(w);return;
+    }
+    int rows=store_rows(height);
+    if(in_rect(x,y,16,height-39,88,27)){store_step(w,-rows,height);return;}
+    if(in_rect(x,y,width-104,height-39,88,27)){store_step(w,rows,height);return;}
+    if(y<STORE_TOP||y>=STORE_TOP+rows*STORE_ROW)return;
+    int row=(y-STORE_TOP)/STORE_ROW;
+    if(!in_rect(x,y,width-108,STORE_TOP+row*STORE_ROW+15,79,28))return;
+    int i=store_item(w,w->scroll+row);
+    if(i<0)return;
+    const PApp *app=&PAPPS[i];
+    if(state&(1u<<i)){
+        char cmd[100]="abrir ";
+        cat(cmd,sizeof cmd,app->cmd);
+        run_quiet(cmd);
+    }else if(state&STORE_RUNTIME)run_in_terminal(app->inst);
+}
+static void store_key(Win *w,int c){
+    int height=w->h-TB-1;
+    if(c==KEY_UP||c==KEY_DOWN){store_step(w,c==KEY_UP?-1:1,height);return;}
+    if(c==KEY_PGUP||c==KEY_PGDN){
+        int page=store_rows(height);
+        store_step(w,c==KEY_PGUP?-page:page,height);return;
+    }
+    if(c==27)w->store_search_len=0;
+    else if((c=='\b'||c==0x7f)&&w->store_search_len)w->store_search_len--;
+    else if(c>=32&&c<127&&w->store_search_len<(int)sizeof w->store_search-1)
+        w->store_search[w->store_search_len++]=(char)c;
+    else return;
+    w->store_search[w->store_search_len]=0;
+    w->scroll=0;dwin(w);
 }
 static void app_click(Win *w,int lx,int ly){
     int cx,cy,cw,ch; crect(w,&cx,&cy,&cw,&ch);
@@ -3659,19 +3789,14 @@ static void app_click(Win *w,int lx,int ly){
         static const char *cmd[]={"abrir libreoffice --writer","abrir libreoffice --calc",
                                   "abrir libreoffice --impress","abrir libreoffice --draw","abrir libreoffice --math"};
         for(int i=0;i<5;i++)if(in_rect(lx,ly,18,102+i*54,cw-36,43)){
-            if(papp_installed(5))run_quiet(cmd[i]);else run_in_terminal("instalar libreoffice");
+            if(papp_installed(P_LIBREOFFICE))run_quiet(cmd[i]);else run_in_terminal("instalar libreoffice");
             dwin(w);return;
         }
-        if(in_rect(lx,ly,18,413,214,32))run_in_terminal(papp_installed(5)?"actualizar":"instalar libreoffice");
+        if(in_rect(lx,ly,18,413,214,32))run_in_terminal(papp_installed(P_LIBREOFFICE)?"actualizar":"instalar libreoffice");
         else if(in_rect(lx,ly,244,413,240,32))run_quiet("pantalla");
         dwin(w);break;
     }
-    case A_PROGS:
-        if(in_rect(lx,ly,cw-196,8,86,24)){ run_quiet("pantalla"); dwin(w); }
-        else if(in_rect(lx,ly,cw-100,8,84,24)){ run_in_terminal("actualizar"); }
-        else { int cwid=(cw-48)/2; for(int i=0;i<NPAPPS;i++){ int x=16+(i%2)*(cwid+16), y=64+(i/2)*76;
-            if(in_rect(lx,ly,x,y,cwid,66)){ if(papp_installed(i)){ char c[80]="abrir "; cat(c,sizeof c,PAPPS[i].cmd); run_quiet(c); } else run_in_terminal(PAPPS[i].inst); dwin(w); break; } } }
-        break;
+    case A_PROGS: store_click(w,lx,ly,cw,ch); break;
     default: break;
     }
 }
@@ -3702,6 +3827,9 @@ static void on_press(void){
     }
     if(appmenu_open){
         int x,y,w,h;launcher_geom(&x,&y,&w,&h);
+        if(in_rect(mx,my,x+w-124,y+19,105,30)){
+            appmenu_open=0;launcher_damage();open_app(A_PROGS);return;
+        }
         if(in_rect(mx,my,x+164,y+67,w-187,35))return;/* campo buscar */
         int cat=appmenu_cat_hit(mx,my);
         if(cat>=0&&cat<APPMENU_CATS){
@@ -3928,6 +4056,9 @@ void gui_mouse_wheel(int steps){
         case A_BROWSER:
             maximum=k_max(0,w->page.content_h-(w->h-TB-1-38));
             increment=56;break;
+        case A_PROGS:
+            store_step(w,-steps,w->h-TB-1);
+            return;
         case A_VIEWER:
             if(w->picture.pixels){
                 int before=w->image_zoom?w->image_zoom:100;
@@ -4054,6 +4185,7 @@ void gui_key(int c){
         return; }
     Win *w=&wins[top];
     switch(w->type){
+    case A_PROGS: store_key(w,c); break;
     case A_TERM:
         if(w->busy){                                           /* hay un programa pegado a esta terminal: las teclas son suyas */
             if(c>=0x400||c<0x80) kproc_key(c);

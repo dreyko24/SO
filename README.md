@@ -117,7 +117,7 @@ datos privados en esta versión experimental.
 
 ## Limitaciones actuales (sin rodeos)
 - El navegador nativo muestra un subconjunto de HTML sobre HTTP.
-- Firefox ESR en Debian 12 mostró resultados públicos de Google y YouTube por HTTPS en el modo de 64 bits de Vortex, con QEMU. La carga de YouTube tardó varios minutos en la prueba. La reproducción de video y el aislamiento del navegador siguen pendientes de validación. [Pruebas y capturas](VORTEX_ESTADO.md#búsquedas-públicas-desde-firefox--20-de-noviembre-de-2026).
+- Firefox ESR en el modo de 64 bits mostró resultados públicos de Google y YouTube por HTTPS en QEMU. También pasó una prueba local de JavaScript, almacenamiento web, Fetch y reproducción de WebM VP8 sin audio. La carga de YouTube tardó varios minutos en la prueba de búsqueda. La reproducción con audio, las extensiones y el aislamiento del navegador siguen pendientes de validación. [Pruebas y capturas](VORTEX_ESTADO.md#búsquedas-públicas-desde-firefox--20-de-noviembre-de-2026).
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
 - El teclado y ratón nativos usan principalmente PS/2. USB Mass Storage **solo soporta UHCI con FAT32 o exFAT de lectura e instantánea**, no XHCI/EHCI ni NTFS; aun falta validar pendrives fisicos. Se admiten teclados US/Latam/ES.
@@ -138,6 +138,8 @@ sockets, epoll, mmap/memoria compartida, tty, /proc y /dev. Encima corre un **De
 
 **ISO con Debian** (necesita WSL con sudo): `VORTEX_DEBIAN=1 bash tools/build-iso.sh` (o el workflow *construir-iso* en GitHub Actions, que lo publica en Releases).
 Máquina virtual con **4 GB de RAM o más** (el sistema vive en memoria).
+
+Desde **Actividades → Tienda** puedes buscar aplicaciones del catálogo Debian, filtrar por categoría y usar **Instalar** o **Abrir**. La terminal muestra el progreso y los errores de instalación. Las aplicaciones que instales durante una sesión se guardan en RAM y se pierden al reiniciar.
 
 Comandos en español (en la terminal de vortex, también dentro de la ventana gráfica):
 `actualizar` · `instalar <nombre>` · `quitar <nombre>` · `mejorar` · `buscar <palabra>` · `mostrar <nombre>` · `paquetes` · `limpiar` · `ayuda-programas`

@@ -1,0 +1,14 @@
+# Diagnóstico manual con Debian y 4 GB. Instala los mismos paquetes que la tienda.
+@esperar 8
+20|red
+960|instalar mtpaint audacious audacious-plugins
+30|run dpkg-query -W mtpaint audacious audacious-plugins
+60|pantalla
+25|abrir mtpaint
+@esperar 55
+35|run xwininfo -root -tree
+25|abrir audacious
+@esperar 70
+35|run xwininfo -root -tree
+45|run tail -n 20 /tmp/vortex-web.log
+120|run curl -fsS -m 95 -T /var/lib/xvfb/Xvfb_screen0 http://10.0.2.2:18091/tienda.xwd
