@@ -13,6 +13,9 @@ on:
       - 'kernel64/user/**'
       - 'tools/mkrootfs.py'
       - 'tools/ci_drive.py'
+      - 'tools/ci/firefox/**'
+      - 'tools/xwd2png.py'
+      - 'tests/test_xwd2png.py'
       - 'kernel64/kernel64.c'
       - 'kernel64/proc64.c'
       - 'kernel64/sys_*.inc'
@@ -136,6 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 tests/test_xwd2png.py
           # QEMU -initrd NO descomprime los modulos .gz. En la ISO real los
           # entrega GRUB; para -kernel hay que extraerlos antes.
           gzip -dc build/iso/boot/debian.cpio.gz > /tmp/vortex-ci-debian.cpio
@@ -144,7 +148,9 @@ jobs:
           mkdir -p subidas
           python3 tools/ci_upload.py 18091 > vortex-web-upload.log 2>&1 &
           upload_pid=$!
-          trap 'kill "$upload_pid" 2>/dev/null || true' EXIT
+          python3 -m http.server 18092 --bind 127.0.0.1 --directory tools/ci/firefox > vortex-web-http.log 2>&1 &
+          page_pid=$!
+          trap 'kill "$upload_pid" "$page_pid" 2>/dev/null || true' EXIT
           sleep 1
           cat >/tmp/vortex-web-commands.txt <<'CMDS'
           60|pantalla
@@ -159,16 +165,15 @@ jobs:
           @esperar 3
           20|ejecutar /bin/cat /tmp/vortex-web.log
           20|rastro 1
-          30|abrir firefox-esr https://example.com/
+          30|abrir firefox-esr http://10.0.2.2:18092/
           @esperar 4
           20|ejecutar /bin/cat /tmp/vortex-web.log
           20|rastro 0
           20|procesos
-          # Firefox inicia muchos hilos: registrar ventanas temporales adicionales
-          # para distinguir un Web Content tardio de un fallo de arranque.
-          @esperar 8
+          # Dar tiempo al arranque de contenido y su composicion en QEMU TCG.
+          @esperar 50
           20|procesos
-          @esperar 8
+          @esperar 70
           20|procesos
           # Evidencia de GUI real: ventanas registradas en X11 y framebuffer
           # XWD nativo, obtenido del Xvfb que se ejecuta en Vortex.
@@ -204,26 +209,23 @@ jobs:
           fi
           # Convertir la memoria de video real en captura, si hubo transferencia.
           # Si falla, el artefacto conserva los registros sin declarar GUI OK.
-          if test -s subidas/vortex-firefox.xwd.gz; then
-            if gzip -dc subidas/vortex-firefox.xwd.gz > /tmp/vortex-firefox.xwd; then
-              python3 tools/xwd2png.py /tmp/vortex-firefox.xwd vortex-firefox.png || echo 'AVISO: Firefox sin render visible o conversion XWD fallida; la ISO NO valida navegacion'
-            fi
+          if test -s subidas/vortex-firefox.xwd.gz &&
+             gzip -dc subidas/vortex-firefox.xwd.gz > /tmp/vortex-firefox.xwd &&
+             python3 tools/xwd2png.py /tmp/vortex-firefox.xwd vortex-firefox.png --expect-rgb 26a69a &&
+             grep -Eq '"GET / HTTP/1\.[01]" 200' vortex-web-http.log &&
+             grep -Eq '0x[[:xdigit:]]+ "Vortex OS CI - prueba de renderizado[^"]*": \("Navigator" "firefox-esr"\)' vortex-web-smoke.log; then
+            echo 'Firefox ESR: pagina HTTP local renderizada en QEMU'
           else
-            echo 'AVISO: sin captura XWD; no se ha validado el render de Firefox'
-          fi
-          if grep -Eq '0x[[:xdigit:]]+ "[^"]*(Mozilla Firefox|Firefox)' vortex-web-smoke.log; then
-            echo 'Firefox: entrada X11 con titulo Firefox observada; comprobar dimensiones y pixeles antes de afirmar GUI'
-          else
-            echo 'AVISO: no se observo ventana X11 de Firefox; solo procesos y Xvfb'
+            echo 'AVISO: sin evidencia suficiente de contenido HTTP renderizado en Firefox'
           fi
           # Presencia real del padre y subprocesos (sin confundirlo con UI validada).
           grep -q '/usr/bin/firefox-esr' vortex-web-smoke.log || {
              echo 'FALLO: no se observo el ejecutable real de Firefox'; exit 1;
           }
-          if grep -q 'Web Content' vortex-web-smoke.log; then
-             echo 'Firefox: proceso Web Content observado, render/HTTPS todavia sin validar'
+          if grep -Eq ' (Web Content|Isolated Web Co)([[:space:]]|$)' vortex-web-smoke.log; then
+             echo 'Firefox: proceso de contenido observado'
           else
-             echo 'AVISO: Firefox padre e IPC presentes pero sin proceso Web Content tras tres muestras'
+             echo 'AVISO: sin proceso de contenido tras tres muestras'
           fi
           # xdpyinfo, xterm y Firefox muestran errores en el log, y
           # rastro 1 imprime las llamadas fallidas al puerto serie.
@@ -236,6 +238,7 @@ jobs:
           path: |
             vortex-web-smoke.log
             vortex-web-upload.log
+            vortex-web-http.log
             vortex-firefox.png
           if-no-files-found: ignore
           retention-days: 14

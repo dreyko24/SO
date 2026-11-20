@@ -136,7 +136,13 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 - El kernel Vortex interpreta `FUTEX_WAIT` como una espera relativa y `FUTEX_WAIT_BITSET` como un plazo absoluto según el reloj monotónico o `FUTEX_CLOCK_REALTIME`. Valida `timespec` y usa el contador de 64 bits del PIT para conservar los plazos largos. La resolución sigue siendo de 10 ms.
 - La regresión en `kernel64/user/multi.c` solicita esperas de 50 ms desde ring 3. En `ea664b1`, la espera absoluta monotónica duró 1.160 ms y la de tiempo real retornó de inmediato. Con la corrección, las variantes ELF estática, PIE estática y dinámica completaron `7/7` en QEMU. La prueba se ejecuta en `arranque-qemu`.
-- Una prueba local con Debian de `iso-latest` (`ea664b1`) y una espera mayor mostró la ventana de Firefox de 1152×720 con una pestaña vacía. La captura tomada tras aplicar la corrección mostró los mismos píxeles. El renderizado del contenido de una página, HTTPS y el aislamiento del navegador siguen pendientes de validación.
+- Con unos 55 segundos de espera, el kernel de referencia y el corregido dibujaron una ventana de Firefox de 1152×720 con los mismos píxeles de pestaña vacía.
+
+### Firefox ESR y renderizado HTTP local en QEMU — 20 de noviembre de 2026
+
+- En la ejecución local del paso de `vortex-iso-unica`, Firefox ESR solicitó la página de prueba al anfitrión por HTTP y Xvfb capturó su texto y fondo. La captura de 1280×800 contiene 656.850 píxeles del color de la página.
+- `vortex-iso-unica` sirve una página de prueba desde el anfitrión y registra la respuesta HTTP `200`, el título de su ventana X11 y el color de fondo en la captura. `tests/test_xwd2png.py` comprueba que una pestaña vacía o un solo píxel del color esperado queden por debajo del umbral.
+- En la prueba HTTPS externa, Vortex resolvió `example.com` después de DHCP. La conexión TCP al puerto 443 falló en el invitado y en el contenedor anfitrión. Firefox mostró un error de conexión. El acceso HTTPS externo, el sandbox del navegador y el funcionamiento en VMware siguen pendientes de validación.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
