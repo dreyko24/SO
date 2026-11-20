@@ -10,6 +10,9 @@ on:
       # Los cambios en el nucleo propio de 64 bits también deben generar
       # la ISO única; antes Makefile/proc64.c quedaban fuera del filtro.
       - 'kernel64/Makefile'
+      - 'kernel64/user/**'
+      - 'tools/mkrootfs.py'
+      - 'tools/ci_drive.py'
       - 'kernel64/kernel64.c'
       - 'kernel64/proc64.c'
       - 'kernel64/sys_*.inc'
@@ -41,7 +44,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   iso:
-    runs-on: ubuntu-latest
+    # Debe empaquetar glibc de ISA x86-64 base, no x86-64-v3 del runner 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
@@ -171,7 +175,10 @@ jobs:
              echo 'FALLO: Xvfb no se pudo ejecutar'; exit 1;
           }
           grep -q 'vortex-xinput: listo' vortex-web-smoke.log || {
-             echo 'FALLO: Xvfb no acepta clientes XTEST'; exit 1;
+             echo 'FALLO: puente de entrada XTEST no se inicio'; exit 1;
+          }
+          grep -q 'red, green, blue masks:' vortex-web-smoke.log || {
+             echo 'FALLO: xdpyinfo no verifico la comunicacion con X11'; exit 1;
           }
           # xdpyinfo, xterm y Firefox muestran errores en el log, y
           # rastro 1 imprime las llamadas fallidas al puerto serie.
