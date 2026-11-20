@@ -144,7 +144,7 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - En la ejecución local del paso de `vortex-iso-unica`, Firefox ESR solicitó la página de prueba al anfitrión por HTTP y Xvfb capturó su texto y fondo. La captura de 1280×800 contiene 656.850 píxeles del color de la página.
 - `vortex-iso-unica` sirve una página de prueba desde el anfitrión y registra la respuesta HTTP `200`, el título de su ventana X11 y el color de fondo en la captura. `tests/test_xwd2png.py` comprueba que una pestaña vacía o un solo píxel del color esperado queden por debajo del umbral.
 - En una prueba local adicional sobre `9a4e410`, `curl` y Firefox ESR negociaron TLS 1.3 con la CA de prueba. El servidor recibió ambos `GET` y Xvfb capturó el contenido HTTPS de Firefox, con 658.587 píxeles del color de la página en 1280×800.
-- En la prueba HTTPS externa, Vortex resolvió `example.com` después de DHCP. La conexión TCP al puerto 443 falló en el invitado y en el contenedor anfitrión. Firefox mostró un error de conexión. El acceso HTTPS externo, el sandbox del navegador y el funcionamiento en VMware siguen pendientes de validación.
+- La primera prueba con `example.com` resolvió DNS tras DHCP, pero el puerto 443 no respondió en el invitado ni en el contenedor anfitrión. La prueba posterior de Google con la red NAT de QEMU sí mostró resultados públicos por HTTPS. El sandbox del navegador y el funcionamiento en VMware siguen pendientes de validación.
 
 ### Recuperación de Xvfb en QEMU — 20 de noviembre de 2026
 
@@ -155,8 +155,8 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 ### Búsquedas públicas desde Firefox — 20 de noviembre de 2026
 
-- Firefox ESR ejecutado en el kernel Vortex de 64 bits mostró resultados reales de Google para `Vortex OS` en QEMU, sin cuenta. La prueba usó el proxy del entorno y una CA importada únicamente en el perfil desechable de la VM.
-- Se corrigió el recorte de búsquedas largas entre el navegador nativo y el lanzador de Firefox. `tools/hostgui.c` verifica la URL completa recibida por el lanzador. `tools/ci/firefox-internet.txt` prueba Google y YouTube desde la red de QEMU con dos perfiles nuevos, registra las respuestas HTTP y captura lo que Firefox dibuja.
+- Firefox ESR ejecutado en el kernel Vortex de 64 bits mostró resultados reales de Google para `Vortex OS` sin cuenta, primero con el proxy del entorno y después con la red NAT de QEMU en GitHub Actions. En esa segunda prueba, `curl` recibió HTTP 200 de Google y de la portada de YouTube. La segunda ventana de Firefox quedó en 1×1 y la captura seguía mostrando Google. [Diagnóstico y capturas](https://github.com/dreyko24/SO/actions/runs/44768622775).
+- Se corrigió el recorte de búsquedas largas entre el navegador nativo y el lanzador de Firefox. `tools/hostgui.c` verifica la URL completa recibida por el lanzador. `tools/ci/firefox-internet.txt` y `tools/ci/firefox-youtube.txt` abren un sitio por VM, registran la respuesta HTTP y capturan lo que Firefox dibuja.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
