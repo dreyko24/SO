@@ -13,6 +13,7 @@
 #include "fs.h"
 static uint32_t fs_now_fn(void);
 static uint64_t wall_sec(void);
+static uint64_t wall_time(uint64_t ticks,uint32_t *subsecond_ticks);
 #include "sock.h"
 #include "net.h"
 
@@ -217,7 +218,9 @@ static u64 futex_ticks(u64 seconds,u64 fraction){
     return seconds*100+fraction;
 }
 static u64 futex_realtime_ticks(u64 monotonic_ticks){
-    return futex_ticks(wall_sec(),monotonic_ticks%100);
+    u32 fraction;
+    u64 seconds=wall_time(monotonic_ticks,&fraction);
+    return futex_ticks(seconds,fraction);
 }
 
 static void poll_wakeups(void){
@@ -695,18 +698,20 @@ static u64 sys_wait4(u64 pid,u64 status_va,u64 options){
 static u64 sys_futex(u64 uaddr,u64 op,u64 val,u64 timeout_va){
     int cmd=(int)(op&0x7F);
     if(cmd==0||cmd==9){                                  /* WAIT / WAIT_BITSET */
+        int64_t ts[2];
+        if(timeout_va){
+            if(ucopy_from(CP,ts,timeout_va,sizeof ts)) return RET_ERR(EFAULT);
+            if(ts[0]<0||ts[1]<0||ts[1]>=1000000000) return RET_ERR(EINVAL);
+        }
         u32 cv; if(ucopy_from(CP,&cv,uaddr,4)) return RET_ERR(EFAULT);
         if(cv!=(u32)val) return RET_ERR(EAGAIN);
         u64 deadline=0;
         int realtime=cmd==9&&(op&0x100);                 /* FUTEX_CLOCK_REALTIME */
         if(timeout_va){
-            int64_t ts[2];
-            if(ucopy_from(CP,ts,timeout_va,sizeof ts)) return RET_ERR(EFAULT);
-            if(ts[0]<0||ts[1]<0||ts[1]>=1000000000) return RET_ERR(EINVAL);
             u64 now=kticks64();
             if(realtime) now=futex_realtime_ticks(now);
             /* WAIT recibe una duracion, WAIT_BITSET un instante absoluto.
-             * Redondear al siguiente tick evita vencer antes del plazo. */
+             * Redondear al siguiente tick conserva las fracciones del plazo. */
             deadline=futex_ticks((u64)ts[0],(ts[1]+9999999)/10000000);
             if(cmd==0) deadline=deadline>UINT64_MAX-now?UINT64_MAX:deadline+now;
             if(deadline<=now) return RET_ERR(ETIMEDOUT);
@@ -915,7 +920,7 @@ static u64 sys_dispatch(struct regs *r){
     case 84: return sys_unlinkat(AT_FDCWD_L,a1,0x200);
     case 87: return sys_unlinkat(AT_FDCWD_L,a1,0);
     case 217: return sys_getdents64(a1,a2,a3);
-    case 96: { u64 k=kticks64(), t[2]; t[0]=wall_sec(); t[1]=(k%100)*10000; return a1&&ucopy_to(CP,a1,t,16)?RET_ERR(EFAULT):0; }
+    case 96: { u32 fraction; u64 t[2]; t[0]=wall_time(kticks64(),&fraction); t[1]=fraction*10000ull; return a1&&ucopy_to(CP,a1,t,16)?RET_ERR(EFAULT):0; }
     case 99: { u8 si[112]; memset(si,0,sizeof si); *(u64*)si=kticks()/100; *(u64*)(si+32)=256ull<<20; *(u64*)(si+40)=128ull<<20; *(u32*)(si+104)=1; return ucopy_to(CP,a1,si,sizeof si)?RET_ERR(EFAULT):0; }
     case 102: case 104: case 107: case 108: case 112: case 105: case 106: return 0;
     case 110: return (u64)cur->ppid;

@@ -48,9 +48,11 @@ static int futex_deadline_test(void){
         }
     }
     struct timespec invalid={0,1000000000};
-    if(syscall(SYS_futex,&word,FUTEX_WAIT_PRIVATE,0,&invalid,NULL,0)!=-1 || errno!=EINVAL){
-        SAY("futex: FALLO al validar tv_nsec\n");
-        ok=0;
+    for(word=0;word<=1;word++){
+        if(syscall(SYS_futex,&word,FUTEX_WAIT_PRIVATE,0,&invalid,NULL,0)!=-1 || errno!=EINVAL){
+            SAY("futex: FALLO al validar tv_nsec con palabra=%d\n",word);
+            ok=0;
+        }
     }
     sigaction(SIGALRM,&saved,NULL);
     if(ok) SAY("futex: plazos relativos y absolutos OK\n");

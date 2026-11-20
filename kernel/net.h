@@ -7,6 +7,7 @@ void  net_poll(void);                 /* hay que llamarla seguido (bucle princip
 uint32_t net_mmio_addr(void);         /* direccion MMIO de la e1000 (0 si no hay) */
 int   net_state(void);                /* 0 sin tarjeta, 1 configurando (DHCP), 2 lista */
 uint64_t net_utc_epoch(void); /* NTP UTC si disponible, RTC de respaldo */
+int net_ntp_sample(uint32_t ticks,uint64_t *seconds,uint32_t *subsecond_ticks); /* 0 sin sincronizacion */
 int net_time_synced(void);
 void  net_info(char *out, int max);   /* resumen de una linea: tarjeta, IP... */
 int   net_cmd(char *line);            /* 'red' 'ping' 'dns' 'wget'; devuelve 1 si el comando era de red */

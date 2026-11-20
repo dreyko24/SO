@@ -136,6 +136,7 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 - El kernel Vortex interpreta `FUTEX_WAIT` como una espera relativa y `FUTEX_WAIT_BITSET` como un plazo absoluto según el reloj monotónico o `FUTEX_CLOCK_REALTIME`. Valida `timespec` y usa el contador de 64 bits del PIT para conservar los plazos largos. La resolución sigue siendo de 10 ms.
 - La regresión en `kernel64/user/multi.c` solicita esperas de 50 ms desde ring 3. En `ea664b1`, la espera absoluta monotónica duró 1.160 ms y la de tiempo real retornó de inmediato. Con la corrección, las variantes ELF estática, PIE estática y dinámica completaron `7/7` en QEMU. La prueba se ejecuta en `arranque-qemu`.
+- `clock_gettime`, `gettimeofday` y los plazos de `FUTEX_CLOCK_REALTIME` reciben los segundos y su fracción de la misma muestra. La prueba de red sincroniza NTP entre dos segundos del PIT y comprueba ambas transiciones para reproducir el desfase anterior. La regresión en ring 3 comprueba que un `timespec` inválido reciba `EINVAL` incluso si la palabra futex ya cambió.
 - Con unos 55 segundos de espera, el kernel de referencia y el corregido dibujaron una ventana de Firefox de 1152×720 con los mismos píxeles de pestaña vacía.
 
 ### Firefox ESR y renderizado HTTP local en QEMU — 20 de noviembre de 2026

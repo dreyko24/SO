@@ -499,9 +499,16 @@ static void ntp_tick(void){
     }
 #endif
 }
+int net_ntp_sample(uint32_t ticks,uint64_t *seconds,uint32_t *subsecond_ticks){
+    if(!ntp.valid) return 0;
+    u32 elapsed=ticks-ntp.synced_at;
+    *seconds=ntp.epoch+elapsed/100u;
+    if(subsecond_ticks) *subsecond_ticks=elapsed%100u;
+    return 1;
+}
 uint64_t net_utc_epoch(void){
-    if(!ntp.valid) return krtc_epoch();
-    return ntp.epoch+(uint64_t)((u32)(kticks()-ntp.synced_at)/100u);
+    uint64_t seconds;
+    return net_ntp_sample(kticks(),&seconds,0)?seconds:krtc_epoch();
 }
 int net_time_synced(void){ return ntp.valid; }
 

@@ -7,6 +7,14 @@ static void check(int ok,const char *msg){
     if(!ok){ fprintf(stderr,"NTP STACK FAIL: %s\n",msg); errors++; }
 }
 static void put32(uint8_t *p,uint32_t n){p[0]=n>>24;p[1]=n>>16;p[2]=n>>8;p[3]=n;}
+static void check_sample(uint32_t ticks,uint64_t seconds,uint32_t fraction){
+    uint64_t actual_seconds;
+    uint32_t actual_fraction;
+    T=ticks;
+    check(net_ntp_sample(ticks,&actual_seconds,&actual_fraction) &&
+          actual_seconds==seconds && actual_fraction==fraction,
+          "segundos y fraccion conservan la fase de la sincronizacion NTP");
+}
 int main(void){
     T=1000;
     check(!net_time_synced(),"el arranque usa reloj RTC");
@@ -22,10 +30,15 @@ int main(void){
     check(!ntp.valid,"rechazar puerto de origen no NTP");
     p[24]^=1; ntp_in(ntp.server,123,p,48);
     check(!ntp.valid,"rechazar respuesta sin coincidencia de solicitud");
+    T=1025;
     p[24]^=1; ntp_in(ntp.server,123,p,48);
     check(net_time_synced(),"respuesta valida activa NTP");
     check(net_utc_epoch()==1794650420ull,"UTC NTP sustituye hora RTC");
-    T+=250; check(net_utc_epoch()==1794650422ull,"reloj monotono suma segundos");
+    check_sample(1099,1794650420ull,74);
+    check_sample(1100,1794650420ull,75);
+    check_sample(1124,1794650420ull,99);
+    check_sample(1125,1794650421ull,0);
+    T=1275; check(net_utc_epoch()==1794650422ull,"reloj monotono suma segundos");
     check(ntp.phase==0 && ntp.next>T,"reprograma la sincronizacion");
     char request[]="hora sincronizar", status[]="fecha";
     check(net_cmd(status)==1,"comando fecha disponible en el shell");

@@ -5,16 +5,19 @@
  * Una llamada explicita a clock_settime conserva prioridad hasta reiniciar. */
 extern u64 krtc_epoch(void);
 static u64 wall_base; static int wall_ok, wall_manual;
-static uint64_t wall_sec(void){
-    u64 up=kticks64()/100;
+static u64 wall_time(u64 ticks,u32 *subsecond_ticks){
+    u64 up=ticks/100, seconds;
     if(!wall_ok){ wall_ok=1; wall_base=krtc_epoch(); if(wall_base>up) wall_base-=up; }
-    if(!wall_manual && net_time_synced()) return net_utc_epoch();
+    if(!wall_manual && net_ntp_sample((u32)ticks,&seconds,subsecond_ticks)) return seconds;
+    if(subsecond_ticks) *subsecond_ticks=(u32)(ticks%100);
     return wall_base+up;
 }
+static u64 wall_sec(void){ return wall_time(kticks64(),0); }
 static void wall_set(u64 sec){ wall_ok=1; wall_manual=1; wall_base=sec-kticks64()/100; }
 static u64 sys_clock_gettime(u64 clk,u64 va){
-    u64 k=kticks64(), t[2]; t[1]=(k%100)*10000000ull;
-    t[0]=(clk==0||clk==5)?wall_sec():k/100;                        /* 0 y 5 = hora real; el resto = tiempo desde el arranque */
+    u64 k=kticks64(), t[2]; u32 fraction=(u32)(k%100);
+    t[0]=(clk==0||clk==5)?wall_time(k,&fraction):k/100;             /* 0 y 5 = hora real; el resto = tiempo desde el arranque */
+    t[1]=fraction*10000000ull;
     return ucopy_to(CP,va,t,16)?RET_ERR(EFAULT):0;
 }
 static u64 sys_settime(u64 clk,u64 va){ u64 t[2]; if(clk!=0) return RET_ERR(EINVAL); if(ucopy_from(CP,t,va,16)) return RET_ERR(EFAULT); wall_set(t[0]); return 0; }
