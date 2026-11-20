@@ -40,12 +40,14 @@ static u8 netbuf[16384];
 #define MSG_DONTWAIT 0x40
 #define MSG_NOSIGNAL 0x4000
 #define MSG_PEEK 0x2
+#define MSG_CTRUNC 0x8
+#define MSG_CMSG_CLOEXEC 0x40000000
 
 static u64 sock_recv_fd(u64 fdn,u64 buf,u64 n,u64 flags,u64 addr,u64 alen){
     FD *f=&CP->fd[fdn]; int s=f->aux; int nb=(f->flags&0x800)||(flags&MSG_DONTWAIT);
     if(n>sizeof netbuf) n=sizeof netbuf;
     for(;;){
-        u32 ip=0; u16 port=0; int r=sock_recv(s,netbuf,(int)n,(flags&MSG_PEEK)!=0,&ip,&port);
+        u32 ip=0; u16 port=0; int r=sock_recv(s,netbuf,(int)n,(flags&MSG_PEEK)!=0,&ip,&port,0);
         if(r>=0){
             if(r&&ucopy_to(CP,buf,netbuf,(u64)r)) return RET_ERR(EFAULT);
             if(addr){ char up[4]; int fam=sock_family(s); (void)up; if(fam==2) put_sockaddr(addr,alen,2,ip,port,"",0); else put_sockaddr(addr,alen,1,0,0,"",0); }
@@ -62,13 +64,13 @@ static u64 sock_send_fd(u64 fdn,u64 buf,u64 n,u64 flags,int have_dst,u32 ip,u16 
     if(sock_type(s)==SK_DGRAM){
         if(n>sizeof netbuf) n=sizeof netbuf;
         if(n&&ucopy_from(CP,netbuf,buf,n)) return RET_ERR(EFAULT);
-        int r=sock_send(s,netbuf,(int)n,ip,port,up,pl,have_dst); return r<0?RET_ERR(-r):(u64)r;
+        int r=sock_send(s,netbuf,(int)n,ip,port,up,pl,have_dst,0); return r<0?RET_ERR(-r):(u64)r;
     }
-    if(!n) { int r=sock_send(s,netbuf,0,0,0,0,0,0); return r<0?RET_ERR(-r):0; }
+    if(!n) { int r=sock_send(s,netbuf,0,0,0,0,0,0,0); return r<0?RET_ERR(-r):0; }
     while(done<n){
         u64 c=n-done; if(c>sizeof netbuf) c=sizeof netbuf;
         if(ucopy_from(CP,netbuf,buf+done,c)) return done?done:RET_ERR(EFAULT);
-        int r=sock_send(s,netbuf,(int)c,0,0,0,0,0);
+        int r=sock_send(s,netbuf,(int)c,0,0,0,0,0,0);
         if(r>0){ done+=(u64)r; if((u64)r<c&&nb) break; continue; }
         if(r==-EAGAIN){
             if(nb) return done?done:RET_ERR(EAGAIN);
@@ -165,61 +167,164 @@ static u64 sys_getsockopt(u64 fdn,u64 level,u64 opt,u64 val,u64 lenva){
 }
 static u64 sys_shutdown(u64 fdn,u64 how){ int s=fd_sock(fdn); if(s<0) return RET_ERR(fdn<MAXFD&&CP->fd[fdn].type?ENOTSOCK:EBADF); int r=sock_shutdown(s,(int)how); return r<0?RET_ERR(-r):0; }
 
-/* descriptores pasados por AF_UNIX (SCM_RIGHTS): se guardan junto al socket que los recibira */
-static struct { int sock; FD fd; } scm_q[128];
-static u64 sys_sendmsg(u64 fdn,u64 msgva,u64 flags){
-    int s=fd_sock(fdn); if(s<0) return RET_ERR(fdn<MAXFD&&CP->fd[fdn].type?ENOTSOCK:EBADF);
-    u64 m[7]; if(ucopy_from(CP,m,msgva,56)) return RET_ERR(EFAULT);
-    u64 name=m[0]; u32 namelen=(u32)m[1]; u64 iov=m[2], iovlen=m[3], ctl=m[4], ctllen=m[5];
-    u64 tot=0; if(iovlen>32) return RET_ERR(EINVAL);
-    for(u64 i=0;i<iovlen;i++){ u64 v[2]; if(ucopy_from(CP,v,iov+i*16,16)) return RET_ERR(EFAULT); if(tot+v[1]>sizeof netbuf) v[1]=sizeof netbuf-tot; if(v[1]&&ucopy_from(CP,netbuf+tot,v[0],v[1])) return RET_ERR(EFAULT); tot+=v[1]; }
-    if(ctl&&ctllen>=16&&sock_family(s)==1){
-        u8 cb[256]; u64 cl=ctllen>sizeof cb?sizeof cb:ctllen; if(ucopy_from(CP,cb,ctl,cl)) return RET_ERR(EFAULT);
-        for(u64 off=0;off+16<=cl;){ u64 len=*(u64*)(cb+off); int lvl=*(int*)(cb+off+8), typ=*(int*)(cb+off+12); if(len<16||off+len>cl) break;
-            if(lvl==1&&typ==1){ int nfd=(int)((len-16)/4); int peer=sock_peer(s);
-                for(int k=0;k<nfd;k++){ int fx=*(int*)(cb+off+16+k*4); if(fx<0||fx>=MAXFD||!CP->fd[fx].type) return RET_ERR(EBADF);
-                    int slot=-1; for(int q=0;q<128;q++) if(!scm_q[q].fd.type){ slot=q; break; } if(slot<0) return RET_ERR(ENOMEM);
-                    fd_dup_into(&scm_q[slot].fd,&CP->fd[fx]); scm_q[slot].sock=peer>=0?peer:s; } }
-            off+=(len+7)&~7ull; } }
-    u32 ip=0; u16 port=0; char up[108]; int pl=0, fam=0, have=0;
-    if(name&&namelen){ int r=get_sockaddr(name,namelen,&fam,&ip,&port,up,&pl); if(r<0) return RET_ERR(-r); have=1; }
-    FD *f=&CP->fd[fdn]; int nb=(f->flags&0x800)||(flags&MSG_DONTWAIT);
-    for(;;){
-        int r=sock_send(s,netbuf,(int)tot,ip,port,up,pl,have);
-        if(r>=0) return (u64)r;
-        if(r==-EPIPE){ if(!(flags&MSG_NOSIGNAL)) sig_self(13); return RET_ERR(EPIPE); }
-        if(r!=-EAGAIN) return RET_ERR(-r);
-        if(nb) return RET_ERR(EAGAIN);
-        if(INTR()) return RET_ERR(EINTR);
-        int b=wait_fd((int)fdn,POUT,0); if(b==1) return RET_ERR(EINTR);
-    }
+/* ---------- descriptores en mensajes AF_UNIX (SCM_RIGHTS) ---------- */
+#define SCM_MAX_FD 253
+typedef struct { u64 len; int level, type; } Cmsg;
+typedef struct {
+    SockRights link;
+    int count;
+    FD fds[];
+} UnixRights;
+
+void sock_rights_release(SockRights *link){
+    if(!link) return;
+    UnixRights *rights=(UnixRights*)link;
+    for(int i=0;i<rights->count;i++) fd_close(&rights->fds[i]);
+    kfree(rights);
 }
-static u64 sys_recvmsg(u64 fdn,u64 msgva,u64 flags){
-    int s=fd_sock(fdn); if(s<0) return RET_ERR(fdn<MAXFD&&CP->fd[fdn].type?ENOTSOCK:EBADF);
-    u64 m[7]; if(ucopy_from(CP,m,msgva,56)) return RET_ERR(EFAULT);
-    u64 iov=m[2], iovlen=m[3], ctl=m[4], ctllen=m[5]; if(iovlen>32) return RET_ERR(EINVAL);
-    u64 cap=0; for(u64 i=0;i<iovlen;i++){ u64 v[2]; if(ucopy_from(CP,v,iov+i*16,16)) return RET_ERR(EFAULT); cap+=v[1]; }
-    if(cap>sizeof netbuf) cap=sizeof netbuf;
-    FD *f=&CP->fd[fdn]; int nb=(f->flags&0x800)||(flags&MSG_DONTWAIT); int r;
-    u32 ip=0; u16 port=0;
+
+static int scm_from_user(u64 addr,u64 size,UnixRights **out){
+    int fds[SCM_MAX_FD], count=0;
+    for(u64 pos=0;pos<size&&size-pos>=sizeof(Cmsg);){
+        Cmsg header;
+        if(ucopy_from(CP,&header,addr+pos,sizeof header)) return -EFAULT;
+        if(header.len<sizeof header||header.len>size-pos) return -EINVAL;
+        if(header.level==1&&header.type==1){
+            u64 n=(header.len-sizeof header)/sizeof(int);
+            if(n>(u64)(SCM_MAX_FD-count)) return -EINVAL;
+            if(n&&ucopy_from(CP,fds+count,addr+pos+sizeof header,n*sizeof(int))) return -EFAULT;
+            count+=(int)n;
+        }
+        u64 advance=(header.len+7)&~7ull;
+        if(advance<header.len||advance>size-pos) break;
+        pos+=advance;
+    }
+    if(!count) return 0;
+    for(int i=0;i<count;i++)
+        if(fds[i]<0||fds[i]>=MAXFD||!CP->fd[fds[i]].type) return -EBADF;
+    UnixRights *rights=kmalloc(sizeof *rights+(size_t)count*sizeof(FD));
+    if(!rights) return -ENOMEM;
+    rights->count=count;
+    for(int i=0;i<count;i++) fd_dup_into(&rights->fds[i],&CP->fd[fds[i]]);
+    *out=rights;
+    return 0;
+}
+
+static int scm_to_user(SockRights *link,u64 addr,u64 size,u64 msgva,u64 flags){
+    struct { Cmsg header; int fds[SCM_MAX_FD]; } control={0};
+    UnixRights *rights=(UnixRights*)link;
+    int count=rights?rights->count:0, installed=0;
+    u64 limit=addr&&size>=sizeof(Cmsg)?(size-sizeof(Cmsg))/sizeof(int):0;
+    while(installed<count&&(u64)installed<limit){
+        int fd=fd_alloc(CP,0);
+        if(fd<0) break;
+        fd_dup_into(&CP->fd[fd],&rights->fds[installed]);
+        CP->fd[fd].cloexec=(flags&MSG_CMSG_CLOEXEC)!=0;
+        control.fds[installed++]=fd;
+    }
+
+    u64 used=0;
+    if(installed){
+        control.header=(Cmsg){sizeof(Cmsg)+(u64)installed*sizeof(int),1,1};
+        used=(control.header.len+7)&~7ull;
+        if(used>size) used=size;
+    }
+    u32 result_flags=installed<count?MSG_CTRUNC:0;
+    if((used&&ucopy_to(CP,addr,&control,control.header.len))||
+       ucopy_to(CP,msgva+40,&used,8)||ucopy_to(CP,msgva+48,&result_flags,4)){
+        for(int i=0;i<installed;i++) fd_close(&CP->fd[control.fds[i]]);
+        return -EFAULT;
+    }
+    return 0;
+}
+
+static u64 sys_sendmsg(u64 fdn,u64 msgva,u64 flags){
+    int s=fd_sock(fdn);
+    if(s<0) return RET_ERR(fdn<MAXFD&&CP->fd[fdn].type?ENOTSOCK:EBADF);
+    u64 m[7], vec[32][2], total=0;
+    if(ucopy_from(CP,m,msgva,sizeof m)) return RET_ERR(EFAULT);
+    if(m[3]>32) return RET_ERR(EINVAL);
+    for(u64 i=0;i<m[3];i++){
+        if(ucopy_from(CP,vec[i],m[2]+i*16,16)) return RET_ERR(EFAULT);
+        if(vec[i][1]>sizeof netbuf-total) vec[i][1]=sizeof netbuf-total;
+        total+=vec[i][1];
+    }
+
+    u32 ip=0; u16 port=0; char up[108]; int pl=0, fam=0;
+    int have=m[0]&&(u32)m[1];
+    if(have){
+        int err=get_sockaddr(m[0],(u32)m[1],&fam,&ip,&port,up,&pl);
+        if(err<0) return RET_ERR(-err);
+    }
+    UnixRights *rights=0;
+    if(m[4]&&m[5]&&sock_family(s)==SK_AF_UNIX){
+        int err=scm_from_user(m[4],m[5],&rights);
+        if(err<0) return RET_ERR(-err);
+    }
+    FD *f=&CP->fd[fdn];
+    int nb=(f->flags&0x800)||(flags&MSG_DONTWAIT);
+    u32 timeout=f->tmo_s;
+    int result;
+    sock_ref(s);
     for(;;){
-        r=sock_recv(s,netbuf,(int)cap,(flags&MSG_PEEK)!=0,&ip,&port);
-        if(r>=0) break;
-        if(r!=-EAGAIN) return RET_ERR(-r);
-        if(nb) return RET_ERR(EAGAIN);
-        if(INTR()) return RET_ERR(EINTR);
-        int b=wait_fd((int)fdn,PIN,f->tmo_r); if(b==1) return RET_ERR(EINTR); if(b==2) return RET_ERR(EAGAIN);
+        if(fd_sock(fdn)!=s){ result=-EBADF; break; }
+        u64 pos=0;
+        for(u64 i=0;i<m[3];i++){
+            if(vec[i][1]&&ucopy_from(CP,netbuf+pos,vec[i][0],vec[i][1])) break;
+            pos+=vec[i][1];
+        }
+        if(pos!=total){ result=-EFAULT; break; }
+        result=sock_send(s,netbuf,(int)total,ip,port,up,pl,have,rights?&rights->link:0);
+        if(result!=-EAGAIN||nb) break;
+        if(INTR()){ result=-EINTR; break; }
+        int wait=wait_fd((int)fdn,POUT,timeout);
+        if(wait){ result=wait==1?-EINTR:-EAGAIN; break; }
     }
-    u64 off=0; for(u64 i=0;i<iovlen&&off<(u64)r;i++){ u64 v[2]; ucopy_from(CP,v,iov+i*16,16); u64 c=v[1]; if(c>(u64)r-off) c=(u64)r-off; if(c&&ucopy_to(CP,v[0],netbuf+off,c)) return RET_ERR(EFAULT); off+=c; }
-    if(m[0]&&sock_family(s)==2) put_sockaddr(m[0],msgva+8,2,ip,port,"",0);
-    u64 cused=0;
-    if(ctl&&ctllen>=16){
-        int got[8],ng=0; for(int q=0;q<128&&ng<8;q++) if(scm_q[q].fd.type&&scm_q[q].sock==s){ int nf=fd_alloc(CP,0); if(nf<0) break; fd_dup_into(&CP->fd[nf],&scm_q[q].fd); CP->fd[nf].cloexec=(flags&0x40000000)?1:0; fd_close(&scm_q[q].fd); scm_q[q].sock=0; got[ng++]=nf; }
-        if(ng&&16+4*(u64)ng<=ctllen){ u8 cb[64]; memset(cb,0,sizeof cb); *(u64*)cb=16+4*(u64)ng; *(int*)(cb+8)=1; *(int*)(cb+12)=1; for(int k=0;k<ng;k++) *(int*)(cb+16+k*4)=got[k];
-            cused=(16+4*(u64)ng+7)&~7ull; if(ucopy_to(CP,ctl,cb,cused)) return RET_ERR(EFAULT); }
+    if(rights&&(result<0||(result==0&&sock_type(s)!=SK_DGRAM))) sock_rights_release(&rights->link);
+    sock_unref(s);
+    if(result==-EPIPE&&!(flags&MSG_NOSIGNAL)) sig_self(13);
+    return result<0?RET_ERR(-result):(u64)result;
+}
+
+static u64 sys_recvmsg(u64 fdn,u64 msgva,u64 flags){
+    int s=fd_sock(fdn);
+    if(s<0) return RET_ERR(fdn<MAXFD&&CP->fd[fdn].type?ENOTSOCK:EBADF);
+    u64 m[7], vec[32][2], cap=0;
+    if(ucopy_from(CP,m,msgva,sizeof m)) return RET_ERR(EFAULT);
+    if(m[3]>32) return RET_ERR(EINVAL);
+    for(u64 i=0;i<m[3];i++){
+        if(ucopy_from(CP,vec[i],m[2]+i*16,16)) return RET_ERR(EFAULT);
+        if(vec[i][1]>sizeof netbuf-cap) vec[i][1]=sizeof netbuf-cap;
+        cap+=vec[i][1];
     }
-    u64 nm[2]={cused,0}; ucopy_to(CP,msgva+40,&nm[0],8); u32 z=0; ucopy_to(CP,msgva+48,&z,4);
-    return (u64)r;
+    FD *f=&CP->fd[fdn];
+    int nb=(f->flags&0x800)||(flags&MSG_DONTWAIT), peek=(flags&MSG_PEEK)!=0;
+    u32 timeout=f->tmo_r;
+    int r;
+    SockRights *rights=0;
+    u32 ip=0; u16 port=0;
+    sock_ref(s);
+    for(;;){
+        if(fd_sock(fdn)!=s){ r=-EBADF; break; }
+        r=sock_recv(s,netbuf,(int)cap,peek,&ip,&port,&rights);
+        if(r!=-EAGAIN||nb) break;
+        if(INTR()){ r=-EINTR; break; }
+        int wait=wait_fd((int)fdn,PIN,timeout);
+        if(wait){ r=wait==1?-EINTR:-EAGAIN; break; }
+    }
+    if(r<0){ sock_unref(s); return RET_ERR(-r); }
+    int err=0;
+    for(u64 i=0,pos=0;i<m[3]&&pos<(u64)r;i++){
+        u64 n=vec[i][1];
+        if(n>(u64)r-pos) n=(u64)r-pos;
+        if(n&&ucopy_to(CP,vec[i][0],netbuf+pos,n)){ err=-EFAULT; break; }
+        pos+=n;
+    }
+    if(!err&&m[0]&&sock_family(s)==SK_AF_INET) err=put_sockaddr(m[0],msgva+8,2,ip,port,"",0);
+    if(!err) err=scm_to_user(rights,m[4],m[5],msgva,flags);
+    if(!peek) sock_rights_release(rights);
+    sock_unref(s);
+    return err<0?RET_ERR(-err):(u64)r;
 }
 
 /* ---------- eventfd / timerfd ---------- */

@@ -14,6 +14,12 @@
 #define SK_POLLHUP   0x010
 #define SK_POLLRDHUP 0x2000
 
+typedef struct SockRights {
+    struct SockRights *next;
+    uint64_t first, end;
+} SockRights;
+
+void sock_rights_release(SockRights *rights);
 void sock_init(void);
 int  sock_create(int family,int type);                                   /* indice de socket o -errno */
 int  sock_bind(int s,uint32_t ip,uint16_t port,const char *upath,int plen);
@@ -21,8 +27,10 @@ int  sock_listen(int s,int backlog);
 int  sock_connect(int s,uint32_t ip,uint16_t port,const char *upath,int plen);   /* 0 hecho, -115 en curso (esperar sock_connecting), otro <0 error */
 int  sock_connecting(int s);
 int  sock_accept(int s,uint32_t *ip,uint16_t *port);                      /* indice nuevo o -11 si no hay nadie esperando */
-int  sock_send(int s,const void *d,int n,uint32_t ip,uint16_t port,const char *upath,int plen,int have_dst);
-int  sock_recv(int s,void *d,int n,int peek,uint32_t *ip,uint16_t *port);
+/* Un envío con datos entrega los derechos al socket. En un datagrama vacío también se transfieren. */
+int  sock_send(int s,const void *d,int n,uint32_t ip,uint16_t port,const char *upath,int plen,int have_dst,SockRights *rights);
+/* Si se solicitan derechos, MSG_PEEK presta el lote y una lectura normal lo transfiere. */
+int  sock_recv(int s,void *d,int n,int peek,uint32_t *ip,uint16_t *port,SockRights **rights);
 int  sock_events(int s);
 int  sock_avail(int s);                               /* bytes que se pueden leer ya (FIONREAD): en datagramas, el tamano del primero */
 int  sock_shutdown(int s,int how);
@@ -32,7 +40,6 @@ int  sock_take_err(int s);
 int  sock_names(int s,int peer,uint32_t *ip,uint16_t *port,char *upath,int *plen);   /* familia (1/2) o -errno */
 int  sock_pair(int type,int *a,int *b);
 void sock_set_reuse(int s,int v);
-int  sock_peer(int s);
 int  sock_type(int s);
 int  sock_family(int s);
 #endif

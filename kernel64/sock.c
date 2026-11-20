@@ -36,6 +36,8 @@ typedef struct KSock {
     u32 lip, rip; u16 lport, rport, peer_mss;
     u32 iss, snd_una, snd_nxt, rcv_nxt, snd_wnd, t_rtx, t_tw; int tries, sent;
     u8 *rx; int rx_r, rx_n; u8 *tx; int tx_r, tx_n;
+    uint64_t rx_pos;
+    SockRights *rights_head, *rights_tail;
     int aq[16], aq_n, backlog;
     char upath[108]; int ulen;
 } KSock;
@@ -77,6 +79,29 @@ static void dg_put(KSock *k,u32 ip,u16 port,const u8 *d,int n){        /* regist
     rx_put(k,h,8); rx_put(k,d,n);
 }
 
+static void rights_enqueue(KSock *k,SockRights *rights,int len){
+    rights->first=k->rx_pos+(uint64_t)k->rx_n;
+    rights->end=rights->first+(uint64_t)len;
+    rights->next=0;
+    if(k->rights_tail) k->rights_tail->next=rights;
+    else k->rights_head=rights;
+    k->rights_tail=rights;
+}
+
+static void rights_read(KSock *k,int len,int peek,SockRights **out){
+    uint64_t end=k->rx_pos+(uint64_t)len;
+    SockRights *rights=k->rights_head;
+    if(!peek) k->rx_pos=end;
+    if(!rights||rights->first>=end) return;
+    if(!peek){
+        k->rights_head=rights->next;
+        if(!k->rights_head) k->rights_tail=0;
+        rights->next=0;
+    }
+    if(out) *out=rights;
+    else if(!peek) sock_rights_release(rights);
+}
+
 /* ---------- tabla ---------- */
 static KSock *sk_new(int family,int type){
     for(int i=0;i<NSOCK;i++) if(!S[i].used){
@@ -87,11 +112,20 @@ static KSock *sk_new(int family,int type){
     return 0;
 }
 static int idx(KSock *k){ return (int)(k-S); }
-static void sk_free(KSock *k){ if(k->rx) kfree(k->rx); if(k->tx) kfree(k->tx); k->rx=k->tx=0; k->used=0; }
+static void sk_free(KSock *k){
+    SockRights *rights=k->rights_head;
+    if(k->rx) kfree(k->rx);
+    if(k->tx) kfree(k->tx);
+    k->rx=k->tx=0; k->used=0;
+    while(rights){
+        SockRights *next=rights->next;
+        sock_rights_release(rights);
+        rights=next;
+    }
+}
 static int port_used(u16 p){ for(int i=0;i<NSOCK;i++) if(S[i].used && S[i].family==SK_AF_INET && S[i].lport==p) return 1; return 0; }
 static u16 new_port(void){ for(int t=0;t<9000;t++){ if(++eph>=49000) eph=40000; if(!port_used(eph)) return eph; } return 0; }
 
-int  sock_peer(int s){ return OK(s)?S[s].peer:-1; }
 int  sock_type(int s){ return OK(s)?S[s].type:-E_NOTSOCK; }
 int  sock_family(int s){ return OK(s)?S[s].family:-E_NOTSOCK; }
 void sock_set_reuse(int s,int v){ if(OK(s)) S[s].reuse=(u8)v; }
@@ -339,7 +373,7 @@ static int dg_deliver_local(KSock *from,u16 port,const u8 *d,int n){
     for(int i=0;i<NSOCK;i++){ KSock *t=&S[i]; if(t->used&&t->family==SK_AF_INET&&t->type==SK_DGRAM&&t->lport==port&&t!=from){ dg_put(t,(u32)0x7F000001,from->lport,d,n); return 0; } }
     return -E_CONNREFUSED;
 }
-int sock_send(int s,const void *dv,int n,u32 ip,u16 port,const char *upath,int plen,int have_dst){
+int sock_send(int s,const void *dv,int n,u32 ip,u16 port,const char *upath,int plen,int have_dst,SockRights *rights){
     if(!OK(s)) return -E_NOTSOCK;
     KSock *k=&S[s]; const u8 *d=dv;
     if(n<0) return -E_INVAL;
@@ -349,7 +383,9 @@ int sock_send(int s,const void *dv,int n,u32 ip,u16 port,const char *upath,int p
             if(k->peer<0||!S[k->peer].used) return -E_PIPE;
             KSock *B=&S[k->peer]; if(B->shut_rd) return -E_PIPE;
             int fr=RXSZ-B->rx_n; if(fr<=0) return n?-E_AGAIN:0;
-            int t=n<fr?n:fr; rx_put(B,d,t); return t;
+            int t=n<fr?n:fr;
+            if(rights&&t) rights_enqueue(B,rights,t);
+            rx_put(B,d,t); return t;
         }
         if(k->st==ST_SYN_SENT||k->st==ST_SYN_RCVD) return -E_AGAIN;
         if(k->st!=ST_EST&&k->st!=ST_CWAIT){ if(k->err){ int e=k->err; k->err=0; return -e; } return k->ever?-E_PIPE:-E_NOTCONN; }
@@ -363,6 +399,10 @@ int sock_send(int s,const void *dv,int n,u32 ip,u16 port,const char *upath,int p
         KSock *t=0;
         if(have_dst) t=unix_find(upath,plen,SK_DGRAM); else if(k->peer>=0&&S[k->peer].used) t=&S[k->peer];
         if(!t) return have_dst?-E_CONNREFUSED:-E_DESTADDRREQ;
+        if(rights){
+            if(RXSZ-t->rx_n<8+n) return -E_NOBUFS;
+            rights_enqueue(t,rights,8+n);
+        }
         dg_put(t,0,0,d,n); return n;
     }
     if(!k->bound){ k->lport=new_port(); k->bound=1; }
@@ -371,13 +411,19 @@ int sock_send(int s,const void *dv,int n,u32 ip,u16 port,const char *upath,int p
     if(!net_my_ip()) return -E_NETUNREACH;
     int r=net_udp_send(ip,k->lport,port,d,n); return r<0?-E_NOBUFS:n;
 }
-int sock_recv(int s,void *dv,int n,int peek,u32 *ip,u16 *port){
+int sock_recv(int s,void *dv,int n,int peek,u32 *ip,u16 *port,SockRights **rights){
     if(!OK(s)) return -E_NOTSOCK;
     KSock *k=&S[s]; u8 *d=dv;
+    if(rights) *rights=0;
     if(k->type==SK_STREAM){
         if(k->st==ST_LISTEN) return -E_INVAL;
+        if(!n) return 0;
         if(k->rx_n>0){
+            /* recvmsg se detiene al terminar el primer envío con SCM_RIGHTS. */
+            if(k->rights_head&&k->rights_head->end-k->rx_pos<(uint64_t)n)
+                n=(int)(k->rights_head->end-k->rx_pos);
             int before=RXSZ-k->rx_n; int t=rx_take(k,d,n,peek);
+            if(k->family==SK_AF_UNIX) rights_read(k,t,peek,rights);
             if(!peek && !k->local && before<2*MSS && (k->st==ST_EST||k->st==ST_FW1||k->st==ST_FW2)) tcp_xmit(k,TF_ACK,k->snd_nxt,0,0,0);   /* aviso de ventana abierta */
             return t; }
         if(k->err){ int e=k->err; k->err=0; return -e; }
@@ -392,6 +438,7 @@ int sock_recv(int s,void *dv,int n,int peek,u32 *ip,u16 *port){
     else { u8 tmp[8]; (void)tmp; int r2=(k->rx_r+8)%RXSZ; ring_get(k->rx,RXSZ,r2,d,t); }
     if(ip) *ip=rd32(h+4);
     if(port) *port=rd16(h+2);
+    if(k->family==SK_AF_UNIX) rights_read(k,8+len,peek,rights);
     return t;
 }
 int sock_avail(int s){

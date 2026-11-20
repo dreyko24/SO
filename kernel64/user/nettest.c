@@ -97,6 +97,77 @@ static void test_events(void){
     CHECK(n==-1&&errno==EINTR,"poll con espera larga interrumpido por alarma");
     close(ev); close(tf); close(ep);
 }
+static void test_rights_batches(void){
+    enum { batch = 12 };
+    int sockets[2], ends[2];
+    if(socketpair(AF_UNIX,SOCK_STREAM,0,sockets)<0){
+        CHECK(0,"preparar lotes SCM_RIGHTS");
+        return;
+    }
+    if(pipe2(ends,O_NONBLOCK)<0){
+        CHECK(0,"preparar el pipe de SCM_RIGHTS");
+        close(sockets[0]); close(sockets[1]);
+        return;
+    }
+    int sent[batch];
+    for(int i=0;i<batch;i++) sent[i]=ends[1];
+    union { struct cmsghdr align; char bytes[CMSG_SPACE(sizeof sent)]; } control;
+    struct iovec io={"d",1};
+    struct msghdr msg={.msg_iov=&io,.msg_iovlen=1,.msg_control=control.bytes,.msg_controllen=sizeof control.bytes};
+    struct cmsghdr *header=CMSG_FIRSTHDR(&msg);
+    header->cmsg_level=SOL_SOCKET;
+    header->cmsg_type=SCM_RIGHTS;
+    header->cmsg_len=CMSG_LEN(sizeof sent);
+    memcpy(CMSG_DATA(header),sent,sizeof sent);
+    CHECK(write(sockets[0],"abc",3)==3&&sendmsg(sockets[0],&msg,0)==1,"enviar 12 descriptores después de datos sin control");
+    io.iov_base="ef"; io.iov_len=2;
+    msg.msg_controllen=CMSG_SPACE(sizeof(int));
+    header->cmsg_len=CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(header),&ends[0],sizeof(int));
+    CHECK(sendmsg(sockets[0],&msg,0)==2,"enviar un segundo lote SCM_RIGHTS");
+
+    char data[16];
+    io.iov_base=data; io.iov_len=3;
+    msg.msg_controllen=sizeof control.bytes;
+    ssize_t n=recvmsg(sockets[1],&msg,MSG_DONTWAIT);
+    CHECK(n==3&&!memcmp(data,"abc",3)&&msg.msg_controllen==0,"SCM_RIGHTS no se adelanta al byte que lo acompaña");
+    if(msg.msg_controllen) goto cleanup;
+    io.iov_len=sizeof data;
+    msg.msg_controllen=CMSG_LEN(sizeof(int));
+    n=recvmsg(sockets[1],&msg,MSG_DONTWAIT|MSG_PEEK);
+    header=CMSG_FIRSTHDR(&msg);
+    int peek_fd=-1;
+    if(header&&header->cmsg_len==CMSG_LEN(sizeof(int))) memcpy(&peek_fd,CMSG_DATA(header),sizeof peek_fd);
+    CHECK(n==1&&data[0]=='d'&&peek_fd>=0&&(msg.msg_flags&MSG_CTRUNC),"MSG_PEEK duplica los descriptores que caben e informa del truncado");
+    if(peek_fd>=0) close(peek_fd);
+
+    msg.msg_controllen=sizeof control.bytes;
+    n=recvmsg(sockets[1],&msg,MSG_DONTWAIT|MSG_CMSG_CLOEXEC);
+    header=CMSG_FIRSTHDR(&msg);
+    int complete=header&&header->cmsg_len==CMSG_LEN(sizeof sent)&&header->cmsg_type==SCM_RIGHTS;
+    CHECK(n==1&&data[0]=='d'&&complete,"recvmsg entrega los 12 descriptores y respeta el límite del lote");
+    if(complete){
+        int received[batch];
+        memcpy(received,CMSG_DATA(header),sizeof received);
+        int valid=1;
+        for(int i=0;i<batch;i++){
+            if(fcntl(received[i],F_GETFD)!=FD_CLOEXEC||write(received[i],"x",1)!=1) valid=0;
+            close(received[i]);
+        }
+        CHECK(valid,"los 12 descriptores son utilizables y tienen CLOEXEC");
+    }
+    msg.msg_controllen=sizeof control.bytes;
+    n=recvmsg(sockets[1],&msg,MSG_DONTWAIT);
+    header=CMSG_FIRSTHDR(&msg);
+    int fd=-1;
+    if(header&&header->cmsg_len==CMSG_LEN(sizeof(int))) memcpy(&fd,CMSG_DATA(header),sizeof fd);
+    char from_pipe=0;
+    CHECK(n==2&&!memcmp(data,"ef",2)&&fd>=0&&complete&&read(fd,&from_pipe,1)==1&&from_pipe=='x',
+          "recvmsg entrega el segundo lote en orden");
+    if(fd>=0) close(fd);
+cleanup:
+    close(ends[0]); close(ends[1]); close(sockets[0]); close(sockets[1]);
+}
 static void test_local(void){
     /* socketpair */
     int sv[2]; CHECK(socketpair(AF_UNIX,SOCK_STREAM,0,sv)==0,"socketpair");
@@ -182,7 +253,7 @@ int main(int argc,char **argv){
     SAY("== nettest: senales ==\n"); test_signals();
     SAY("== nettest: eventos (epoll, poll, select, eventfd, timerfd) ==\n"); test_events();
     SAY("== nettest: /proc y /dev ==\n"); test_files();
-    SAY("== nettest: sockets locales ==\n"); test_local();
+    SAY("== nettest: sockets locales ==\n"); test_local(); test_rights_batches();
     SAY("== nettest: red (servidor de prueba en 10.0.2.2) ==\n"); test_net(tp,up);
     SAY("nettest resultado: %d bien, %d mal -> %s\n",good,bad,bad?"HAY FALLOS":"TODO OK");
     return bad?1:0;
