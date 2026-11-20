@@ -84,7 +84,7 @@ typedef struct Proc {
 enum { T_FREE, T_READY, T_SLEEP, T_WAIT, T_READ, T_FUTEX, T_PIPE, T_ZOMBIE, T_FN };
 typedef struct Task {
     int tid, pid, ppid, state, leader, killed, exit_code, wait_pid, bg, fg, timedout, pipe_fd; Proc *pr; u8 *kstk; u64 ksp; struct regs *frame;
-    u64 wake_at, fut_key, clear_tid, fs_base; char name[24];
+    u64 wake_at, fut_key, clear_tid, fs_base, gs_base; char name[24];
     u64 sigpend, sigmask, sigsaved; int has_saved, sysnr, in_sig; u64 alt_sp, alt_size;
     int (*wait_fn)(struct Task*); int wa_fd, wa_mask, wa_n; u64 wa_p1, wa_p2, wa_p3;
     u8 fx[512] __attribute__((aligned(16)));
@@ -243,10 +243,10 @@ static Task *pick_next(void){                    /* turnos: tasks[0..MAXT-1] y l
 static int any_ready_user(void){ for(int i=0;i<MAXT;i++) if(tasks[i].state==T_READY) return 1; return 0; }
 static void run_task(Task *n){
     if(n==cur) return;
-    Task *p=cur; if(p->pr){ p->fs_base=rdmsr(0xC0000100); __asm__ volatile("fxsave %0":"=m"(*(u8(*)[512])p->fx)); }
+    Task *p=cur; if(p->pr){ p->fs_base=rdmsr(0xC0000100); p->gs_base=rdmsr(0xC0000101); __asm__ volatile("fxsave %0":"=m"(*(u8(*)[512])p->fx)); }
     cur=n;
     if(n->kstk){ cur_ktop=(u64)(uintptr_t)(n->kstk+KSTK); }
-    if(n->pr){ ucr3=(u64)(uintptr_t)n->pr->pml4; wrmsr(0xC0000100,n->fs_base); __asm__ volatile("fxrstor %0"::"m"(*(u8(*)[512])n->fx)); }
+    if(n->pr){ ucr3=(u64)(uintptr_t)n->pr->pml4; wrmsr(0xC0000100,n->fs_base); wrmsr(0xC0000101,n->gs_base); __asm__ volatile("fxrstor %0"::"m"(*(u8(*)[512])n->fx)); }
     switch_to(&p->ksp,n->ksp);
 }
 static void schedule(void){ poll_wakeups(); run_task(pick_next()); }
@@ -622,7 +622,7 @@ static u64 sys_clone(struct regs *r,u64 flags,u64 stack,u64 ptid,u64 ctid,u64 tl
         for(int i=0;i<MAXFD;i++) if(pr->fd[i].type){ fd_dup_into(&np->fd[i],&pr->fd[i]); np->fd[i].cloexec=pr->fd[i].cloexec; }
         np->pid=t->tid; np->nthreads=1; t->pr=np; t->pid=t->tid; t->ppid=cur->pid; t->leader=1;
     } else { pr->nthreads++; t->pr=pr; t->pid=cur->pid; t->ppid=cur->ppid; t->leader=0; }
-    t->fs_base=(flags&0x80000)?tls:cur->fs_base; memcpy(t->name,cur->name,sizeof t->name); t->sigmask=cur->sigmask;
+    t->fs_base=(flags&0x80000)?tls:cur->fs_base; t->gs_base=cur->gs_base; memcpy(t->name,cur->name,sizeof t->name); t->sigmask=cur->sigmask;
     __asm__ volatile("fxsave %0":"=m"(*(u8(*)[512])cur->fx)); memcpy(t->fx,cur->fx,512);
     struct regs fr=*r; fr.rax=0; if(stack) fr.rsp=stack; fr.rflags|=0x200;
     task_prepare(t,&fr);
@@ -649,7 +649,7 @@ static u64 sys_execve(struct regs *r,u64 path_va,u64 argv_va,u64 envp_va){
     for(int i=0;i<MAXFD;i++) if(op->fd[i].type&&op->fd[i].cloexec) fd_close(&op->fd[i]);
     cur->alt_sp=cur->alt_size=0;
     memset(cur->fx,0,512); cur->fx[0]=0x7F; cur->fx[1]=0x03; cur->fx[24]=0x80; cur->fx[25]=0x1F; __asm__ volatile("fxrstor %0"::"m"(*(u8(*)[512])cur->fx));
-    ucr3=(u64)(uintptr_t)op->pml4; cur->fs_base=0; wrmsr(0xC0000100,0); cur->clear_tid=0;
+    ucr3=(u64)(uintptr_t)op->pml4; cur->fs_base=cur->gs_base=0; wrmsr(0xC0000100,0); wrmsr(0xC0000101,0); cur->clear_tid=0;
     memset(r,0,22*8); r->rip=entry; r->cs=0x23; r->ss=0x1B; r->rflags=0x202; r->rsp=sp; r->int_no=0x80;
     k_strcpy(cur->name,path+(k_startswith(path,"/bin/")?5:0),sizeof cur->name);
     return EXEC_DONE;
@@ -874,7 +874,20 @@ static u64 sys_dispatch(struct regs *r){
     case 102: case 104: case 107: case 108: case 112: case 105: case 106: return 0;
     case 110: return (u64)cur->ppid;
     case 109: case 121: case 124: return (u64)cur->pid;
-    case 158: if(a1==0x1002){ cur->fs_base=a2; wrmsr(0xC0000100,a2); return 0; } if(a1==0x1003){ u64 v=rdmsr(0xC0000100); return ucopy_to(CP,a2,&v,8)?RET_ERR(EFAULT):0; } return RET_ERR(EINVAL);
+    case 158: { /* arch_prctl: bases TLS por hilo (FS) y segmento GS usado por Wasm/Firefox */
+        if(a1==0x1001 || a1==0x1002){  /* ARCH_SET_GS / ARCH_SET_FS */
+            /* WRMSR con direccion no canonica provoca #GP en el kernel. */
+            if(a2>=USER_MAX) return RET_ERR(EINVAL);
+            if(a1==0x1001){ cur->gs_base=a2; wrmsr(0xC0000101,a2); }
+            else { cur->fs_base=a2; wrmsr(0xC0000100,a2); }
+            return 0;
+        }
+        if(a1==0x1003 || a1==0x1004){  /* ARCH_GET_FS / ARCH_GET_GS */
+            u64 v=rdmsr(a1==0x1003?0xC0000100:0xC0000101);
+            return ucopy_to(CP,a2,&v,8)?RET_ERR(EFAULT):0;
+        }
+        return RET_ERR(EINVAL);
+    }
     case 186: return (u64)cur->tid;
     case 204: { u64 m=1; return ucopy_to(CP,a3,&m,8)?RET_ERR(EFAULT):8; }
     case 203: return 0;
