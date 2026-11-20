@@ -35,6 +35,25 @@ try:
             if l.strip().startswith('libc.so.6'): libc = p[2]
         shutil.copyfile(os.path.realpath(ld), tmp + '/lib64/ld-linux-x86-64.so.2')
         shutil.copyfile(os.path.realpath(libc), tmp + '/lib/x86_64-linux-gnu/libc.so.6')
+    # La ISO ejecuta estos ELF sobre el kernel propio y CPUs x86-64 que no
+    # siempre tienen AVX/BMI2. El gcc anfitrion puede generar codigo basico,
+    # pero glibc enlazada estaticamente YA viene compilada para una ISA
+    # superior (Ubuntu 26.04 introdujo bibliotecas x86-64-v3 en el runner).
+    # Rechazar ese rootfs en vez de publicar una ISO que falla con SIGILL.
+    if not shutil.which('readelf'):
+        raise SystemExit('Falta readelf (binutils): obligatorio para verificar la ISA de los ELF de Vortex')
+    for name in ('bin/hola-pie', 'bin/hola-static', 'bin/multi-pie',
+                 'bin/multi-static', 'bin/vortex-xinput',
+                 'lib64/ld-linux-x86-64.so.2'):
+        elf = os.path.join(tmp, name)
+        if not os.path.isfile(elf): continue
+        note = subprocess.check_output(['readelf', '-n', elf], text=True)
+        if 'x86-64-v3' in note or 'x86-64-v4' in note:
+            raise SystemExit(
+                'ISA incompatible en %s: el runtime requiere x86-64-v3/v4; '
+                'compilar el rootfs con glibc x86-64-baseline '
+                '(por ejemplo Ubuntu 24.04 o Debian 12), NO -cpu max en QEMU' % name
+            )
     ents = []
     for dp, dn, fn in os.walk(tmp):
         for n in sorted(dn + fn): ents.append(os.path.relpath(os.path.join(dp, n), tmp))
