@@ -101,6 +101,7 @@ static volatile uint64_t ticks;
 int  proc_exec(char *path,int argc,char **argv,int bg);
 void proc_list(void);
 void proc_ps(void);
+int proc_alive(int pid);
 int  proc_kill(int pid,int sig);
 void proc_pump(void);
 void gui_open_terminal(void);
@@ -357,10 +358,10 @@ static int try_program(char *l){
     launch(path,n,a,bg); return 1;
 }
 /* pantalla: servidor X real (Xvfb) + puente de teclado/raton, mostrado en una ventana del escritorio */
-static int x_up, x_gw=1024, x_gh=700;
-static void x_start(void){
-    char xvfb[160], xin[160];
-    if(!find_program("Xvfb",xvfb,sizeof xvfb)){ kprintf("pantalla: falta el servidor X. Instalalo con:  instalar xvfb\n"); return; }
+static int x_server_pid, x_input_pid, x_gw=1024, x_gh=700;
+static int x_start(void){
+    char xvfb[160];
+    if(!find_program("Xvfb",xvfb,sizeof xvfb)){ kprintf("pantalla: falta el servidor X. Instalalo con:  instalar xvfb\n"); return -1; }
     FsNode *v=fs_find(fs_root(),"var"); FsNode *lib=v?fs_find(v,"lib"):0; if(v&&!lib){ lib=fs_mkdir(v,"lib"); if(lib) lib->sys=1; }
     FsNode *xd=lib?fs_find(lib,"xvfb"):0; if(lib&&!xd){ xd=fs_mkdir(lib,"xvfb"); if(xd) xd->sys=1; }
     int gw=1280, gh=800; if(gui_mode&&gui_screen_size(&gw,&gh)==0){ gw-=80; gh-=170; if(gw>1600) gw=1600; if(gh>1000) gh=1000; }
@@ -369,10 +370,17 @@ static void x_start(void){
     char *a[16]; int n=0; a[n++]="Xvfb"; a[n++]=":0"; a[n++]="-screen"; a[n++]="0"; a[n++]=geo; a[n++]="-fbdir"; a[n++]="/var/lib/xvfb"; a[n++]="-ac"; a[n++]="-nolisten"; a[n++]="tcp";
     kprintf("pantalla: iniciando el servidor X (%s)...\n",geo);
     int xpid=proc_exec(xvfb,n,a,1);
-    if(xpid<0){ kprintf("pantalla: Xvfb no pudo iniciarse. Revisa memoria y ejecutables de Debian.\n"); return; }
-    if(find_program("vortex-xinput",xin,sizeof xin)){ char *b[2]={"vortex-xinput",0}; proc_exec(xin,1,b,1); }
-    else kprintf("pantalla: falta vortex-xinput (teclado y raton no llegaran a los programas)\n");
-    x_up=1;
+    if(xpid<0) kprintf("pantalla: Xvfb no pudo iniciarse. Revisa memoria y ejecutables de Debian.\n");
+    return xpid;
+}
+static int x_start_input(void){
+    char path[160];
+    if(!find_program("vortex-xinput",path,sizeof path)){
+        kprintf("pantalla: falta vortex-xinput (teclado y raton no llegaran a los programas)\n");
+        return -1;
+    }
+    char *argv[]={"vortex-xinput"};
+    return proc_exec(path,1,argv,1);
 }
 /* probar-ram: reserva toda la memoria del heap en trozos de 256 MB, escribe y comprueba una marca cada 2 MB (asi se toca RAM por encima de 4 GB) y la libera */
 static void cmd_probar_ram(void){
@@ -388,12 +396,23 @@ static void cmd_probar_ram(void){
     u64 u,f,m; heap_stats(&u,&f,&m);
     kprintf("probar-ram: %lu MB reservados en %d trozos, direccion mas alta 0x%lx (%lu MB), %lu marcas, %lu errores, heap usado tras liberar %lu B -> %s\n",tot>>20,n,hi,hi>>20,marks,bad,u,bad==0&&n>0?"OK":"FALLO");
 }
-static void cmd_pantalla(void){ if(!x_up) x_start(); if(x_up&&gui_mode) gui_open_xscreen(x_gw,x_gh); }
+static int cmd_pantalla(void){
+    if(!proc_alive(x_server_pid)){
+        /* El puente anterior puede seguir esperando entrada con su socket X cerrado. */
+        if(proc_alive(x_input_pid)) proc_kill(x_input_pid,9);
+        x_input_pid=0;
+        x_server_pid=x_start();
+        if(x_server_pid<0) return 0;
+    }
+    if(!proc_alive(x_input_pid)) x_input_pid=x_start_input();
+    if(gui_mode) gui_open_xscreen(x_gw,x_gh);
+    return 1;
+}
 /* abrir <programa> [argumentos]: arranca la pantalla X si hace falta y abre el programa dentro de ella */
 static void cmd_abrir(char *args){
     char *a[40]; int n=tokenize(args,a,38); if(!n){ kprintf("uso: abrir <programa> [argumentos]   (ej: abrir brave)\n"); return; }
     char w[160]; if(!find_program("abrir-x",w,sizeof w)){ kprintf("abrir: falta /usr/local/bin/abrir-x (sistema base incompleto)\n"); return; }
-    cmd_pantalla(); if(!x_up) return;
+    if(!cmd_pantalla()) return;
     char *b[42]; b[0]="abrir-x"; for(int i=0;i<n;i++) b[i+1]=a[i]; b[n+1]=0;
     proc_exec(w,n+1,b,1);
 }

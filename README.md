@@ -116,8 +116,8 @@ datos privados en esta versión experimental.
 - En el navegador: escribe `example.com` o `http://neverssl.com`. En la terminal: `red`.
 
 ## Limitaciones actuales (sin rodeos)
-- **https:// no funciona** (no hay TLS): muchos sitios modernos no cargarán; sirven los que ofrecen http.
-- El navegador ignora CSS, JavaScript e imágenes: es un visor de HTML simple.
+- El navegador nativo muestra un subconjunto de HTML sobre HTTP.
+- Firefox ESR en Debian 12 ha renderizado páginas HTTP y HTTPS locales en QEMU. El acceso HTTPS externo y el aislamiento del navegador siguen pendientes de validación.
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
 - El teclado y ratón nativos usan principalmente PS/2. USB Mass Storage **solo soporta UHCI con FAT32 o exFAT de lectura e instantánea**, no XHCI/EHCI ni NTFS; aun falta validar pendrives fisicos. Se admiten teclados US/Latam/ES.
@@ -143,6 +143,7 @@ Comandos en español (en la terminal de vortex, también dentro de la ventana gr
 `actualizar` · `instalar <nombre>` · `quitar <nombre>` · `mejorar` · `buscar <palabra>` · `mostrar <nombre>` · `paquetes` · `limpiar` · `ayuda-programas`
 Nombres especiales de `instalar`: `brave`, `chrome`, `opera`, `chromium`, `firefox`, `libreoffice`, `openoffice` (el resto es cualquier paquete de Debian).
 Programas con ventana: `pantalla` (servidor X real) y `abrir <programa>` (p. ej. `abrir brave`), o los lanzadores del panel **Aplicaciones** y la terminal.
+Si Xvfb termina, la siguiente llamada a `pantalla` o `abrir` inicia un servidor y un puente de entrada nuevos.
 Diagnóstico: `rastro 1` muestra las llamadas del sistema que fallan. Estado real y pendientes: consulta [VORTEX_ESTADO.md](VORTEX_ESTADO.md), documento técnico único.
 
 

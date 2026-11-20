@@ -154,12 +154,13 @@ jobs:
           sleep 1
           cat >/tmp/vortex-web-commands.txt <<'CMDS'
           60|pantalla
-          @esperar 6
-          20|procesos
-          # xdpyinfo es un cliente X11 real que NO necesita pseudoterminal
-          30|abrir xdpyinfo
+          45|run sh -c 'for i in $(seq 20);do xdpyinfo -display :0 >/dev/null 2>&1 && echo X11_ANTES && exit;sleep 1;done;exit 1'
+          # Terminar el Xvfb de esta VM desde el PID que el servidor registró.
+          25|ejecutar /bin/sh -c 'kill -KILL $(cat /tmp/.X0-lock) && echo VORTEX_XVFB_DETENIDO'
           @esperar 3
-          20|ejecutar /usr/bin/tail -n 12 /tmp/vortex-web.log
+          60|pantalla
+          45|run sh -c 'for i in $(seq 20);do xdpyinfo -display :0 >/dev/null 2>&1 && echo X11_RECUPERADO && exit;sleep 1;done;exit 1'
+          20|pantalla
           # xterm requiere PTY; documentar el error sin confundirlo con Xvfb
           30|abrir xterm
           @esperar 3
@@ -193,15 +194,22 @@ jobs:
           set -e
           tail -200 vortex-web-smoke.log
           if [[ "$code" != 0 && "$code" != 124 ]]; then echo "FALLO QEMU web: $code"; exit 1; fi
-          grep -q 'pantalla: iniciando el servidor X' vortex-web-smoke.log || {
-             echo 'FALLO: Xvfb no se pudo ejecutar'; exit 1;
+          grep -aq '^X11_ANTES[[:space:]]*$' vortex-web-smoke.log || {
+             echo 'FALLO: xdpyinfo no verificó el arranque inicial de Xvfb'; exit 1;
           }
-          grep -q 'vortex-xinput: listo' vortex-web-smoke.log || {
-             echo 'FALLO: puente de entrada XTEST no se inicio'; exit 1;
+          grep -aq '^VORTEX_XVFB_DETENIDO[[:space:]]*$' vortex-web-smoke.log || {
+             echo 'FALLO: la prueba no pudo detener Xvfb'; exit 1;
           }
-          grep -q 'red, green, blue masks:' vortex-web-smoke.log || {
-             echo 'FALLO: xdpyinfo no verifico la comunicacion con X11'; exit 1;
+          grep -aq '^X11_RECUPERADO[[:space:]]*$' vortex-web-smoke.log || {
+             echo 'FALLO: xdpyinfo no verificó la recuperación de Xvfb'; exit 1;
           }
+          test "$(grep -ac 'pantalla: iniciando el servidor X' vortex-web-smoke.log)" -eq 2 || {
+             echo 'FALLO: se esperaban dos inicios de Xvfb'; exit 1;
+          }
+          test "$(grep -ac 'vortex-xinput: listo' vortex-web-smoke.log)" -eq 2 || {
+             echo 'FALLO: el puente XTEST debe conectarse una vez a cada servidor'; exit 1;
+          }
+          echo 'X11: servidor y puente de entrada recuperados en QEMU'
           # Regresiones ya demostradas: Firefox debe superar carga XPCOM
           # y ARCH_SET_GS. La presencia del proceso no prueba navegacion.
           if grep -Eq "Couldn't load XPCOM|wasm_rt_syscall_set_segue_base error" vortex-web-smoke.log; then

@@ -470,6 +470,14 @@ void proc_ps(void){
             kprintf("\n"); }
     }
 }
+int proc_alive(int pid){
+    if(pid<=0) return 0;
+    for(int i=0;i<MAXT;i++){
+        Task *t=&tasks[i];
+        if(t->leader&&t->pid==pid&&t->pr&&t->state!=T_FREE&&t->state!=T_ZOMBIE) return 1;
+    }
+    return 0;
+}
 int proc_kill(int pid,int sig){
     int n=0; for(int i=0;i<MAXT;i++) if(tasks[i].state!=T_FREE&&tasks[i].state!=T_ZOMBIE&&tasks[i].pid==pid){ tasks[i].killed=sig?sig:9; n++; }
     return n;

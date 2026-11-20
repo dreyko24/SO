@@ -143,7 +143,13 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 - En la ejecución local del paso de `vortex-iso-unica`, Firefox ESR solicitó la página de prueba al anfitrión por HTTP y Xvfb capturó su texto y fondo. La captura de 1280×800 contiene 656.850 píxeles del color de la página.
 - `vortex-iso-unica` sirve una página de prueba desde el anfitrión y registra la respuesta HTTP `200`, el título de su ventana X11 y el color de fondo en la captura. `tests/test_xwd2png.py` comprueba que una pestaña vacía o un solo píxel del color esperado queden por debajo del umbral.
+- En una prueba local adicional sobre `9a4e410`, `curl` y Firefox ESR negociaron TLS 1.3 con la CA de prueba. El servidor recibió ambos `GET` y Xvfb capturó el contenido HTTPS de Firefox, con 658.587 píxeles del color de la página en 1280×800.
 - En la prueba HTTPS externa, Vortex resolvió `example.com` después de DHCP. La conexión TCP al puerto 443 falló en el invitado y en el contenedor anfitrión. Firefox mostró un error de conexión. El acceso HTTPS externo, el sandbox del navegador y el funcionamiento en VMware siguen pendientes de validación.
+
+### Recuperación de Xvfb en QEMU — 20 de noviembre de 2026
+
+- `pantalla` y `abrir` comprueban los procesos de Xvfb y del puente XTEST. Si Xvfb termina, la siguiente solicitud arranca otro servidor y sustituye su puente. Si solo termina el puente, el kernel relanza ese proceso con el servidor activo.
+- La regresión de `vortex-iso-unica` consulta Xvfb con `xdpyinfo`, lo detiene en la VM y comprueba que vuelva a responder tras ejecutar `pantalla`. Exige dos conexiones XTEST y comprueba que repetir `pantalla` reutilice el servidor activo.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
