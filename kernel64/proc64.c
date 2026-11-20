@@ -778,14 +778,21 @@ static u64 sys_dispatch(struct regs *r){
         if(a2==1) return CP->fd[a1].cloexec;
         if(a2==2){ CP->fd[a1].cloexec=(u8)(a3&1); return 0; }
         if(a2==3){ /* F_GETFL: conservar el modo real de acceso de open(), no forzar O_RDWR. */
-            FD *f=&CP->fd[a1]; int fl=f->flags;
+            FD *f=&CP->fd[a1];
+            /* F_GETFL excluye flags de creacion y FD_CLOEXEC (F_GETFD).
+             * Se conservan flags de estado como O_APPEND y O_NONBLOCK. */
+            int fl=f->flags&~(O_CREAT_|O_EXCL_|O_TRUNC_|O_NOFOLLOW_|O_CLOEXEC_);
             if(f->type==3) fl&=~3;                           /* extremo lector de pipe */
             else if(f->type==4) fl=(fl&~3)|1;                 /* extremo escritor de pipe */
             else if(f->type==5||f->type==6||f->type==7||f->type==8||f->type==12)
                 fl=(fl&~3)|2;                                /* socket, eventfd, epoll, timerfd, memfd */
             return (u64)fl;
         }
-        if(a2==4){ CP->fd[a1].flags=(CP->fd[a1].flags&~0x800)|(int)(a3&0x800); return 0; }
+        if(a2==4){ /* F_SETFL permite modificar O_NONBLOCK y O_APPEND. */
+            const int mod=0x800|O_APPEND_;
+            CP->fd[a1].flags=(CP->fd[a1].flags&~mod)|((int)a3&mod);
+            return 0;
+        }
         if(a2==5||a2==36){ short lt=2; if(a3&&ucopy_to(CP,a3,&lt,2)) return RET_ERR(EFAULT); return 0; }      /* F_GETLK: nadie tiene el cerrojo */
         return 0; }
     /* ---- red ---- */

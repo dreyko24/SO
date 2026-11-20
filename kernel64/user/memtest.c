@@ -92,8 +92,16 @@ static void test_mem(void){
 
 static void test_files(void){
     mkdir("/tmp/mt",0755);
-    int fd=open("/tmp/mt/grande.bin",O_RDWR|O_CREAT|O_TRUNC,0644); CHECK(fd>=0,"crear archivo");
+    int fd=open("/tmp/mt/grande.bin",O_RDWR|O_CREAT|O_TRUNC|O_CLOEXEC,0644); CHECK(fd>=0,"crear archivo");
     CHECK(fd>=0&&(fcntl(fd,F_GETFL)&O_ACCMODE)==O_RDWR,"F_GETFL conserva O_RDWR");
+    CHECK(fd>=0&&!(fcntl(fd,F_GETFL)&(O_CREAT|O_TRUNC|O_CLOEXEC)),"F_GETFL no expone flags de creacion ni CLOEXEC");
+    CHECK(fd>=0&&(fcntl(fd,F_GETFD)&FD_CLOEXEC),"F_GETFD conserva CLOEXEC");
+    { int fl=fcntl(fd,F_GETFL);
+      int ok=fd>=0&&fl>=0&&fcntl(fd,F_SETFL,fl|O_APPEND)==0
+          &&(fcntl(fd,F_GETFL)&O_APPEND);
+      CHECK(ok,"F_SETFL permite habilitar O_APPEND");
+      if(fl>=0) fcntl(fd,F_SETFL,fl);
+    }
     { int p[2]; int ok=pipe(p)==0;
       if(ok){ ok=(fcntl(p[0],F_GETFL)&O_ACCMODE)==O_RDONLY
                   &&(fcntl(p[1],F_GETFL)&O_ACCMODE)==O_WRONLY;
