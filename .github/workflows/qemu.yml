@@ -52,7 +52,7 @@ jobs:
           at=0; root=Path("/tmp/vortex-elf")
           while at+110<=len(b) and b[at:at+6]==b"070701":
               h=b[at:at+110]; size=int(h[54:62],16); nl=int(h[94:102],16)
-              at+=110; name=b[at:at+nl].split(b"\\0",1)[0].decode()
+              at+=110; name=b[at:at+nl].split(b"\0",1)[0].decode()
               at=(at+nl+3)&~3
               if name in wanted:
                   p=root/name; p.parent.mkdir(parents=True,exist_ok=True)
