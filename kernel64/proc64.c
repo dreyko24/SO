@@ -387,7 +387,14 @@ static int load_image2(Proc *pr,const char *path,int argc,char **argv,int envc,c
         if(elf_map(pr,(u8*)f->data,(u64)f->size,INTERP_BASE,&in,0)) return -ENOEXEC;
         *entry=in.entry; at_base=in.base;
     }
-    k_strcpy(pr->exe,path,sizeof pr->exe);
+    /* /proc/self/exe en Linux apunta al archivo ejecutado ya resuelto, no al
+     * enlace simbolico usado por execve().  Firefox ESR llega por
+     * /usr/bin/firefox-esr -> /usr/lib/firefox-esr/firefox-esr y busca
+     * dependentlibs.list al lado del binario real. Conservar path original
+     * para AT_EXECFN, pero resolverlo para /proc/self/exe. */
+    FsNode *exe_node=fs_resolve(fs_root(),path);
+    if(exe_node&&!exe_node->dir) fs_path(exe_node,pr->exe,sizeof pr->exe);
+    else k_strcpy(pr->exe,path,sizeof pr->exe); /* ejecutables incorporados */
     if(!envp){ envp=(char**)DEFENV; envc=DEFENV_N; }
     if(build_stack(pr,sp,argc,argv,envc,envp,path,m.entry,m.phdr,m.phnum,at_base)) return -ENOMEM;
     pr->brk0=pr->brk=(m.end+4095+65536)&~4095ull; pr->mmap_next=MMAP_BASE;
