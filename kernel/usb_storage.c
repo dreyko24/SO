@@ -19,6 +19,7 @@ const char *usb_storage_format(void){return "No disponible";}
 const char *usb_storage_message(void){return "No hay USB fisico en el simulador host";}
 void usb_storage_poll(void){}
 #else
+#include "usb_xhci.h"
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
@@ -557,7 +558,11 @@ static void status(const char *msg){k_strcpy(info,msg,sizeof info);kprintf("[vor
 int usb_storage_probe(void){
     if(ready)return 1;
     probe_once=1;
-    if(init()){status("USB: no hay controlador UHCI disponible");return 0;}
+    if(init()){
+        usb_xhci_poll();
+        if(!usb_xhci_message())status("USB: no hay controlador UHCI disponible");
+        return 0;
+    }
     int r=probe_ports();
     if(!r){status("UHCI detectado, sin dispositivo conectado");return 0;}
     if(r<0){
@@ -605,8 +610,12 @@ const char *usb_storage_name(void){return usb_product;}
 unsigned usb_storage_capacity_mib(void){return ready?block_count>>11:0;}
 unsigned usb_storage_file_count(void){return ready?(unsigned)imported:0;}
 const char *usb_storage_format(void){return ready?(exfat_mode?"exFAT":"FAT32"):"No disponible";}
-const char *usb_storage_message(void){return info;}
+const char *usb_storage_message(void){
+    const char *xhci=usb_xhci_message();
+    return !io&&xhci?xhci:info;
+}
 void usb_storage_poll(void){
+    usb_xhci_poll();
     static u32 next_probe;
     u32 now=kticks();
     if(!ready){

@@ -60,6 +60,15 @@ jobs:
         run: |
           set -o pipefail
           python3 tools/ci_usb_topology.py usb-boot.iso pendrive.img | tee usb-topology.log
+      - name: Enumerar USB xHCI y comprobar hotplug en ambos kernels
+        run: |
+          set -o pipefail
+          mkdir -p gx/boot/grub
+          cp kernel/vortex-kernel.elf gx/boot/
+          sed '/^  module /d; s/vortex-kernel64/vortex-kernel/' g/boot/grub/grub.cfg > gx/boot/grub/grub.cfg
+          grub-mkrescue -o usb-boot32.iso gx
+          python3 tools/ci_usb_xhci.py usb-boot.iso pendrive.img | tee usb-xhci64.log
+          python3 tools/ci_usb_xhci.py usb-boot32.iso pendrive.img | tee usb-xhci32.log
       - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
         run: |
           python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
@@ -80,4 +89,6 @@ jobs:
             hub-gui.log
             exfat-gui.log
             usb-topology.log
+            usb-xhci64.log
+            usb-xhci32.log
             capturas/*.png
