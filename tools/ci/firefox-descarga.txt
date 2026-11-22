@@ -1,0 +1,13 @@
+# Perfil y destino temporales. curl prepara el perfil y devuelve lo que guardó Firefox.
+20|red
+@esperar 7
+20|run firefox-esr --version
+20|run mkdir -p /tmp/ff-perfil /tmp/ff-dl
+25|run curl -fsS -m 15 -o /tmp/ff-perfil/user.js http://10.0.2.2:18193/perfil.js
+60|pantalla
+30|abrir firefox-esr --no-remote --profile /tmp/ff-perfil http://10.0.2.2:18193/adjunto
+195|run sh -c 'for i in $(seq 90);do f=/tmp/ff-dl/vortex.bin;test -f $f && [ $(wc -c <$f) -eq 16392 ] && exit;sleep 2;done'
+20|run sha256sum /tmp/ff-dl/vortex.bin
+45|run curl -fsS -m 35 -T /tmp/ff-dl/vortex.bin http://10.0.2.2:18193/guardado
+30|run xwininfo -root -tree
+20|run tail -n 30 /tmp/vortex-web.log

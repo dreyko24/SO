@@ -16,6 +16,8 @@ on:
       - 'tools/ci/firefox/**'
       - 'tools/ci/firefox-funciones.sh'
       - 'tools/ci/firefox-funciones.txt'
+      - 'tools/ci/firefox-descarga.py'
+      - 'tools/ci/firefox-descarga.txt'
       - 'tools/xwd2png.py'
       - 'tests/test_xwd2png.py'
       - 'kernel64/kernel64.c'
@@ -31,6 +33,10 @@ on:
       - 'kernel/ui_locale.h'
       - 'kernel/media_demo.c'
       - 'kernel/usb_storage.c'
+      - 'kernel/usb.c'
+      - 'kernel/usb.h'
+      - 'kernel/usb_xhci.c'
+      - 'kernel/usb_xhci.h'
       - 'kernel/exfat_layout.h'
       - 'kernel/audio.c'
       - 'kernel/audio_sb16.c'
@@ -244,6 +250,10 @@ jobs:
         run: |
           bash tools/ci/firefox-funciones.sh kernel64/vortex-kernel64-text.elf \
             /tmp/vortex-ci-debian.cpio build/iso/boot/vortex-extra.cpio vortex-web-funciones
+      - name: Verificar descarga binaria en Firefox
+        run: |
+          python3 tools/ci/firefox-descarga.py kernel64/vortex-kernel64-text.elf \
+            /tmp/vortex-ci-debian.cpio build/iso/boot/vortex-extra.cpio vortex-web-descarga
       - name: Guardar diagnostico X11 y Firefox
         if: always()
         uses: actions/upload-artifact@v4
@@ -255,6 +265,7 @@ jobs:
             vortex-web-http.log
             vortex-firefox.png
             vortex-web-funciones/*.log
+            vortex-web-descarga/
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
