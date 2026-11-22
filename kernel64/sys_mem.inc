@@ -99,6 +99,10 @@ static void pg_release(Proc *pr,u64 *p,u64 arg){          /* paginas propias vue
 }
 static void vma_drop_pages(Proc *pr,struct Vma *v,u64 s,u64 e){ (void)v; pt_walk(pr,s,e,pg_release,0); }
 static void pg_setprot(Proc *pr,u64 *p,u64 prot){ (void)pr; if(prot&PROT_W) *p|=2; else *p&=~2ull; }
+static void vma_unref(const struct Vma *v){
+    if(v->obj)obj_unref(v->obj);
+    fs_node_unref(v->node);
+}
 /* quita el rango [s,e) de las regiones (recorta o parte las que lo cubren). Devuelve 0 */
 static int vma_cut(Proc *pr,u64 s,u64 e,int drop){
     for(int i=0;i<pr->nvma;){
@@ -111,17 +115,20 @@ static int vma_cut(Proc *pr,u64 s,u64 e,int drop){
             v=&pr->vma[i];
             for(int k=pr->nvma;k>i+1;k--) pr->vma[k]=pr->vma[k-1];
             pr->vma[i+1]=*v; pr->vma[i+1].s=e; if(v->kind==VK_FILE||v->kind==VK_SHARED) pr->vma[i+1].off=v->off+(e-v->s);
-            if(v->obj) v->obj->refs++;
+            vma_ref(&pr->vma[i+1]);
             v->e=s; pr->nvma++; i+=2; }
         else if(v->s<s){ v->e=s; i++; }
         else if(v->e>e){ if(v->kind==VK_FILE||v->kind==VK_SHARED) v->off+=e-v->s; v->s=e; i++; }
-        else { if(v->obj) obj_unref(v->obj); for(int k=i;k+1<pr->nvma;k++) pr->vma[k]=pr->vma[k+1]; pr->nvma--; }
+        else { vma_unref(v); for(int k=i;k+1<pr->nvma;k++) pr->vma[k]=pr->vma[k+1]; pr->nvma--; }
     }
     return 0;
 }
 static int vma_add(Proc *pr,u64 s,u64 e,u32 prot,u32 kind,KObj *obj,FsNode *node,u64 off){
-    if(vma_cut(pr,s,e,1)) return -1;
-    if(vma_grow(pr)) return -1;
+    /* Un mapa privado toma su propia referencia. El descriptor original
+     * puede cerrarse y el instalador puede reemplazar el nombre del archivo
+     * antes de que se lean las páginas pendientes. */
+    fs_node_ref(node);
+    if(vma_cut(pr,s,e,1)||vma_grow(pr)){fs_node_unref(node);return -1;}
     int i=0; while(i<pr->nvma&&pr->vma[i].s<s) i++;
     if(kind==VK_ANON&&i>0){ struct Vma *p=&pr->vma[i-1]; if(p->kind==VK_ANON&&p->e==s&&p->prot==prot){ p->e=e; return 0; } }   /* se une con la region anonima vecina */
     for(int k=pr->nvma;k>i;k--) pr->vma[k]=pr->vma[k-1];
@@ -129,7 +136,7 @@ static int vma_add(Proc *pr,u64 s,u64 e,u32 prot,u32 kind,KObj *obj,FsNode *node
     return 0;
 }
 static void vma_release(Proc *pr){
-    for(int i=0;i<pr->nvma;i++) if(pr->vma[i].obj) obj_unref(pr->vma[i].obj);
+    for(int i=0;i<pr->nvma;i++) vma_unref(&pr->vma[i]);
     if(pr->vma) kfree(pr->vma);
     pr->vma=0; pr->nvma=pr->cvma=0; pr->freepg=0;
 }
@@ -155,11 +162,11 @@ static void vma_protect(Proc *pr,u64 s,u64 e,u32 prot){
         if(cs>v->s||ce<v->e){                                  /* parte la region para cambiar solo el pedazo */
             struct Vma orig=*v;
             if(vma_cut(pr,cs,ce,0)) return;
-            if(orig.obj) orig.obj->refs++;
             if(vma_grow(pr)) return;
             int k=0; while(k<pr->nvma&&pr->vma[k].s<cs) k++;
             for(int m=pr->nvma;m>k;m--) pr->vma[m]=pr->vma[m-1];
             struct Vma *nv=&pr->vma[k]; *nv=orig; nv->s=cs; nv->e=ce; if(orig.kind==VK_FILE||orig.kind==VK_SHARED) nv->off=orig.off+(cs-orig.s); pr->nvma++;
+            vma_ref(nv);
             v=nv; i=k; }
         v->prot=prot;
         pt_walk(pr,cs,ce,pg_setprot,prot);
@@ -228,7 +235,7 @@ static u64 sys_mremap(u64 old,u64 olen,u64 nlen,u64 flags){
     u64 nva=CP->mmap_next; if(nva+nlen>=STACK_TOP-STACK_SIZE-(1ull<<20)) return RET_ERR(ENOMEM); CP->mmap_next+=nlen+4096;
     u64 oo=v.off+(old-v.s);
     if(v.obj) v.obj->refs++;
-    if(vma_add(CP,nva,nva+nlen,v.prot,v.kind,v.obj,v.node,oo)) return RET_ERR(ENOMEM);
+    if(vma_add(CP,nva,nva+nlen,v.prot,v.kind,v.obj,v.node,oo)){obj_unref(v.obj);return RET_ERR(ENOMEM);}
     for(u64 o=0;o<olen;o+=4096){ u64 *p=pte_ptr(CP,old+o); if(p&&(*p&1)){ u64 e=*p; *p=0; umap_set(CP,nva+o,e&~0xFFFull,e&0xFFF); } }       /* las paginas se mueven, no se copian */
     vma_cut(CP,old,old+olen,0);
     return nva;

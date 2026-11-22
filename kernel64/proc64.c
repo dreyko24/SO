@@ -123,6 +123,10 @@ int proc_init(void){
 /* ---------- paginas y tablas (por proceso) ---------- */
 static void vma_release(Proc *pr);
 static int vma_fault(Proc *pr,u64 va,int write);
+static void vma_ref(const struct Vma *v){
+    if(v->obj)v->obj->refs++;
+    fs_node_ref(v->node);
+}
 static u64 *pg_new(Proc *pr){
     if(pr->freepg){ u64 *p=pr->freepg; pr->freepg=(u64*)(uintptr_t)p[0]; memset(p,0,4096); return p; }
     if(!pr->slab_n || pr->slab_used>=slab_cap(pr->slab_n-1)){
@@ -179,7 +183,7 @@ static int as_clone(Proc *dst,Proc *src){      /* copia completa del espacio de 
     if(src->nvma){                                              /* mismas regiones (con una referencia mas a sus objetos) */
         dst->vma=kmalloc((size_t)src->cvma*sizeof(struct Vma)); if(!dst->vma) return -1;
         memcpy(dst->vma,src->vma,(size_t)src->nvma*sizeof(struct Vma)); dst->nvma=src->nvma; dst->cvma=src->cvma;
-        for(int i=0;i<dst->nvma;i++) if(dst->vma[i].obj) dst->vma[i].obj->refs++; }
+        for(int i=0;i<dst->nvma;i++) vma_ref(&dst->vma[i]); }
     return 0;
 }
 

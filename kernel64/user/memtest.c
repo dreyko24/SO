@@ -89,6 +89,45 @@ static void test_mem(void){
     CHECK(okk,"300 veces pedir 2 MB, usarlos y devolverlos");
     void *big=malloc(48<<20); CHECK(big!=0,"malloc de 48 MB"); if(big){ memset(big,1,48<<20); free(big); }
 }
+static void test_mapping_replaced_file(void){
+    enum { PAGE=4096, LENGTH=3*PAGE };
+    const char *path="/tmp/mt/mapeado", *replacement="/tmp/mt/mapeado.nuevo";
+    char data[LENGTH];
+    memset(data,'A',PAGE);memset(data+PAGE,'B',PAGE);memset(data+2*PAGE,'C',PAGE);
+    int fd=open(path,O_RDWR|O_CREAT|O_TRUNC,0644);
+    if(fd<0||write(fd,data,sizeof data)!=sizeof data){
+        if(fd>=0)close(fd);
+        CHECK(0,"preparar archivo para mmap y reemplazo");return;
+    }
+    volatile char *map=mmap(0,LENGTH,PROT_READ|PROT_WRITE,MAP_PRIVATE,fd,0);
+    close(fd);
+    if(map==MAP_FAILED){CHECK(0,"crear mmap antes de reemplazar archivo");return;}
+    CHECK(map[0]=='A'&&mprotect((void*)(map+PAGE),PAGE,PROT_READ)==0,"separar página privada con mprotect");
+    fd=open(replacement,O_RDWR|O_CREAT|O_TRUNC,0644);
+    int replaced=fd>=0&&write(fd,"nuevo",5)==5&&rename(replacement,path)==0;
+    if(fd>=0)close(fd);
+    CHECK(replaced&&map[PAGE]=='B',"mmap tardío conserva el archivo después de rename y close");
+
+    int gate[2];
+    if(pipe(gate)==0){
+        pid_t child=fork();
+        if(child==0){
+            close(gate[1]);char token=0;
+            _exit(read(gate[0],&token,1)==1&&map[2*PAGE]=='C'?0:1);
+        }
+        close(gate[0]);
+        munmap((void*)map,LENGTH);
+        int st=0;
+        if(child>0)write(gate[1],"x",1);
+        close(gate[1]);
+        CHECK(child>0&&waitpid(child,&st,0)==child&&WIFEXITED(st)&&WEXITSTATUS(st)==0,
+              "fork conserva la página no cargada tras munmap del padre");
+    }else{
+        munmap((void*)map,LENGTH);
+        CHECK(0,"preparar prueba de mmap tras fork");
+    }
+    unlink(path);unlink(replacement);
+}
 
 static void test_files(void){
     mkdir("/tmp/mt",0755);
@@ -209,7 +248,7 @@ static void test_files(void){
 }
 int main(void){
     SAY("== memtest: memoria ==\n"); test_mem();
-    SAY("== memtest: archivos ==\n"); test_files();
+    SAY("== memtest: archivos ==\n"); test_files(); test_mapping_replaced_file();
     SAY("memtest resultado: %d bien, %d mal -> %s\n",good,bad,bad?"HAY FALLOS":"TODO OK");
     return bad?1:0;
 }
