@@ -227,6 +227,28 @@ int main(void){
       if((fb[(y+35)*W+x+35]&0xffffffu)!=0x26a69a){
           puts("FALLO el aviso X tapa una ventana pequeña"); return 1;
       }
+      uint64_t painted_before=gui_painted_pixels;
+      for(int frame=0;frame<5;frame++){T+=4;gui_frame();}
+      if(gui_painted_pixels!=painted_before){
+          puts("FALLO X11 repinta una pantalla sin cambios"); return 1;
+      }
+      /* Xvfb escribe por mmap: la generación de VortexFS no avisa del cambio. */
+      uint32_t *shared=(uint32_t*)(void*)(screen->data+HEADER);
+      shared[140*XW+190]=0xb63157;
+      T+=4;gui_frame();
+      if((fb[(y+140)*W+x+190]&0xffffffu)!=0xb63157){
+          puts("FALLO X11 pierde un cambio de píxel en la memoria compartida"); return 1;
+      }
+      if(gui_painted_pixels-painted_before!=1){
+          puts("FALLO X11 repinta más de un píxel para un cambio aislado"); return 1;
+      }
+      memset(shared,0,XW*XH*4);
+      T+=4;gui_frame();
+      if(!(fb[(y+34)*W+x+34]&0xffffffu)||
+          (fb[(y+140)*W+x+190]&0xffffffu)!=0){
+          puts("FALLO X11 no recupera el aviso cuando vuelve a negro"); return 1;
+      }
+      puts("VORTEX X11 INCREMENTAL: 0 píxeles en reposo, 1 píxel por cambio aislado");
       closeall(); fs_remove(fixture?fixture:dir);
       puts("VORTEX X11: AVISO PARA XWD NEGRO Y CONTENIDO PEQUEÑO VISIBLE OK");
     }

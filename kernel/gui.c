@@ -2287,6 +2287,153 @@ static void store_draw(Win *w,int x,int y,int width,int height){
     if(w->scroll<max)button(x+width-104,y+height-39,88,27,"Siguiente",0);
 }
 
+enum { XFRAME_WAIT, XFRAME_FORMAT, XFRAME_READY };
+typedef struct {
+    const uint32_t *pixels;
+    int state, width, height, stride;
+} XFrame;
+static XFrame x_previous;
+static uint32_t *x_snapshot;
+static size_t x_snapshot_capacity;
+static char x_previous_notice[110];
+static uint32_t x_poll_next;
+
+static uint32_t x_be32(const unsigned char *p){
+    return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|(uint32_t)p[3];
+}
+static XFrame x_read_frame(void){
+    FsNode *file=fs_resolve(fs_root(),"/var/lib/xvfb/Xvfb_screen0");
+    if(!file||file->dir||!file->data||file->size<100)return (XFrame){0};
+    const unsigned char *data=(const unsigned char*)file->data;
+    uint32_t header=x_be32(data),width=x_be32(data+16),height=x_be32(data+20);
+    uint32_t bpp=x_be32(data+44),stride_bytes=x_be32(data+48),colors=x_be32(data+76);
+    uint64_t off=(uint64_t)header+(uint64_t)colors*12;
+    if(bpp!=32||!width||!height||width>4096||height>4096||header<100||
+       (off&3)||(stride_bytes&3)||stride_bytes<width*4||
+       off+(uint64_t)stride_bytes*height>(uint64_t)file->size)
+        return (XFrame){.state=XFRAME_FORMAT};
+    return (XFrame){(const uint32_t*)(const void*)(data+off),XFRAME_READY,
+                    (int)width,(int)height,(int)(stride_bytes/4)};
+}
+static int x_has_content(const XFrame *frame,int width,int height){
+    for(int y=0;y<height;y++){
+        const uint32_t *row=frame->pixels+(size_t)y*frame->stride;
+        for(int x=0;x<width;x++)if(row[x]&0xffffffu)return 1;
+    }
+    return 0;
+}
+static void x_read_notice(char msg[110]){
+    k_strcpy(msg,"Revisa el resultado en /tmp/vortex-web.log",110);
+    FsNode *log=fs_resolve(fs_root(),"/tmp/vortex-web.log");
+    if(!log||!log->data||log->size<=0)return;
+    int end=log->size;
+    while(end>0&&(log->data[end-1]=='\n'||log->data[end-1]=='\r'))end--;
+    int begin=end;
+    while(begin>0&&log->data[begin-1]!='\n'&&end-begin<95)begin--;
+    int n=end-begin;
+    if(n>0){memcpy(msg,log->data+begin,(size_t)n);msg[n]=0;}
+}
+static void x_draw_frame(int x,int y,int width,int height){
+    XFrame frame=x_read_frame();
+    fill(x,y,width,height,0x000000,255);
+    if(frame.state==XFRAME_WAIT){
+        text(x+20,y+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8);
+        text(x+20,y+44,"Inicia: pantalla   (en la terminal)",C_DIM);
+        return;
+    }
+    if(frame.state==XFRAME_FORMAT){
+        text(x+20,y+20,"El servidor X usa un formato que vortex aun no muestra (se necesita 32 bits).",0xd6dbe8);
+        return;
+    }
+    int bw=k_min(frame.width,width),bh=k_min(frame.height,height);
+    if(x_has_content(&frame,bw,bh)){
+        blit32(x,y,frame.pixels,frame.stride,bw,bh);
+    }else if(width>250&&height>150){
+        rrect(x+20,y+20,width-40,116,12,0x14233d,245);
+        text_bold(x+35,y+33,"La pantalla X sigue vacia",0xffffff);
+        text(x+35,y+57,"Inicia una aplicacion de Linux con abrir.",0xd7e6ff);
+        char msg[110];
+        x_read_notice(msg);
+        while(k_strlen(msg)>1&&text_w(msg)>width-74)msg[k_strlen(msg)-1]=0;
+        text(x+35,y+83,msg,0xffc995);
+        text(x+35,y+107,"No uses cuentas personales hasta validar el navegador.",0xb9cade);
+    }
+}
+static Damage x_changed_pixels(const XFrame *frame){
+    Damage changed={frame->width,frame->height,0,0};
+    for(int y=0;y<frame->height;y++){
+        const uint32_t *now=frame->pixels+(size_t)y*frame->stride;
+        const uint32_t *before=x_snapshot+(size_t)y*frame->width;
+        int left=0,right=frame->width;
+        while(left<right&&now[left]==before[left])left++;
+        if(left==right)continue;
+        while(right>left+1&&now[right-1]==before[right-1])right--;
+        changed.x0=k_min(changed.x0,left);
+        changed.x1=k_max(changed.x1,right);
+        changed.y0=k_min(changed.y0,y);
+        changed.y1=y+1;
+    }
+    return changed;
+}
+static void x_poll_frame(uint32_t tick,int open,int visible){
+    if(!open){
+        if(x_snapshot)kfree(x_snapshot);
+        x_snapshot=0;x_snapshot_capacity=0;x_previous=(XFrame){0};
+        x_previous_notice[0]=0;x_poll_next=tick;
+        return;
+    }
+    if(!visible||power_sleep||(int)(tick-x_poll_next)<0)return;
+    x_poll_next=tick+3;
+
+    XFrame frame=x_read_frame();
+    int entire=frame.state!=x_previous.state||frame.width!=x_previous.width||frame.height!=x_previous.height;
+    size_t size=(size_t)frame.width*frame.height;
+    /* Una instantánea común para las ventanas de X. Las pantallas mayores
+     * y la falta de memoria conservan el repintado anterior. */
+    int cacheable=size>0&&size<=1600u*1000u;
+    if(cacheable&&size>x_snapshot_capacity){
+        uint32_t *next=kmalloc(size*sizeof *next);
+        if(next){
+            if(x_snapshot)kfree(x_snapshot);
+            x_snapshot=next;x_snapshot_capacity=size;
+        }else cacheable=0;
+        entire=1;
+    }
+    if(frame.state==XFRAME_READY&&!cacheable)entire=1;
+    Damage changed={0};
+    if(cacheable&&!entire)changed=x_changed_pixels(&frame);
+    char notice[110]="";
+    if(frame.state==XFRAME_READY)x_read_notice(notice);
+    int notice_changed=k_strcmp(notice,x_previous_notice)!=0;
+    if(entire||changed.x1>0||notice_changed){
+        for(int i=0;i<nord;i++){
+            Win *w=&wins[order[i]];
+            if(w->type!=A_XSCR||w->minimized||w->workspace!=active_workspace)continue;
+            if(entire){dwin(w);continue;}
+            int x,y,width,height;
+            crect(w,&x,&y,&width,&height);
+            int bw=k_min(frame.width,width),bh=k_min(frame.height,height);
+            int right=k_min(changed.x1,bw),bottom=k_min(changed.y1,bh);
+            if(changed.x0<right&&changed.y0<bottom){
+                /* Al aparecer o desaparecer el aviso, se limpia toda la ventana. */
+                if(x_has_content(&x_previous,bw,bh)&&x_has_content(&frame,bw,bh))
+                    dmark(x+changed.x0,y+changed.y0,right-changed.x0,bottom-changed.y0);
+                else dwin(w);
+            }else if(notice_changed&&bw>0&&bh>0&&!x_has_content(&frame,bw,bh))dwin(w);
+        }
+    }
+    if(cacheable){
+        if(entire)changed=(Damage){0,0,frame.width,frame.height};
+        for(int y=changed.y0;y<changed.y1;y++)
+            memcpy(x_snapshot+(size_t)y*frame.width+changed.x0,
+                   frame.pixels+(size_t)y*frame.stride+changed.x0,
+                   (size_t)(changed.x1-changed.x0)*sizeof *x_snapshot);
+    }
+    x_previous=(XFrame){cacheable?x_snapshot:0,frame.state,
+                        cacheable?frame.width:0,cacheable?frame.height:0,frame.width};
+    k_strcpy(x_previous_notice,notice,sizeof x_previous_notice);
+}
+
 static void draw_window(int wi,int focused){
     Win *w=&wins[wi]; int x=w->x,y=w->y; int focused_cursor=focused;
     if(!w->fullscreen){
@@ -2335,47 +2482,7 @@ static void draw_window(int wi,int focused){
         for(int r=0;r<TH;r++){ char u[TW*2+1]; l1_to_utf8((unsigned char*)w->grid[r],TW,u); text(cx,cy+r*16,u,0xd6dbe8); }
         if(focused && ((kticks()/50)&1)) fill(cx+w->tc*8,cy+w->tr*16+13,8,3,ACCENT,255);
         break; }
-    case A_XSCR:{
-        FsNode *xf=fs_resolve(fs_root(),"/var/lib/xvfb/Xvfb_screen0");
-        fill(cx,cy,cw,ch,0x000000,255);
-        const unsigned char *d=xf&&!xf->dir?(const unsigned char*)xf->data:0;
-        if(d&&xf->size>=100){
-            #define BE32(o) ((uint32_t)d[o]<<24|(uint32_t)d[(o)+1]<<16|(uint32_t)d[(o)+2]<<8|(uint32_t)d[(o)+3])
-            uint32_t hs=BE32(0), pw=BE32(16), ph=BE32(20), bpp=BE32(44), bpl=BE32(48), ncol=BE32(76);
-            uint64_t off=(uint64_t)hs+(uint64_t)ncol*12;
-            if(bpp==32&&pw>0&&ph>0&&pw<=4096&&ph<=4096&&hs>=100&&!(off&3)&&!(bpl&3)&&bpl>=pw*4&&
-               off+(uint64_t)bpl*ph<=(uint64_t)xf->size){
-                int bw=(int)pw<cw?(int)pw:cw, bh=(int)ph<ch?(int)ph:ch;
-                int stride=(int)(bpl/4);
-                const uint32_t *pixels=(const uint32_t*)(const void*)(d+off);
-                /* La primera región pintada puede ser una ventana pequeña en un borde. */
-                int painted=0;
-                for(int iy=0;iy<bh&&!painted;iy++){
-                    const uint32_t *row=pixels+(size_t)iy*stride;
-                    for(int ix=0;ix<bw;ix++) if(row[ix]&0xffffffu){ painted=1; break; }
-                }
-                if(painted) blit32(cx,cy,pixels,stride,bw,bh);
-                else if(cw>250&&ch>150){
-                    rrect(cx+20,cy+20,cw-40,116,12,0x14233d,245);
-                    text_bold(cx+35,cy+33,"La pantalla X sigue vacia",0xffffff);
-                    text(cx+35,cy+57,"Inicia una aplicacion de Linux con abrir.",0xd7e6ff);
-                    char msg[110]="Revisa el resultado en /tmp/vortex-web.log";
-                    FsNode *lf=fs_resolve(fs_root(),"/tmp/vortex-web.log");
-                    if(lf&&lf->data&&lf->size>0){
-                        int end=lf->size;
-                        while(end>0&&(lf->data[end-1]=='\n'||lf->data[end-1]=='\r'))end--;
-                        int begin=end;
-                        while(begin>0&&lf->data[begin-1]!='\n'&&end-begin<95)begin--;
-                        int n=end-begin;if(n>95)n=95;
-                        if(n>0){memcpy(msg,lf->data+begin,(size_t)n);msg[n]=0;}
-                    }
-                    while(k_strlen(msg)>1&&text_w(msg)>cw-74)msg[k_strlen(msg)-1]=0;
-                    text(cx+35,cy+83,msg,0xffc995);
-                    text(cx+35,cy+107,"No uses cuentas personales hasta validar el navegador.",0xb9cade);
-                }
-            } else text(cx+20,cy+20,"El servidor X usa un formato que vortex aun no muestra (se necesita 32 bits).",0xd6dbe8);
-        } else { text(cx+20,cy+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8); text(cx+20,cy+44,"Inicia: pantalla   (en la terminal)",C_DIM); }
-        break; }
+    case A_XSCR: x_draw_frame(cx,cy,cw,ch); break;
     case A_ENCARTA:
         enc_render(w,cx,cy,cw,ch);
         break;
@@ -2530,7 +2637,7 @@ static void draw_window(int wi,int focused){
                 while(k_strlen(msg)>3&&text_w(msg)>cw-100)msg[k_strlen(msg)-1]=0;
                 text(cx+36,cy+201,msg,light_theme?0x9f3b21:0xffc28b);
                 text(cx+36,cy+225,n?
-                    "La controladora aparece; el almacenamiento no responde.":
+                    "FAT32 y exFAT de solo lectura por UHCI (USB 1.1).":
                     "Vortex no encuentra una controladora USB compatible.",C_DIM);
                 button(cx+20,cy+285,222,34,"Conectar de nuevo",0);
             }
@@ -3410,22 +3517,32 @@ void gui_frame(void){
             if(!w->minimized && w->workspace==active_workspace && w->type==A_MONITOR) dwin(w);
         }
     } }
-    { for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]];
-        /* No gastar CPU copiando la pantalla X si esta minimizada o en otro escritorio.
-         * Al restaurarla, el primer frame pendiente se pinta inmediatamente. */
-        if(xw->minimized||xw->workspace!=active_workspace) continue;
-        if(xw->type==A_XSCR&&(int)(t-xw->xnext)>=0){ xw->xnext=t+3; dwin(xw); }
-        else if(xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){
+    { int x_open=0,x_visible=0;
+      for(int i=0;i<nord;i++){ Win *xw=&wins[order[i]];
+        int shown=!xw->minimized&&xw->workspace==active_workspace;
+        if(xw->type==A_XSCR){x_open=1;x_visible|=shown;}
+        if(shown&&xw->type==A_PROGS&&(int)(t-xw->xnext)>=0){
             xw->xnext=t+100;
             if(xw->store_state!=store_snapshot())dwin(xw);
         }
-    } }
+      }
+      x_poll_frame(t,x_open,x_visible);
+    }
     { static uint32_t lg, nxt; if((int)(t-nxt)>=0){ nxt=t+40; uint32_t g=fs_gen(); if(g!=lg){ lg=g; dsk_sync(); for(int i=0;i<nord;i++) if(wins[order[i]].type==A_FILES) dwin(&wins[order[i]]); } } }
     { static int pc; int on=w_files_editing(); if(on){ int p=(t/50)&1; if(p!=pc){ pc=p; if(dren>=0){ DObj *o=&dobj[dren]; dmark(o->x-40,o->y+TILE,o->w+80,30); } } } }
     {static uint32_t usbnext;static int usb_seen;
+      static char usb_message[120];
       if((int)(t-usbnext)>=0){
         usbnext=t+300;usb_storage_poll();
         int ready=usb_storage_ready();
+        const char *message=usb_storage_message();
+        if(ready!=usb_seen||k_strcmp(usb_message,message)){
+          k_strcpy(usb_message,message,sizeof usb_message);
+          for(int i=0;i<nord;i++){
+            Win *w=&wins[order[i]];
+            if(w->type==A_MEDIA&&w->media_tab==3&&!w->minimized&&w->workspace==active_workspace)dwin(w);
+          }
+        }
         if(ready&&!usb_seen){
           /* Al montar una memoria nueva, abrirla en Archivos: no hay que
            * buscar la carpeta manualmente. Evitar reabrirla por cada frame. */
