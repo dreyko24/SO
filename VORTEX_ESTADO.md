@@ -18,7 +18,7 @@
 | Navegador web | `kernel/html.c`, `kernel/browser_launch.h`, `tools/vortex-proxy.py`, scripts del rootfs Debian | Visor HTML/HTTP limitado y proxy externo opcional; lanzador Chromium para entorno Debian/X. Un motor web moderno y seguro **no está demostrado**: no hay TLS nativo en el visor, CSS/JS completos ni aislamiento adecuado; el wrapper Chromium utiliza `--no-sandbox`. No utilizar credenciales personales allí. |
 | Audio | `kernel/audio.c` y GUI multimedia | WAV PCM 8/16 bits mono/estéreo con controladores AC’97 y Sound Blaster 16 emulados. Sin MP3/OGG/FLAC nativos ni compatibilidad general HDA verificada. |
 | Vídeo e imágenes | `kernel/video.c`, `kernel/image.c`, `kernel/jpeg.c`, `kernel/gfx.c`, `kernel/media_demo.c` | PNG, JPEG básico, BMP y PPM; AVI RGB 24/32 bits sin compresión, controles y escalado incremental sin división por píxel. Muestra propia de 75 cuadros a 25 FPS durante 3 s; la cadencia de la muestra no demuestra FPS garantizados en hardware. Sin H.264/HEVC/MP4/WebM nativos. |
-| USB | `kernel/usb_storage.c`, `kernel/usb_xhci.c` | UHCI con BOT/SCSI Mass Storage e importación FAT32 y exFAT de solo lectura en `/Dispositivos/Unidad-USB`. xHCI con detección y lectura de descriptores en puertos raíz. Pruebas en QEMU. |
+| USB | `kernel/usb_storage.c`, `kernel/usb_xhci.c` | UHCI y xHCI comparten BOT/SCSI e importan FAT32 y exFAT de solo lectura en `/Dispositivos/Unidad-USB`. La lectura xHCI admite memorias conectadas directamente. Pruebas en QEMU. |
 | Vortex Saber | `kernel/encyclopedia.h`, `kernel/saber_progress.h`, `kernel/gui.c` | Enciclopedia educativa de 31 artículos, preguntas/juegos, resultados y registro de progreso. Incluye migración desde resultados previos de cuatro/seis materias. Mantener esta versión: no regresar a la enciclopedia básica antigua. |
 | Herramientas/ISO/CI | `tools/build-iso.sh`, `tools/verificar-vortex.sh`, `tools/hostgui.c`, `tests/`, `.github/workflows/` | Construcción de ambos kernels, ISO única con modos 32/64 y Debian opcional, ejecución QEMU, pruebas nativas y trabajos de integración. Los tests host no sustituyen pruebas de hardware. |
 
@@ -175,9 +175,15 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - **Tienda y ABI Linux.** Un mapeo privado ahora mantiene el archivo abierto a nivel del kernel mientras alguna región lo referencia. `memtest` comprueba la lectura diferida tras cerrar el descriptor, reemplazar su ruta y desmontar las regiones del proceso padre. Pasó con 86 comprobaciones. En el mismo entorno Debian, la actualización de `libpcre2-8-0` que terminaba con una excepción de página pasó a terminar con código 0.
 - **Compositor.** La ventana de X usa una instantánea compartida para localizar cambios en el framebuffer de Xvfb. La prueba del escritorio midió cero píxeles repintados con una imagen estática y un píxel repintado ante un cambio aislado. También verifica que vuelva el aviso si el framebuffer queda negro.
 
+### Lectura de memorias USB 3 — 22 de noviembre de 2026
+
+- El controlador xHCI configura los endpoints bulk de la interfaz de almacenamiento BOT/SCSI. Vortex importa FAT32 y exFAT desde una memoria SuperSpeed conectada a un puerto raíz y muestra los archivos en Archivos. Importa una unidad a la vez, con los límites del lector de instantáneas y acceso de solo lectura. Un fallo de lectura o asignación conserva la instantánea anterior.
+- En QEMU, los núcleos de 32 y 64 bits importaron un PNG de 1.965 bytes en FAT32 y exFAT y volvieron a importarlo tras retirar y reconectar la memoria. La imagen FAT32 incluye un archivo de 40 KiB para recorrer más de una vuelta de los anillos bulk. La prueba gráfica abrió el PNG y lo aplicó como fondo. UHCI conservó la importación directa y detrás de un hub.
+- Una prueba local en QEMU inyectó un error de lectura en un sector de datos exFAT. Tras los reintentos, Archivos conservó las dos entradas de la memoria anterior. Una tercera conexión con una memoria sana volvió a importar con éxito.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
-1. **USB real:** acceso a memorias, entrada HID y hubs por xHCI, controlador EHCI, recuperación al desconectar, escritura y montaje, y pruebas con varios controladores físicos y pendrives.
+1. **USB real:** entrada HID, hubs y UAS por xHCI, controlador EHCI, escritura y montaje, y pruebas con varios controladores físicos y pendrives.
 2. **Multimedia fluida:** medir FPS de vídeo real y latencias, optimizar cómputo y framebuffer, codecs comprimidos, hardware de sonido HDA/ES1371, mezcla/buffering. El AVI sin comprimir es una muestra limitada.
 3. **Navegador moderno:** ejecución real de Chromium con HTTPS/CSS/JS, compatibilidad X y syscalls, usuarios y aislamiento; eliminar `--no-sandbox` antes de permitir información sensible.
 4. **Seguridad:** UID/GID y permisos reales, aislamiento de procesos, protección de memoria, autenticación, actualizaciones verificadas, APIs y drivers.

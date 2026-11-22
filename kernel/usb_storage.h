@@ -1,10 +1,7 @@
 #ifndef VORTEX_USB_STORAGE_H
 #define VORTEX_USB_STORAGE_H
-/* Controlador UHCI real + USB Mass Storage Bulk-Only/SCSI + importacion FAT32
- * SOLO LECTURA. No inventa una carpeta USB si no existe un dispositivo.
- * Soporta controladoras UHCI 1.1; XHCI/EHCI requieren controladores propios.
- */
-int usb_storage_probe(void);      /* 1 si se importo FAT32 desde USB, 0 sin unidad, negativo error */
+/* Importación FAT32/exFAT de solo lectura mediante UHCI o xHCI. */
+int usb_storage_probe(void);      /* 1 si se importó una unidad, 0 sin unidad, negativo error */
 int usb_storage_rescan(void);     /* reenumera inmediatamente al pulsar Buscar */
 int usb_storage_ready(void);
 const char *usb_storage_name(void);     /* nombre USB real, si se anuncia */

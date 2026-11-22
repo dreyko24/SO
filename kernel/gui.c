@@ -325,7 +325,7 @@ static int wallpaper_from_file(FsNode *f){
     /* Imagen de USB fisico: se copia a /Imagenes para poder conservarla al retirar el dispositivo.
      * Nunca se escribe en la unidad externa. La persistencia en disco requiere VortexFS activo. */
     char p[160];fs_path(f,p,sizeof p);
-    if(k_startswith(p,"/Dispositivos/")){
+    if((f->dead&&f->dev)||k_startswith(p,"/Dispositivos/")){
         FsNode *imgs=fs_resolve(fs_root(),"/Imagenes");
         FsNode *copy=imgs?fs_create(imgs,f->name,f->data,f->size):0;
         if(!copy){vimage_release(&next);return -1;}
@@ -403,7 +403,8 @@ static void win_close(int wi){
     for(;k<nord-1;k++) order[k]=order[k+1];
     doc_free(&wins[wi]);
     if(wins[wi].type==A_AUDIO)audio_stop();
-    if((wins[wi].type==A_AUDIO||wins[wi].type==A_VIDEO)&&wins[wi].file)fs_node_unref(wins[wi].file);
+    if(wins[wi].type==A_AUDIO||wins[wi].type==A_VIDEO||wins[wi].type==A_VIEWER)
+        fs_node_unref(wins[wi].file);
     vimage_release(&wins[wi].picture);
     nord--; wins[wi].used=0;
     dock_damage();
@@ -695,7 +696,7 @@ static void open_file(FsNode *n){
             kserial_puts(a->movie_play?"[vortex-video] AVI cargado\n":"[vortex-video] AVI no compatible\n");
         }
     } else { Win *v=open_app(A_VIEWER); if(v){
-        v->file=n;v->scroll=0;set_title(v,v->file->name);
+        fs_node_ref(n);v->file=n;v->scroll=0;set_title(v,v->file->name);
         if(ext_is(n,"png")||ext_is(n,"bmp")||ext_is(n,"ppm")||ext_is(n,"jpg")||ext_is(n,"jpeg")){
             int rc=vimage_decode((const unsigned char*)n->data,n->size,&v->picture);
             kserial_puts(rc==0?"[vortex-image] decoded\n":"[vortex-image] invalid\n");
@@ -1240,6 +1241,32 @@ static FsNode *trash_dir(void){ return special_dir("Papelera"); }
 static const char *ext_of(const char *n){ const char *e=0; if(!*n) return ""; for(const char *s=n+1;*s;s++) if(*s=='.') e=s; return e?e+1:""; }
 static int ext_is(const FsNode *f,const char *e){ const char *x=ext_of(f->name); while(*x&&*e){ char a=*x, b=*e; if(a>='A'&&a<='Z') a+=32; if(a!=b) return 0; x++; e++; } return !*x&&!*e; }
 static int fm_inside(FsNode *a,FsNode *b){ for(;a;a=a->parent) if(a==b) return 1; return 0; }   /* a esta dentro de b (o es b) */
+static int usb_snapshot_contains(const FsNode *root,const FsNode *node){
+    if(!node)return 0;
+    if(root==node)return 1;
+    /* Sólo recorrer la instantánea viva. La ventana pudo tener un archivo
+     * borrado por otra operación antes de que se detectara la memoria. */
+    for(const FsNode *child=root->child;child;child=child->next){
+        if(usb_snapshot_contains(child,node))return 1;
+    }
+    return 0;
+}
+void gui_usb_replacing(FsNode *root){
+    for(int i=0;i<nord;i++){
+        Win *w=&wins[order[i]];
+        if(usb_snapshot_contains(root,w->dir)){
+            w->dir=root;
+            w->sel=w->last=0;
+            w->scroll=w->editing=0;
+            dwin(w);
+        }else{
+            if(w->sel!=root&&usb_snapshot_contains(root,w->sel)){w->sel=0;w->editing=0;dwin(w);}
+            if(w->last!=root&&usb_snapshot_contains(root,w->last))w->last=0;
+        }
+        if(usb_snapshot_contains(root,w->cwd))w->cwd=root;
+        if(w->type==A_NOTES&&usb_snapshot_contains(root,w->file))w->file=0;
+    }
+}
 static void unique_name(FsNode *dir,const char *want,char *out,int max){   /* "nombre (2).ext" si ya existe, como Windows */
     if(!fs_find(dir,want)){ k_strcpy(out,want,max); return; }
     const char *e=ext_of(want); int bl=*e?(int)(e-1-want):k_strlen(want); if(bl>FS_NAME-16) bl=FS_NAME-16;
@@ -2637,7 +2664,7 @@ static void draw_window(int wi,int focused){
                 while(k_strlen(msg)>3&&text_w(msg)>cw-100)msg[k_strlen(msg)-1]=0;
                 text(cx+36,cy+201,msg,light_theme?0x9f3b21:0xffc28b);
                 text(cx+36,cy+225,n?
-                    "FAT32 y exFAT de solo lectura por UHCI (USB 1.1).":
+                    "FAT32 y exFAT de solo lectura por UHCI o xHCI.":
                     "Vortex no encuentra una controladora USB compatible.",C_DIM);
                 button(cx+20,cy+285,222,34,"Conectar de nuevo",0);
             }

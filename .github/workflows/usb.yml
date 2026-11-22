@@ -32,6 +32,8 @@ jobs:
           dd if=/dev/zero of=pendrive.img bs=1M count=128 status=none
           mkfs.vfat -F 32 -n VORTEXUSB pendrive.img
           mcopy -i pendrive.img docs/vortex-logo.png ::/VORTEX.PNG
+          truncate -s 40K usb-ring.bin
+          mcopy -i pendrive.img usb-ring.bin ::/ZZRING.BIN
           mdir -i pendrive.img ::
       - name: Arranque USB UHCI real emulado y exploracion FAT32
         run: |
@@ -60,18 +62,31 @@ jobs:
         run: |
           set -o pipefail
           python3 tools/ci_usb_topology.py usb-boot.iso pendrive.img | tee usb-topology.log
-      - name: Enumerar USB xHCI y comprobar hotplug en ambos kernels
+      - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
+        run: |
+          python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
+      - name: Importar FAT32 y exFAT por xHCI con reconexion en ambos kernels
         run: |
           set -o pipefail
           mkdir -p gx/boot/grub
           cp kernel/vortex-kernel.elf gx/boot/
           sed '/^  module /d; s/vortex-kernel64/vortex-kernel/' g/boot/grub/grub.cfg > gx/boot/grub/grub.cfg
           grub-mkrescue -o usb-boot32.iso gx
-          python3 tools/ci_usb_xhci.py usb-boot.iso pendrive.img | tee usb-xhci64.log
-          python3 tools/ci_usb_xhci.py usb-boot32.iso pendrive.img | tee usb-xhci32.log
-      - name: Pendrive exFAT de prueba (metadatos, carpetas y contenido real)
+          for bits in 64 32; do
+            iso=usb-boot.iso
+            if [ "$bits" = 32 ]; then iso=usb-boot32.iso; fi
+            python3 tools/ci_usb_xhci.py "$iso" pendrive.img | tee "usb-xhci-fat32-${bits}.log"
+            python3 tools/ci_usb_xhci.py "$iso" pendrive-exfat.img exFAT | tee "usb-xhci-exfat-${bits}.log"
+          done
+      - name: Abrir un PNG desde la memoria USB 3 en el escritorio
         run: |
-          python3 tools/ci_exfat_image.py pendrive-exfat.img docs/vortex-logo.png
+          python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -device qemu-xhci,id=xhci -drive if=none,id=stick,format=raw,file=pendrive.img,readonly=on -device usb-storage,bus=xhci.0,drive=stick > usb-xhci-gui.log 2>&1
+          tail -80 usb-xhci-gui.log
+          grep -Fq 'entradas, raiz=2 por xHCI' usb-xhci-gui.log
+          grep -Fq '[vortex-image] decoded' usb-xhci-gui.log
+          grep -Fq '[vortex-wallpaper] updated' usb-xhci-gui.log
+          cp capturas/04-archivos-usb.png capturas/xhci-archivos.png
+          cp capturas/06-fondo-desde-usb.png capturas/xhci-fondo.png
       - name: Arranque USB UHCI y lectura exFAT de archivo real
         run: |
           python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -usb -drive if=none,id=stick,format=raw,file=pendrive-exfat.img -device usb-storage,bus=usb-bus.0,drive=stick > exfat-gui.log 2>&1
@@ -89,6 +104,5 @@ jobs:
             hub-gui.log
             exfat-gui.log
             usb-topology.log
-            usb-xhci64.log
-            usb-xhci32.log
+            usb-xhci-*.log
             capturas/*.png

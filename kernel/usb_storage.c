@@ -1,5 +1,5 @@
-/* Vortex OS USB Mass Storage nativo: UHCI (PCI), BOT/SCSI, FAT32/exFAT solo lectura.
- * No se usa BIOS ni Linux. Soporta puertos raiz UHCI y un nivel de hub USB.
+/* Vortex OS USB Mass Storage nativo: UHCI y xHCI, BOT/SCSI, FAT32/exFAT solo lectura.
+ * Soporta puertos raiz y un nivel de hub UHCI.
  * No escribe jamas al USB. Los archivos importados son una instantanea de la unidad.
  */
 #include "usb_storage.h"
@@ -19,6 +19,7 @@ const char *usb_storage_format(void){return "No disponible";}
 const char *usb_storage_message(void){return "No hay USB fisico en el simulador host";}
 void usb_storage_poll(void){}
 #else
+#include "gui.h"
 #include "usb_xhci.h"
 typedef unsigned char u8;
 typedef unsigned short u16;
@@ -39,6 +40,9 @@ static void pci_wr(int b,int d,int f,int reg,u32 val){
     o32(0xCFC,val);
 }
 static u16 io,port;static int low,ready,probe_once;
+static unsigned xhci_slot;
+static u32 xhci_generation;
+static int xhci_status,read_failed,import_oom;
 static u8 address=1,epin,epout,mpin=64,mpout=64,mpzero=8,tgin,tgout,ifnum;
 static char info[120]="Sin memoria USB FAT32/exFAT reconocida";
 static char usb_product[64]="Unidad USB";
@@ -113,28 +117,34 @@ static int bulk(int input,u8 ep,u8 *data,int n,u8 maxp,u8 *toggle){
     }
     return run(k);
 }
+static int storage_transfer(int input,u8 *data,int length){
+    if(xhci_slot)return usb_xhci_storage_transfer(xhci_slot,input,data,(unsigned)length);
+    return input?bulk(1,epin,data,length,mpin,&tgin):bulk(0,epout,data,length,mpout,&tgout);
+}
 static int bot(const u8 *cdb,int cdblen,u8 *data,int length){
     if(length<0||length>4096)return -1;
     u8 cbw[31];memset(cbw,0,sizeof cbw);memcpy(cbw,"USBC",4);
     u32 tag=++scsi_tag;le32(cbw+4,tag);le32(cbw+8,(u32)length);
     cbw[12]=length?0x80:0;cbw[14]=(u8)cdblen;memcpy(cbw+15,cdb,(size_t)cdblen);
-    if(bulk(0,epout,cbw,31,mpout,&tgout))return -1;
-    if(length&&bulk(1,epin,data,length,mpin,&tgin))return -2;
+    if(storage_transfer(0,cbw,31))return -1;
+    if(length&&storage_transfer(1,data,length))return -2;
     u8 csw[16];memset(csw,0,sizeof csw);
-    if(bulk(1,epin,csw,13,mpin,&tgin))return -3;
+    if(storage_transfer(1,csw,13))return -3;
     if(rd32(csw)!=0x53425355u||rd32(csw+4)!=tag||csw[12]||rd32(csw+8))return -4;
     return 0;
 }
-static void bot_recover(void){
+static int bot_recover(void){
+    if(xhci_slot)return usb_xhci_storage_reset(xhci_slot);
     /* BOT Reset de clase, CLEAR_FEATURE(HALT) y restablecer DATA0 */
     (void)ctrl(address,0x21,0xff,0,ifnum,0,0,0);
     (void)ctrl(address,0x02,1,0,(u16)(epin|0x80),0,0,0);
     (void)ctrl(address,0x02,1,0,epout,0,0,0);
     tgin=tgout=0;
     waitms(15);
+    return 0;
 }
 static int readsector(u32 lba,u8 *out){
-    if(lba>=block_count)return -1;
+    if(lba>=block_count||read_failed)return -1;
     u8 cdb[10]={0x28,0,0,0,0,0,0,0,1,0};
     cdb[2]=(u8)(lba>>24);cdb[3]=(u8)(lba>>16);cdb[4]=(u8)(lba>>8);cdb[5]=(u8)lba;
     u8 tmp[512];
@@ -146,9 +156,10 @@ static int readsector(u32 lba,u8 *out){
         if(!r){memcpy(out,tmp,512);return 0;}
         kprintf("[vortex-usb] reintento READ10 lba=%u error=%d intento=%d\n",
                 lba,r,attempt+1);
-        bot_recover();
+        if(bot_recover())break;
         waitms(10+(attempt<4?attempt*15:60));
     }
+    read_failed=1;
     return -1;
 }
 static int controller(void){
@@ -226,6 +237,27 @@ static int storage_config(void){
     if(hid)kprintf("[vortex-usb] periferico HID detectado; controlador de entrada no disponible\n");
     return -9;
 }
+static int storage_capacity(void){
+    /* Algunas memorias necesitan unos ciclos tras SET_CONFIGURATION. */
+    waitms(100);
+    u8 tur[6]={0},cd[10]={0x25},cap[8]={0};
+    if(bot(tur,6,0,0)&&bot_recover())return -11;
+    int cap_ok=0;
+    for(int attempt=0;attempt<8;attempt++){
+        memset(cap,0,sizeof cap);
+        int rc=bot(cd,10,cap,8);
+        if(!rc){cap_ok=1;break;}
+        kprintf("[vortex-usb] READ CAPACITY intento=%d rc=%d\n",attempt+1,rc);
+        if(bot_recover())break;
+        waitms(40+attempt*50);
+    }
+    if(!cap_ok)return -11;
+    u32 last=((u32)cap[0]<<24)|((u32)cap[1]<<16)|((u32)cap[2]<<8)|cap[3];
+    u32 bs=((u32)cap[4]<<24)|((u32)cap[5]<<16)|((u32)cap[6]<<8)|cap[7];
+    if(bs!=512||last==0xffffffffu||last<127)return -12;
+    block_count=last+1u;
+    return 0;
+}
 static int enumerate_storage(u8 dev){
     address=dev;
     int conf=storage_config();
@@ -253,31 +285,10 @@ static int enumerate_storage(u8 dev){
     }
     if(ctrl(address,0,9,(u16)conf,0,0,0,0))return -10;
     tgin=tgout=0;
-    /* Tras SET_CONFIGURATION algunos pendrives reales necesitan varios
-     * ciclos antes de responder a SCSI. TEST UNIT READY no es obligatorio:
-     * si falla se recupera la fase BOT antes de READ CAPACITY. */
-    waitms(100);
-    u8 tur[6]={0},cd[10]={0x25},cap[8]={0};
-    tur[0]=0x00;
-    if(bot(tur,6,0,0))bot_recover();
-    int cap_ok=0;
-    for(int attempt=0;attempt<8;attempt++){
-        memset(cap,0,sizeof cap);
-        int rc=bot(cd,10,cap,8);
-        if(!rc){cap_ok=1;break;}
-        kprintf("[vortex-usb] READ CAPACITY intento=%d rc=%d\n",attempt+1,rc);
-        bot_recover();
-        waitms(40+attempt*50);
-    }
-    if(!cap_ok)return -11;
-    block_count=((u32)cap[0]<<24)|((u32)cap[1]<<16)|((u32)cap[2]<<8)|cap[3];
-    u32 last=block_count;
-    u32 bs=((u32)cap[4]<<24)|((u32)cap[5]<<16)|((u32)cap[6]<<8)|cap[7];
-    if(bs!=512||last==0xffffffffu||last<127)return -12;
-    block_count=last+1u;
-    return 0;
+    return storage_capacity();
 }
 static int fatmount(void){
+    read_failed=0;
     u8 s[512];if(readsector(0,s))return -1;
     part=0;exfat_mode=0;u32 part_sectors=block_count;
     if(s[510]==0x55&&s[511]==0xAA){
@@ -312,13 +323,15 @@ static int fatmount(void){
             part,root_cluster,sectors_per_cluster,fat_sector,first_data,volume_end);
     return 0;
 }
-static int mount_device(u8 dev){
-    int r=enumerate_storage(dev);
-    if(r)return r;
-    r=fatmount();
+static int storage_layout(void){
+    int r=fatmount();
     if(!r)return 0;
     kprintf("[vortex-usb] particion FAT32/exFAT no montada, codigo=%d\n",r);
     return r==-1?-16:-17;
+}
+static int mount_device(u8 dev){
+    int r=enumerate_storage(dev);
+    return r?r:storage_layout();
 }
 enum {
     HUB_PORT_ENABLE=1, HUB_PORT_RESET=4, HUB_PORT_POWER=8,
@@ -425,7 +438,7 @@ static void longpart(const u8 *e,char *dst){
 }
 static int readfile(u32 cl,u32 len,FsNode *dir,const char *name){
     if(!len||len>4u*1024u*1024u||imported>=100)return -1;
-    u8 *buf=kmalloc((size_t)len);if(!buf)return -1;
+    u8 *buf=kmalloc((size_t)len);if(!buf){import_oom=1;return -1;}
     u32 got=0,guard=0;
     for(u32 c=cl;got<len&&c>=2&&c<0x0ffffff8u&&guard++<2048;c=fatnext(c)){
         u32 base;if(cluster_lba(c,&base))break;
@@ -438,7 +451,7 @@ static int readfile(u32 cl,u32 len,FsNode *dir,const char *name){
     if(got!=len)kprintf("[vortex-usb] lectura incompleta %s: %u/%u bytes\n",name,got,len);
     if(got==len){FsNode *f=fs_create(dir,name,(char*)buf,(int)len);
         if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado\n",name,len);}
-        else kprintf("[vortex-usb] sin memoria para el archivo %s\n",name);}
+        else import_oom=1;}
     kfree(buf);
     return got==len?0:-1;
 }
@@ -464,10 +477,15 @@ static void readdir_usb(u32 first,FsNode *dst,int depth){
                 if(!goodname(nm))continue;
                 u32 start=((u32)rd16(e+20)<<16)|rd16(e+26),len=rd32(e+28);
                 if((e[11]&16)&&depth<4){
-                    FsNode *child=fs_mkdir(dst,nm);if(child){child->dev=1;readdir_usb(start,child,depth+1);}
+                    if(fs_find(dst,nm))continue;
+                    FsNode *child=fs_mkdir(dst,nm);
+                    if(!child){import_oom=1;return;}
+                    child->dev=1;
+                    readdir_usb(start,child,depth+1);
                 }else if(!(e[11]&16)&&len<=4u*1024u*1024u){
                     (void)readfile(start,len,dst,nm);
                 }
+                if(read_failed||import_oom)return;
             }
         }
     }
@@ -488,7 +506,7 @@ static void exfat_name_piece(const u8 *e,char *name,int *used,int *chars,int max
 }
 static int readfile_exfat(u32 first,u32 len,int contiguous,FsNode *dir,const char *name){
     if(!len||len>4u*1024u*1024u||imported>=100||first<2)return -1;
-    u8 *buf=kmalloc(len);if(!buf)return -1;
+    u8 *buf=kmalloc(len);if(!buf){import_oom=1;return -1;}
     u32 got=0,visited=0;
     for(u32 c=first;got<len&&visited++<8192;){
         u32 base;if(cluster_lba(c,&base))break;
@@ -501,7 +519,9 @@ static int readfile_exfat(u32 first,u32 len,int contiguous,FsNode *dir,const cha
         else {u32 next=fatnext(c);if(next<2||next>=0xfffffff8u)break;c=next;}
     }
     if(got==len){FsNode *f=fs_create(dir,name,(const char*)buf,(int)len);
-        if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado exFAT\n",name,len);}}
+        if(f){f->dev=1;imported++;kprintf("[vortex-usb] archivo %s (%u bytes) importado exFAT\n",name,len);}
+        else import_oom=1;
+    }
     kfree(buf);return got==len?0:-1;
 }
 static void readdir_exfat(u32 first,int contiguous,u64 data_length,FsNode *dir,int depth){
@@ -541,12 +561,16 @@ static void readdir_exfat(u32 first,int contiguous,u64 data_length,FsNode *dir,i
                        file_cluster<2||file_cluster>=cluster_count+2u)continue;
                     if(attr&0x10){
                         if(depth<4&&file_length<=8u*1024u*1024u){
+                            if(fs_find(dir,name))continue;
                             FsNode *sub=fs_mkdir(dir,name);
-                            if(sub){sub->dev=1;readdir_exfat(file_cluster,nofat,file_length,sub,depth+1);}
+                            if(!sub){import_oom=1;return;}
+                            sub->dev=1;
+                            readdir_exfat(file_cluster,nofat,file_length,sub,depth+1);
                         }
                     }else if(file_length<=4u*1024u*1024u&&file_length>0){
                         (void)readfile_exfat(file_cluster,(u32)file_length,nofat,dir,name);
                     }
+                    if(read_failed||import_oom)return;
                 }
             }
         }
@@ -555,55 +579,100 @@ static void readdir_exfat(u32 first,int contiguous,u64 data_length,FsNode *dir,i
     }
 }
 static void status(const char *msg){k_strcpy(info,msg,sizeof info);kprintf("[vortex-usb] %s\n",info);}
-int usb_storage_probe(void){
-    if(ready)return 1;
-    probe_once=1;
-    if(init()){
-        usb_xhci_poll();
-        if(!usb_xhci_message())status("USB: no hay controlador UHCI disponible");
-        return 0;
+static int storage_error(int r){
+    if(r==-14)status("Hub USB detectado, pero sin unidad accesible tras sus puertos");
+    else if(r==-13||r==-15)status("Hub USB detectado, fallo al activar o leer el dispositivo");
+    else if(r==-9)status("USB visto: no presenta almacenamiento BOT/SCSI compatible");
+    else if(r==-11)status("USB Mass Storage reconocido; SCSI no responde / unidad aun no lista");
+    else if(r==-12)status("USB Mass Storage: sector distinto de 512 B o capacidad no valida");
+    else if(r==-16)status("USB Mass Storage, pero falla la lectura de sectores");
+    else if(r==-17)status("USB reconocido; volumen FAT32/exFAT no compatible o no encontrado");
+    else if(r>=-4)status("USB presente; error en descriptor o direccion del dispositivo");
+    else status("USB presente; fallo de configuracion/transferencia, consultar puerto serie");
+    return r==-16||r==-17?-2:r;
+}
+static int import_snapshot(void){
+    /* Conservar la instantánea anterior hasta terminar la lectura. La
+     * carpeta visible mantiene su dirección para las ventanas de Archivos. */
+    FsNode staged={.dir=1};
+    int previous=imported;
+    imported=depth_count=import_oom=0;
+    if(exfat_mode)readdir_exfat(root_cluster,0,0,&staged,0);
+    else readdir_usb(root_cluster,&staged,0);
+    int error=read_failed||(xhci_slot&&usb_xhci_storage_generation(xhci_slot)!=xhci_generation);
+    FsNode *dir=0;
+    if(!error&&!import_oom){
+        FsNode *root=fs_root();
+        FsNode *mount=fs_find(root,"Dispositivos");
+        if(!mount)mount=fs_mkdir(root,"Dispositivos");
+        if(mount&&mount->dir){
+            mount->dev=1;
+            dir=fs_find(mount,"Unidad-USB");
+            if(!dir)dir=fs_mkdir(mount,"Unidad-USB");
+        }
     }
-    int r=probe_ports();
-    if(!r){status("UHCI detectado, sin dispositivo conectado");return 0;}
-    if(r<0){
-        kprintf("[vortex-usb] fallo de enumeracion etapa=%d, UHCI=%x puerto=%x\n",
-                r,(u32)io,(u32)port);
-        if(r==-14)status("Hub USB detectado, pero sin unidad accesible tras sus puertos");
-        else if(r==-13||r==-15)status("Hub USB detectado, fallo al activar o leer el dispositivo");
-        else if(r==-9)status("USB visto: no presenta almacenamiento BOT/SCSI compatible");
-        else if(r==-11)status("USB Mass Storage reconocido; SCSI no responde / unidad aun no lista");
-        else if(r==-12)status("USB Mass Storage: sector distinto de 512 B o capacidad no valida");
-        else if(r==-16)status("USB Mass Storage, pero falla la lectura de sectores");
-        else if(r==-17)status("USB reconocido; volumen FAT32/exFAT no compatible o no encontrado");
-        else if(r>=-4)status("USB presente; error en descriptor o direccion del dispositivo");
-        else status("USB presente; fallo de configuracion/transferencia, consultar puerto serie");
-        return r==-16||r==-17?-2:r;
+    if(!dir||!dir->dir){
+        while(staged.child)fs_remove(staged.child);
+        imported=previous;
+        status(error?"USB: lectura interrumpida; se conservo la instantanea anterior":
+                     "Sin memoria para importar USB; se conservo la instantanea anterior");
+        return -2;
     }
-    FsNode *root=fs_root();
-    FsNode *mount=fs_find(root,"Dispositivos");
-    if(!mount)mount=fs_mkdir(root,"Dispositivos");
-    if(!mount){status("Sin memoria para montar USB");return -3;}
-    mount->dev=1;
-    FsNode *dir=fs_find(mount,"Unidad-USB");
-    if(!dir)dir=fs_mkdir(mount,"Unidad-USB");
-    if(!dir){status("Sin memoria para mostrar USB");return -4;}
-    /* Nueva memoria USB: descartar solo la instantanea anterior en RAM.
-     * Nunca escribir ni formatear el dispositivo fisico. */
+    gui_usb_replacing(dir);
     while(dir->child)fs_remove(dir->child);
-    dir->dev=1;imported=depth_count=0;
-    if(exfat_mode)readdir_exfat(root_cluster,0,0,dir,0);
-    else readdir_usb(root_cluster,dir,0);
+    dir->dev=1;
+    while(staged.child){
+        FsNode *file=staged.child;
+        if(fs_move(file,dir,file->name))fs_remove(file);
+    }
     ready=1;
-    kprintf("[vortex-usb] importados=%d entradas, raiz=%u\n",imported,root_cluster);
+    kprintf("[vortex-usb] importados=%d entradas, raiz=%u por %s\n",
+            imported,root_cluster,xhci_slot?"xHCI":"UHCI");
     status(exfat_mode?"USB exFAT real leido en /Dispositivos/Unidad-USB (solo lectura)":
                       "USB FAT32 real leido en /Dispositivos/Unidad-USB (solo lectura)");
     return 1;
 }
+static int storage_probe(int retry){
+    if(ready)return 1;
+    probe_once=1;
+    xhci_slot=0;
+    usb_xhci_poll();
+    int error=0;
+    if(!init()){
+        xhci_status=0;
+        int r=probe_ports();
+        if(r>0)return import_snapshot();
+        if(!r)status("UHCI detectado, sin dispositivo conectado");
+        else{
+            kprintf("[vortex-usb] fallo de enumeracion etapa=%d, UHCI=%x puerto=%x\n",
+                    r,(u32)io,(u32)port);
+            error=storage_error(r);
+        }
+    }else if(!usb_xhci_message())status("USB: no hay controladora UHCI ni xHCI disponible");
+    for(unsigned slot=0;(slot=usb_xhci_storage_next(slot,retry))!=0;){
+        xhci_slot=slot;
+        xhci_generation=usb_xhci_storage_generation(slot);
+        xhci_status=1;
+        int r=usb_xhci_storage_open(slot)?-10:storage_capacity();
+        if(!r)r=storage_layout();
+        if(!r){
+            k_strcpy(usb_product,"Memoria USB (xHCI)",sizeof usb_product);
+            error=import_snapshot();
+            if(error>0)return error;
+        }else{
+            kprintf("[vortex-usb] fallo de almacenamiento xHCI etapa=%d slot=%u\n",r,slot);
+            error=storage_error(r);
+        }
+    }
+    xhci_slot=0;
+    return error;
+}
+int usb_storage_probe(void){return storage_probe(0);}
 /* El boton Buscar debe volver a enumerar aun si quedo una deteccion
  * anterior marcada como lista; la prueba automatica usa probe(). */
 int usb_storage_rescan(void){
     ready=0;probe_once=0;
-    return usb_storage_probe();
+    return storage_probe(1);
 }
 int usb_storage_ready(void){return ready;}
 const char *usb_storage_name(void){return usb_product;}
@@ -612,13 +681,17 @@ unsigned usb_storage_file_count(void){return ready?(unsigned)imported:0;}
 const char *usb_storage_format(void){return ready?(exfat_mode?"exFAT":"FAT32"):"No disponible";}
 const char *usb_storage_message(void){
     const char *xhci=usb_xhci_message();
-    return !io&&xhci?xhci:info;
+    return !io&&!xhci_status&&xhci?xhci:info;
 }
 void usb_storage_poll(void){
     usb_xhci_poll();
     static u32 next_probe;
     u32 now=kticks();
     if(!ready){
+        if(usb_xhci_storage_next(0,0)){
+            (void)usb_storage_probe();
+            return;
+        }
         /* Evitar congelar la GUI: sin dispositivo en los puertos UHCI no
          * reiniciar la controladora ni recorrer FAT32 cada cinco segundos. */
         if(!io&&probe_once)return; /* no aparece PCI UHCI por conectar pendrive */
@@ -629,10 +702,10 @@ void usb_storage_poll(void){
         }
         return;
     }
-    if(!io||!port)return;
     /* CSC detecta tambien una desconexion y reconexion entre dos sondeos. */
-    int connected=(i16(port)&7u)==5u;
-    if(connected&&attached_hub_port){
+    int connected=xhci_slot?usb_xhci_storage_generation(xhci_slot)==xhci_generation:
+                         io&&port&&(i16(port)&7u)==5u;
+    if(connected&&!xhci_slot&&attached_hub_port){
         u8 st[4]={0};
         u8 device_mpzero=mpzero;
         int device_low=low;
@@ -645,6 +718,7 @@ void usb_storage_poll(void){
     }
     if(!connected){
         ready=0;
+        xhci_slot=0;
         next_probe=now+200;
         status("USB desconectado; archivos mostrados son una instantanea");
     }

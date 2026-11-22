@@ -1292,6 +1292,32 @@ int main(void){
       if(ms<=0||ms>60000){puts("FALLO banco de arrastre");return 1;}
     }
     closeall();
+    /* Al reemplazar la instantánea USB, las ventanas pueden seguir abiertas. */
+    {
+      FsNode *snapshot=fs_mkdir(fs_root(),"prueba-usb");
+      FsNode *sub=fs_mkdir(snapshot,"carpeta");
+      FsNode *file=fs_create(sub,"contenido.bin","Vortex",6);
+      FsNode *removed=fs_create(fs_root(),"borrado.txt","nota",4);
+      if(!file||!removed){puts("FALLO preparar instantánea USB");return 1;}
+      Win *files=open_app(A_FILES), *term=open_app(A_TERM);
+      files->dir=sub;files->sel=files->last=file;term->cwd=sub;
+      open_file(file);
+      Win *viewer=&wins[win_top()];
+      open_file(removed);
+      Win *notes=&wins[win_top()];
+      fs_remove(removed);
+      gui_usb_replacing(snapshot);
+      fs_remove(sub);
+      if(files->dir!=snapshot||files->sel||files->last||term->cwd!=snapshot||
+         viewer->type!=A_VIEWER||viewer->file!=file||!file->dead||
+         file->size!=6||memcmp(file->data,"Vortex",6)){
+          puts("FALLO reemplazar instantánea USB con ventanas abiertas");return 1;
+      }
+      notes->file=0;
+      closeall();
+      fs_remove(snapshot);
+      puts("VORTEX USB: INSTANTÁNEA REEMPLAZADA CON VENTANAS ABIERTAS");
+    }
     /* escritorio lleno */
     dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
