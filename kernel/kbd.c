@@ -25,6 +25,10 @@ static const Key ES[]={
  {0x33,',',';',0},{0x34,'.',':',0},{0x35,'-','_',0},{0x56,'<','>',0},{0,0,0,0}};
 
 static int layout, shift, caps, altgr, e0, dead, ctrl, alt;
+static void side_modifier(int *state,int side,int released){
+    if(released)*state&=~side;
+    else *state|=side;
+}
 void kbd_set_layout(int l){ layout=(l>=0&&l<=2)?l:0; dead=0; }
 int  kbd_layout(void){ return layout; }
 const char *kbd_layout_name(int l){ return l==KBD_LATAM?"Latinoamerica":l==KBD_ES?"Espana":"US"; }
@@ -53,7 +57,7 @@ int kbd_feed(uint8_t b){
     if(e0){
         e0=0;
         if(sc==0x38){ altgr=!rel; return 0; }                         /* AltGr */
-        if(sc==0x1D){ ctrl=!rel; return 0; }                          /* Ctrl derecho */
+        if(sc==0x1D){ side_modifier(&ctrl,2,rel); return 0; }          /* Ctrl derecho */
         if(sc==0x5B){ return rel?0:KBD_ACTIVITIES; }                    /* Super izquierdo -> Actividades */
         if(rel)return 0;
         if(ctrl&&alt&&sc==0x4B)return KBD_WORKSPACE_PREV;
@@ -62,8 +66,8 @@ int kbd_feed(uint8_t b){
                     case 0x4D: return 0x14; case 0x49: return 0x15; case 0x51: return 0x16; case 0x53: return 0x7F; }
         return 0;
     }
-    if(sc==0x2A||sc==0x36){ shift=!rel; return 0; }
-    if(sc==0x1D){ ctrl=!rel; return 0; }                              /* Ctrl izquierdo */
+    if(sc==0x2A||sc==0x36){ side_modifier(&shift,sc==0x2a?1:2,rel); return 0; }
+    if(sc==0x1D){ side_modifier(&ctrl,1,rel); return 0; }               /* Ctrl izquierdo */
     if(sc==0x38){ int was=alt; alt=!rel; return was&&rel?KBD_SWITCH_END:0; }
     if(rel) return 0;
     if(alt&&sc==0x3e)return KBD_ALT_CLOSE; /* Alt+F4: cerrar ventana */

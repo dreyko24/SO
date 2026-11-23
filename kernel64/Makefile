@@ -6,7 +6,7 @@ K       = ../kernel
 # Se revisa cualquier optimizacion ISA avanzada con CPUID antes de activarla.
 KFLAGS  = -m64 -march=x86-64 -mtune=generic -mno-bmi2 -std=gnu11 -O2 -ffreestanding -fno-pie -no-pie -mcmodel=small -mno-red-zone -fno-stack-protector -fno-asynchronous-unwind-tables -fno-builtin -fno-tree-loop-distribute-patterns -mgeneral-regs-only -Wall -Wextra -nostdlib -I$(K) -DVORTEX_ARCH='"x86_64, 64 bits"'
 LDFLAGS = -m64 -T linker64.ld -nostdlib -static -no-pie -Wl,-z,noexecstack -Wl,--build-id=none -Wl,-z,max-page-size=4096
-OBJS    = kernel64.o proc64.o proc64s.o sock.o blob64.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o jpeg.o picojpeg.o video.o media_demo.o usb.o usb_storage.o usb_xhci.o audio.o audio_sb16.o zip.o media_logo.o
+OBJS    = kernel64.o proc64.o proc64s.o sock.o blob64.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o jpeg.o picojpeg.o video.o media_demo.o usb.o usb_storage.o usb_xhci.o usb_hid.o audio.o audio_sb16.o zip.o media_logo.o
 
 UFLAGS = -m64 -march=x86-64 -mtune=generic -mno-bmi2 -O2 -ffreestanding -fPIE -pie -nostdlib -fno-stack-protector -Wl,-z,max-page-size=4096 -Wl,--build-id=none -Wl,-e,_start -Wl,--no-dynamic-linker
 
@@ -49,7 +49,9 @@ kernel64.o: kernel64.c $(K)/vortex.h $(K)/gui.h $(K)/net.h
 	$(CC) $(KFLAGS) -c $< -o $@
 usb.o: $(K)/usb.h
 usb_storage.o: $(K)/usb_xhci.h
-usb_xhci.o: $(K)/usb.h $(K)/usb_xhci.h
+kernel64.o: $(K)/usb_hid.h $(K)/usb_xhci.h $(K)/input_events.h $(K)/ps2_mouse.h
+usb_xhci.o: $(K)/usb.h $(K)/usb_xhci.h $(K)/usb_hid.h
+usb_hid.o: $(K)/usb_hid.h
 run: vortex-kernel64-text.elf
 	qemu-system-x86_64 -kernel vortex-kernel64-text.elf -serial stdio -m 256M -netdev user,id=n0 -device e1000,netdev=n0
 clean:

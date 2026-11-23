@@ -22,6 +22,10 @@ jobs:
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/exfat_layout_test.c -o /tmp/vortex-exfat-test
           /tmp/vortex-exfat-test
+      - name: Validar informes HID de arranque (ASan/UBSan)
+        run: |
+          gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/usb_hid_test.c kernel/usb_hid.c -o /tmp/vortex-usb-hid-test
+          /tmp/vortex-usb-hid-test
       - name: Compilar kernels
         run: |
           make -C kernel64
@@ -78,6 +82,11 @@ jobs:
             python3 tools/ci_usb_xhci.py "$iso" pendrive.img | tee "usb-xhci-fat32-${bits}.log"
             python3 tools/ci_usb_xhci.py "$iso" pendrive-exfat.img exFAT | tee "usb-xhci-exfat-${bits}.log"
           done
+      - name: Controlar el escritorio por USB sin PS/2 en 32 y 64 bits
+        run: |
+          set -o pipefail
+          python3 tools/ci_usb_hid.py usb-boot.iso --disk-image pendrive.img | tee usb-hid64.log
+          python3 tools/ci_usb_hid.py usb-boot32.iso | tee usb-hid32.log
       - name: Abrir un PNG desde la memoria USB 3 en el escritorio
         run: |
           python3 tools/ci_gui.py tools/ci/gui-usb-fisico.txt -- qemu-system-x86_64 -monitor unix:/tmp/gmon.sock,server,nowait -cdrom usb-boot.iso -boot d -m 2G -vga std -display none -serial stdio -device qemu-xhci,id=xhci -drive if=none,id=stick,format=raw,file=pendrive.img,readonly=on -device usb-storage,bus=xhci.0,drive=stick > usb-xhci-gui.log 2>&1
@@ -105,4 +114,5 @@ jobs:
             exfat-gui.log
             usb-topology.log
             usb-xhci-*.log
+            usb-hid*.log
             capturas/*.png

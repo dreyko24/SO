@@ -1,5 +1,6 @@
-/* xHCI nativo: enumeración en puertos raíz y transporte bulk para memorias BOT. */
+/* xHCI nativo: puertos raíz, memorias BOT y entrada HID de arranque. */
 #include "usb_xhci.h"
+#include "usb_hid.h"
 #include "usb.h"
 #include "disk.h"
 
@@ -10,7 +11,7 @@ enum {
     PORT_RESET = 1u << 4, PORT_POWER = 1u << 9, PORT_WARM_RESET = 1u << 31,
     PORT_CONNECT_CHANGE = 1u << 17, PORT_CHANGES = 0x00fe0000u,
     PORT_RW = PORT_POWER | (3u << 14) | (7u << 25),
-    TRB_CYCLE = 1u << 0, TRB_TOGGLE = 1u << 1,
+    TRB_CYCLE = 1u << 0, TRB_TOGGLE = 1u << 1, TRB_ISP = 1u << 2,
     TRB_IMMEDIATE = 1u << 6, TRB_IOC = 1u << 5, TRB_IN = 1u << 16,
     TRB_NORMAL = 1, TRB_SETUP = 2, TRB_DATA = 3, TRB_STATUS = 4, TRB_LINK = 6,
     TRB_ENABLE_SLOT = 9, TRB_DISABLE_SLOT = 10, TRB_ADDRESS = 11,
@@ -44,8 +45,16 @@ typedef struct {
     uint8_t id, burst;
 } BulkEndpoint;
 typedef struct {
+    Ring ring;
+    Trb *pending;
+    UsbHidState report;
+    uint8_t id, packet, interval, protocol, config, interface;
+    uint8_t attempted, failed, retried;
+} HidEndpoint;
+typedef struct {
     BulkEndpoint endpoint[2]; /* OUT, IN */
     Ring bulk[2];
+    HidEndpoint hid;
     uint32_t generation;
     uint8_t port, config, interface, attempted, configured, enabled, retiring;
 } Device;
@@ -58,16 +67,19 @@ static uint32_t output[MAX_SLOTS][1024] __attribute__((aligned(4096)));
 static Trb command_trbs[TRBS] __attribute__((aligned(4096)));
 static Trb control_trbs[MAX_SLOTS][TRBS] __attribute__((aligned(4096)));
 static Trb bulk_trbs[MAX_SLOTS][2][TRBS] __attribute__((aligned(4096)));
+static Trb hid_trbs[MAX_SLOTS][TRBS] __attribute__((aligned(4096)));
 static volatile Trb events[TRBS] __attribute__((aligned(4096)));
 static Segment event_segment __attribute__((aligned(64)));
 /* Una retirada puede dejar un TD pendiente hasta Disable Slot. Su DMA no
  * toca los datos de los demás dispositivos mientras se retira ese slot. */
 static uint8_t transfer_data[MAX_SLOTS][DMA_BYTES] __attribute__((aligned(4096)));
+static uint8_t hid_data[MAX_SLOTS][64] __attribute__((aligned(64)));
 static Ring commands, controls[MAX_SLOTS];
 static RootPort ports[256];
 static Device devices[MAX_SLOTS];
 static unsigned slots, port_count, ctx_words, event_index, event_cycle = 1;
 static unsigned active;
+static unsigned hid_owner[USB_HID_MOUSE+1];
 static uint32_t generation;
 static int tried, online, present;
 static volatile uint8_t *mmio, *oper, *doorbells, *interrupter;
@@ -209,6 +221,46 @@ static int port_connected(unsigned port){
     return (state&(PORT_CONNECTED|PORT_ENABLED|PORT_CONNECT_CHANGE))==
                   (PORT_CONNECTED|PORT_ENABLED);
 }
+static void hid_release(unsigned slot){
+    HidEndpoint *hid=&devices[slot-1].hid;
+    if(!hid->protocol||hid_owner[hid->protocol]!=slot)return;
+    usb_hid_release(&hid->report,hid->protocol);
+    hid->pending=0;
+    hid_owner[hid->protocol]=0;
+}
+static void hid_submit(unsigned slot){
+    HidEndpoint *hid=&devices[slot-1].hid;
+    hid->pending=push(&hid->ring,(uintptr_t)hid_data[slot-1],hid->packet,
+                      TRB_TYPE(TRB_NORMAL)|TRB_IOC|TRB_ISP,0);
+    barrier();
+    write32(doorbells,slot*4,hid->id);
+}
+static int hid_event(const Trb *event){
+    if(TRB_GET_TYPE(event->flags)!=EVENT_TRANSFER)return 0;
+    unsigned slot=event->flags>>24;
+    if(!slot||slot>slots)return 0;
+    Device *d=&devices[slot-1];
+    HidEndpoint *hid=&d->hid;
+    uint64_t pointer=((uint64_t)event->hi<<32)|event->lo;
+    if(!hid->pending||((event->flags>>16)&31)!=hid->id||
+       pointer!=(uintptr_t)hid->pending)return 0;
+    hid->pending=0;
+    if(!port_connected(d->port)){hid_release(slot);return 1;}
+    unsigned code=event->status>>24, left=event->status&0xffffffu;
+    if(code!=1&&code!=13){
+        usb_hid_release(&hid->report,hid->protocol);
+        hid->failed=1;
+        return 1;
+    }
+    if(left<=hid->packet)
+        usb_hid_report(&hid->report,hid->protocol,hid_data[slot-1],hid->packet-left);
+    hid_submit(slot);
+    return 1;
+}
+static void drain_events(void){
+    Trb event;
+    for(unsigned i=0;i<TRBS&&pop(&event);i++)(void)hid_event(&event);
+}
 static int completion(unsigned type,Trb *trb,unsigned slot,unsigned ep,Trb *result){
     uint32_t start=kticks();
     uint32_t checked_at=start-1;
@@ -223,6 +275,8 @@ static int completion(unsigned type,Trb *trb,unsigned slot,unsigned ep,Trb *resu
             __asm__ volatile("pause");
             continue;
         }
+        /* Durante una lectura de disco o un comando pueden llegar teclas. */
+        if(hid_event(&event))continue;
         if(TRB_GET_TYPE(event.flags)!=type||
            (slot&&(event.flags>>24!=slot||((event.flags>>16)&31)!=ep)))continue;
         uint64_t ptr=((uint64_t)event.hi<<32)|event.lo;
@@ -311,6 +365,28 @@ static int address_slot(unsigned port,unsigned slot,unsigned speed,unsigned pack
     endpoint_context(slot,packet);
     return command((uintptr_t)input,TRB_TYPE(TRB_ADDRESS)|(slot<<24),0);
 }
+static void boot_hid_endpoint(HidEndpoint *hid,const uint8_t *desc,unsigned speed,
+                              int superspeed,unsigned protocol,unsigned config,unsigned interface){
+    unsigned address=desc[2], packet=desc[4]|((unsigned)desc[5]<<8), interval=desc[6];
+    unsigned minimum=protocol==USB_HID_KEYBOARD?8:3;
+    if(hid->id||!config||(address&0xf0)!=0x80||!(address&15)||
+       packet<minimum||packet>64||!interval)return;
+    if(superspeed||speed==3){
+        if(interval>16)return;
+        interval--;
+    }else{
+        /* En baja/completa velocidad bInterval está en tramas de 1 ms. */
+        unsigned exponent=3;
+        while(interval>1){interval>>=1;exponent++;}
+        interval=exponent;
+    }
+    hid->id=(uint8_t)((address&15)*2+1);
+    hid->packet=(uint8_t)packet;
+    hid->interval=(uint8_t)interval;
+    hid->protocol=(uint8_t)protocol;
+    hid->config=(uint8_t)config;
+    hid->interface=(uint8_t)interface;
+}
 static int read_identity(unsigned slot,unsigned speed,int superspeed,unsigned packet,
                          unsigned *vid,unsigned *pid,unsigned *klass){
     uint8_t *data=transfer_data[slot-1];
@@ -327,12 +403,12 @@ static int read_identity(unsigned slot,unsigned speed,int superspeed,unsigned pa
     *vid=data[8]|((unsigned)data[9]<<8);
     *pid=data[10]|((unsigned)data[11]<<8);
     *klass=data[4];
-    if(*klass&&*klass!=0xef&&*klass!=8)return 0;
+    if(*klass&&*klass!=0xef&&*klass!=8&&*klass!=3)return 0;
     if(ep0_get(slot,2,9)||data[0]!=9||data[1]!=2)return -1;
     unsigned size=data[2]|((unsigned)data[3]<<8);
     if(size<9||size>DMA_BYTES||ep0_get(slot,2,size)||data[0]!=9||data[1]!=2)return -1;
     Device *dev=&devices[slot-1];
-    unsigned interface=0;
+    unsigned interface=0,hid_protocol=0;
     int seen_interface=0,bot=0;
     BulkEndpoint bulk[2]={{0}};
     for(unsigned off=9;off+2<=size;off+=data[off]){
@@ -340,10 +416,14 @@ static int read_identity(unsigned slot,unsigned speed,int superspeed,unsigned pa
         if(len<2||len>size-off)return -1;
         if(data[off+1]==4){
             bot=0;
+            hid_protocol=0;
             if(len<9||data[off+3])continue;
             if(!seen_interface&&(!*klass||*klass==0xef))*klass=data[off+5];
             seen_interface=1;
             bot=data[off+5]==8&&data[off+6]==6&&data[off+7]==0x50;
+            if(data[off+5]==3&&data[off+6]==1&&
+               (data[off+7]==USB_HID_KEYBOARD||data[off+7]==USB_HID_MOUSE))
+                hid_protocol=data[off+7];
             interface=data[off+2];
             bulk[0]=bulk[1]=(BulkEndpoint){0};
         }else if(bot&&data[off+1]==5&&len>=7&&(data[off+3]&3)==2){
@@ -366,11 +446,66 @@ static int read_identity(unsigned slot,unsigned speed,int superspeed,unsigned pa
                 dev->endpoint[1]=bulk[1];
                 break;
             }
+        }else if(hid_protocol&&data[off+1]==5&&len>=7&&(data[off+3]&3)==3){
+            /* El modo de arranque usa un informe corto por consulta. */
+            unsigned companion=off+len;
+            if(superspeed&&(size-companion<6||data[companion]!=6||
+                            data[companion+1]!=48||data[companion+2]||
+                            (data[companion+3]&3)))continue;
+            boot_hid_endpoint(&dev->hid,data+off,speed,superspeed,hid_protocol,data[5],interface);
         }
     }
     return seen_interface||*klass?0:-1;
 }
 
+static void configure_context(unsigned slot,unsigned last_endpoint){
+    memset(input,0,sizeof input);
+    uint32_t *slot_ctx=input+ctx_words;
+    memcpy(slot_ctx,output[slot-1],ctx_words*sizeof *slot_ctx);
+    slot_ctx[0]=(slot_ctx[0]&0x07ffffffu)|(last_endpoint<<27);
+    input[1]=1;
+}
+static int configure_hid(unsigned slot,int replace){
+    HidEndpoint *hid=&devices[slot-1].hid;
+    if(replace&&stop_endpoint(slot,hid->id))return -1;
+    configure_context(slot,hid->id);
+    input[1]|=1u<<hid->id;
+    if(replace)input[0]=1u<<hid->id;
+    ring_init(&hid->ring,hid_trbs[slot-1]);
+    uint64_t ring=(uintptr_t)hid->ring.trbs|1u;
+    uint32_t *ctx=input+(hid->id+1)*ctx_words;
+    ctx[0]=(uint32_t)hid->interval<<16;
+    ctx[1]=((uint32_t)hid->packet<<16)|(7u<<3)|(3u<<1); /* interrupción IN */
+    ctx[2]=(uint32_t)ring;
+    ctx[3]=(uint32_t)(ring>>32);
+    ctx[4]=((uint32_t)hid->packet<<16)|hid->packet;
+    return command((uintptr_t)input,TRB_TYPE(TRB_CONFIGURE)|(slot<<24),0);
+}
+static void activate_hid(void){
+    for(unsigned slot=1;slot<=slots&&online;slot++){
+        Device *d=&devices[slot-1];
+        HidEndpoint *hid=&d->hid;
+        if(!hid->protocol||d->config||!d->port||ports[d->port].slot!=slot||
+           !port_connected(d->port))continue;
+        if(hid->failed&&hid_owner[hid->protocol]==slot){
+            unsigned address=(hid->id>>1)|0x80;
+            if(!hid->retried&&!ep0_request(slot,0x02,1,0,address,0)&&!configure_hid(slot,1)){
+                hid->failed=0;
+                hid->retried=1;
+                hid_submit(slot);
+            }else hid_release(slot);
+            continue;
+        }
+        if(hid->attempted||hid_owner[hid->protocol])continue;
+        hid->attempted=1;
+        if(configure_hid(slot,0)||ep0_request(slot,0,9,hid->config,0,0)||
+           ep0_request(slot,0x21,0x0b,0,hid->interface,0))continue;
+        hid_owner[hid->protocol]=slot;
+        hid_submit(slot);
+        kprintf("[vortex-xhci] entrada HID %s puerto=%u\n",
+                hid->protocol==USB_HID_KEYBOARD?"teclado":"raton",d->port);
+    }
+}
 static int is_superspeed(unsigned port,unsigned speed){
     unsigned protocol=ports[port].protocol;
     return protocol?protocol>=3:speed>=4;
@@ -406,6 +541,7 @@ static void disable_slot(unsigned slot){
 }
 static void retire_slot(unsigned slot){
     unsigned port=devices[slot-1].port;
+    hid_release(slot);
     if(port&&ports[port].slot==slot){
         ports[port].slot=0;
         active--;
@@ -445,8 +581,7 @@ void usb_xhci_poll(void){
         kprintf("[vortex-xhci] iniciado con %u puertos raiz\n",port_count);
     }
     if(!online)return;
-    Trb event;
-    for(unsigned i=0;i<TRBS&&pop(&event);i++){}
+    drain_events();
     for(unsigned slot=1;slot<=slots;slot++){
         if(devices[slot-1].retiring){disable_slot(slot);break;}
     }
@@ -472,6 +607,24 @@ void usb_xhci_poll(void){
             budget--;
             enumerate(port,state);
         }
+    }
+    activate_hid();
+}
+void usb_xhci_service(void){
+    static uint32_t next_tick,next_scan;
+    uint32_t now=kticks();
+    if((int32_t)(now-next_tick)<0)return;
+    next_tick=now+1;
+    if((int32_t)(now-next_scan)>=0){
+        next_scan=now+25;
+        usb_xhci_poll();
+    }else if(online)drain_events();
+    for(unsigned protocol=USB_HID_KEYBOARD;protocol<=USB_HID_MOUSE;protocol++){
+        unsigned slot=hid_owner[protocol];
+        if(!slot)continue;
+        Device *d=&devices[slot-1];
+        if(!online||!port_connected(d->port))hid_release(slot);
+        else usb_hid_repeat(&d->hid.report,protocol);
     }
 }
 const char *usb_xhci_message(void){
@@ -500,13 +653,9 @@ static int configure_bulk(unsigned slot,int replace){
             if(stop_endpoint(slot,d->endpoint[in].id))return -1;
         }
     }
-    memset(input,0,sizeof input);
-    uint32_t *slot_ctx=input+ctx_words;
-    memcpy(slot_ctx,output[slot-1],ctx_words*sizeof *slot_ctx);
     unsigned high=d->endpoint[0].id;
     if(d->endpoint[1].id>high)high=d->endpoint[1].id;
-    slot_ctx[0]=(slot_ctx[0]&0x07ffffffu)|(high<<27);
-    input[1]=1;
+    configure_context(slot,high);
     for(unsigned in=0;in<2;in++){
         BulkEndpoint ep=d->endpoint[in];
         ring_init(&d->bulk[in],bulk_trbs[slot-1][in]);

@@ -62,6 +62,14 @@ int main(void){
     chk(press(0x3e),KBD_ALT_CLOSE,"Alt+F4 cierra ventana");
     chk(press(0x44),KBD_ALT_MAX,"Alt+F10 max/restaura");
     chk(kbd_feed(0xb8),KBD_SWITCH_END,"Alt soltado tras F4/F10");
+    kbd_feed(0x2a); kbd_feed(0x36); kbd_feed(0xaa);
+    chk(press(0x1e),'A',"Mayus derecha sigue pulsada");
+    kbd_feed(0xb6);
+    chk(press(0x1e),'a',"ambas teclas Mayus liberadas");
+    kbd_feed(0x1d); kbd_feed(0xe0); kbd_feed(0x1d); kbd_feed(0x9d);
+    chk(press(0x2e),0x403,"Ctrl derecho sigue pulsado");
+    kbd_feed(0xe0); kbd_feed(0x9d);
+    chk(press(0x2e),'c',"ambos Ctrl liberados");
     if(fails){ printf("%d fallos\n",fails); return 1; }
     puts("KBD OK"); return 0;
 }

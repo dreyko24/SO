@@ -13,6 +13,9 @@ void gfx_set_bpp(int bpp);
 #include "net.h"
 #include "fs.h"
 #include "disk.h"
+#include "ps2_mouse.h"
+#include "usb_hid.h"
+#include "usb_xhci.h"
 
 typedef uint64_t u64;
 
@@ -132,30 +135,58 @@ static void pit_init(void){ uint32_t div=1193182/100; outb(0x43,0x36); outb(0x40
 #define KB_N 128
 static volatile unsigned short kb_buf[KB_N]; static volatile int kb_h, kb_t;
 static void kb_push(unsigned short c){ int n=(kb_h+1)%KB_N; if(n!=kb_t){ kb_buf[kb_h]=c; kb_h=n; } }
-static volatile unsigned char rk_buf[256]; static volatile int rk_h, rk_t;       /* bytes crudos del teclado, para la pantalla X */
-static void rk_push(unsigned char b){ int n=(rk_h+1)&255; if(n!=rk_t){ rk_buf[rk_h]=b; rk_h=n; } }
-static int rk_pop(void){ if(rk_t==rk_h) return -1; int b=rk_buf[rk_t]; rk_t=(rk_t+1)&255; return b; }
-static void kb_irq(void){ unsigned char raw=inb(0x60); rk_push(raw); int c=kbd_feed(raw); if(c) kb_push((unsigned short)c); }   /* traduccion en kbd.c (US/Latam/ES) */
+static VKeySources keyboard_sources;
+static VRawKeyQueue raw_keys; /* Eventos Set 1 para la pantalla X. */
+static int rk_pop(void){
+    u64 flags=irq_save();
+    int key=vkey_raw_pop(&raw_keys,&keyboard_sources);
+    irq_restore(flags);
+    return key;
+}
+static void keyboard_input(uint8_t raw,int extended,unsigned source){
+    if(!vkey_source(&keyboard_sources,raw,extended,source))return;
+    vkey_raw_push(&raw_keys,raw,extended);
+    if(extended)(void)kbd_feed(0xe0);
+    int c=kbd_feed(raw);
+    if(c)kb_push((unsigned short)c);
+}
+static void kb_irq(void){
+    static int extended;
+    uint8_t raw=inb(0x60);
+    if(raw==0xe0){extended=1;return;}
+    keyboard_input(raw,extended,INPUT_PS2);
+    extended=0;
+}
+void usb_hid_key_event(uint8_t scancode,int extended,int pressed){
+    u64 flags=irq_save();
+    keyboard_input(scancode|(pressed?0:0x80),extended,INPUT_USB);
+    irq_restore(flags);
+}
 
-#include "ps2_mouse.h"
-/* ---------- Raton PS/2 (IRQ12) ---------- */
-struct mev { int dx,dy,b,wheel; };
-static volatile struct mev mq[64];static volatile int mq_h,mq_t;
+/* ---------- Raton PS/2 y USB ---------- */
+static VMouseQueue mouse_queue;
 static VMouseDecoder mdecoder;
+static int ps2_buttons, usb_buttons;
+static void mouse_input(int dx,int dy,int wheel){
+    vmouse_push(&mouse_queue,(VMouseEvent){.dx=dx,.dy=dy,.buttons=ps2_buttons|usb_buttons,.wheel=wheel});
+}
 static void mouse_irq(void){
     VMouseEvent e;
     if(!vmouse_feed(&mdecoder,inb(0x60),&e))return;
-    int nx=(mq_h+1)%64;
-    if(nx!=mq_t){
-        mq[mq_h].dx=e.dx;mq[mq_h].dy=e.dy;mq[mq_h].b=e.buttons;
-        mq[mq_h].wheel=e.wheel;mq_h=nx;
-    }
+    ps2_buttons=e.buttons;
+    mouse_input(e.dx,e.dy,e.wheel);
 }
-static int mouse_pop(struct mev *e){
-    if(mq_t==mq_h)return 0;
-    e->dx=mq[mq_t].dx;e->dy=mq[mq_t].dy;
-    e->b=mq[mq_t].b;e->wheel=mq[mq_t].wheel;
-    mq_t=(mq_t+1)%64;return 1;
+void usb_hid_mouse_event(int dx,int dy,int buttons,int wheel){
+    u64 flags=irq_save();
+    usb_buttons=buttons;
+    mouse_input(dx,dy,wheel);
+    irq_restore(flags);
+}
+static int mouse_pop(VMouseEvent *e){
+    u64 flags=irq_save();
+    int available=vmouse_pop(&mouse_queue,e);
+    irq_restore(flags);
+    return available;
 }
 static void kbc_wait_w(void){ int t=100000; while((inb(0x64)&2)&&t--); }
 static void kbc_wait_r(void){ int t=100000; while(!(inb(0x64)&1)&&t--); }
@@ -559,9 +590,18 @@ void kmain64(uint32_t magic, struct mb_info *mi){
             if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"instalador")) gui_open_installer();   /* arranque del USB en modo instalador */
             if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"terminal")) gui_open_terminal();   /* linea de GRUB con 'terminal': abre la terminal sola */
             for(;;){
-                { int rb; while((rb=rk_pop())>=0) gui_rawkey(rb); }
+                usb_xhci_service();
+                int raw;
+                while((raw=rk_pop())>=0){
+                    if(raw&0x100)gui_rawkey(0xe0);
+                    gui_rawkey(raw&0xff);
+                }
                 int c; while((c=getc_nb())>=0) gui_key(c);
-                struct mev e; while(mouse_pop(&e)) gui_mouse_event(e.dx,e.dy,e.b); if(e.wheel)gui_mouse_wheel(e.wheel);
+                VMouseEvent e;
+                while(mouse_pop(&e)){
+                    gui_mouse_event(e.dx,e.dy,e.buttons);
+                    if(e.wheel)gui_mouse_wheel(e.wheel);
+                }
                 net_poll(); proc_pump(); gui_frame();
                 if(!proc_has_ready()) __asm__ volatile("sti;hlt"); else __asm__ volatile("sti");   /* dormir solo si no hay procesos listos: si no, cada bloqueo costaba un tic de 10 ms */
             }

@@ -1,10 +1,9 @@
 #ifndef VORTEX_PS2_MOUSE_H
 #define VORTEX_PS2_MOUSE_H
-#include <stdint.h>
+#include "input_events.h"
 
 /* IntelliMouse PS/2: ID 0 usa 3 bytes; ID 3/4 añade rueda en el cuarto.
  * Decodificador sin acceso a puertos; se prueba en el anfitrión. */
-typedef struct { int dx,dy,buttons,wheel; } VMouseEvent;
 typedef struct {
     uint8_t bytes[4];
     int n,packet_size;

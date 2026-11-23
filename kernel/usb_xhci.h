@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 void usb_xhci_poll(void);
+void usb_xhci_service(void); /* entrada desde el bucle de escritorio */
 const char *usb_xhci_message(void);
 
 unsigned usb_xhci_storage_next(unsigned after,int retry);

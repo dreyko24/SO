@@ -4,7 +4,7 @@ LDFLAGS = -m32 -T linker.ld -nostdlib -static -Wl,-z,noexecstack -Wl,--build-id=
 ULDFLAGS= -m32 -T user/user.ld -nostdlib -static -Wl,-z,noexecstack -Wl,--build-id=none -Wl,-m,elf_i386 -Wl,-z,max-page-size=4096 -Wl,-z,noseparate-code
 PROGS   = utest crash spin ush forktest
 UELF    = $(PROGS:%=user/%.elf)
-OBJS    = kernel.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o jpeg.o picojpeg.o video.o media_demo.o usb.o usb_storage.o usb_xhci.o audio.o audio_sb16.o zip.o media_logo.o blob.o
+OBJS    = kernel.o gfx.o fs.o html.o gui.o net.o disk.o kbd.o image.o jpeg.o picojpeg.o video.o media_demo.o usb.o usb_storage.o usb_xhci.o usb_hid.o audio.o audio_sb16.o zip.o media_logo.o blob.o
 
 # vortex-kernel.elf      : pide modo grafico 1024x768x32 a GRUB (se usa en la ISO)
 # vortex-kernel-text.elf : sin peticion de video (para QEMU -kernel y las autopruebas)
@@ -22,7 +22,9 @@ boot-text.o: boot.S
 	$(CC) $(KFLAGS) -c $< -o $@
 usb.o: usb.h
 usb_storage.o: usb_xhci.h
-usb_xhci.o: usb.h usb_xhci.h
+kernel.o: usb_hid.h usb_xhci.h input_events.h ps2_mouse.h
+usb_xhci.o: usb.h usb_xhci.h usb_hid.h
+usb_hid.o: usb_hid.h
 picojpeg.o: third_party/picojpeg.c third_party/picojpeg.h
 	$(CC) $(KFLAGS) -c $< -o $@
 media_logo.o: media_logo.S ../docs/vortex-logo.png

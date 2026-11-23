@@ -120,7 +120,7 @@ datos privados en esta versión experimental.
 - Firefox ESR en el modo de 64 bits mostró resultados públicos de Google y YouTube por HTTPS en QEMU. También pasó pruebas locales de JavaScript, almacenamiento web, Fetch, WebM VP8 sin audio y descarga de un adjunto binario con guardado automático. El diálogo de descarga, la reproducción con audio, las extensiones y el aislamiento siguen pendientes de validación. [Pruebas](VORTEX_ESTADO.md).
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
-- El teclado y ratón nativos usan principalmente PS/2. En QEMU, xHCI reconoce los dispositivos conectados a puertos raíz y permite volver a importar archivos al reconectar una memoria FAT32 o exFAT. La entrada por USB y las pruebas con periféricos físicos siguen pendientes.
+- El escritorio acepta PS/2 y un teclado y un ratón relativo USB compatibles con HID Boot en puertos directos xHCI. En QEMU, ambos núcleos pasaron pruebas de escritura, clic y reconexión con PS/2 desactivado. Quedan pendientes los hubs xHCI, los dispositivos con informes HID distintos del modo de arranque y las pruebas con periféricos físicos.
 - El sistema sí ha arrancado en QEMU mediante GitHub Actions. Eso no equivale a validación completa en equipos físicos, ni a compatibilidad de todos los dispositivos.
 
 ## Pruebas

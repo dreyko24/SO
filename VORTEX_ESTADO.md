@@ -18,7 +18,7 @@
 | Navegador web | `kernel/html.c`, `kernel/browser_launch.h`, `tools/vortex-proxy.py`, scripts del rootfs Debian | Visor HTML/HTTP limitado y proxy externo opcional; lanzador Chromium para entorno Debian/X. Un motor web moderno y seguro **no está demostrado**: no hay TLS nativo en el visor, CSS/JS completos ni aislamiento adecuado; el wrapper Chromium utiliza `--no-sandbox`. No utilizar credenciales personales allí. |
 | Audio | `kernel/audio.c` y GUI multimedia | WAV PCM 8/16 bits mono/estéreo con controladores AC’97 y Sound Blaster 16 emulados. Sin MP3/OGG/FLAC nativos ni compatibilidad general HDA verificada. |
 | Vídeo e imágenes | `kernel/video.c`, `kernel/image.c`, `kernel/jpeg.c`, `kernel/gfx.c`, `kernel/media_demo.c` | PNG, JPEG básico, BMP y PPM; AVI RGB 24/32 bits sin compresión, controles y escalado incremental sin división por píxel. Muestra propia de 75 cuadros a 25 FPS durante 3 s; la cadencia de la muestra no demuestra FPS garantizados en hardware. Sin H.264/HEVC/MP4/WebM nativos. |
-| USB | `kernel/usb_storage.c`, `kernel/usb_xhci.c` | UHCI y xHCI comparten BOT/SCSI e importan FAT32 y exFAT de solo lectura en `/Dispositivos/Unidad-USB`. La lectura xHCI admite memorias conectadas directamente. Pruebas en QEMU. |
+| USB | `kernel/usb_storage.c`, `kernel/usb_xhci.c`, `kernel/usb_hid.c` | UHCI y xHCI comparten BOT/SCSI e importan FAT32 y exFAT de solo lectura en `/Dispositivos/Unidad-USB`. Los puertos raíz xHCI también admiten un teclado y un ratón relativo HID Boot en el escritorio. Pruebas en QEMU. |
 | Vortex Saber | `kernel/encyclopedia.h`, `kernel/saber_progress.h`, `kernel/gui.c` | Enciclopedia educativa de 31 artículos, preguntas/juegos, resultados y registro de progreso. Incluye migración desde resultados previos de cuatro/seis materias. Mantener esta versión: no regresar a la enciclopedia básica antigua. |
 | Herramientas/ISO/CI | `tools/build-iso.sh`, `tools/verificar-vortex.sh`, `tools/hostgui.c`, `tests/`, `.github/workflows/` | Construcción de ambos kernels, ISO única con modos 32/64 y Debian opcional, ejecución QEMU, pruebas nativas y trabajos de integración. Los tests host no sustituyen pruebas de hardware. |
 
@@ -181,9 +181,15 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - En QEMU, los núcleos de 32 y 64 bits importaron un PNG de 1.965 bytes en FAT32 y exFAT y volvieron a importarlo tras retirar y reconectar la memoria. La imagen FAT32 incluye un archivo de 40 KiB para recorrer más de una vuelta de los anillos bulk. La prueba gráfica abrió el PNG y lo aplicó como fondo. UHCI conservó la importación directa y detrás de un hub.
 - Una prueba local en QEMU inyectó un error de lectura en un sector de datos exFAT. Tras los reintentos, Archivos conservó las dos entradas de la memoria anterior. Una tercera conexión con una memoria sana volvió a importar con éxito.
 
+### Teclado y ratón USB — 23 de noviembre de 2026
+
+- El controlador xHCI entrega informes HID Boot a las colas del escritorio en los núcleos de 32 y 64 bits. Reutiliza la distribución de teclado y notifica las liberaciones al retirar el periférico. La prueba abre Aplicaciones con el ratón, inicia la terminal, comprueba el texto exacto y repite tras desconectar con Mayús y el botón izquierdo pulsados. QEMU ejecuta la prueba con el controlador PS/2 desactivado.
+- La suite del anfitrión comprueba repetición de teclas, informes cortos, al menos un modificador físico todavía pulsado en otra fuente y liberaciones después de llenar las colas de entrada. La entrada USB inicial admite un teclado y un ratón relativo compatibles con HID Boot conectados directamente.
+- La prueba QEMU de 64 bits también escribe en la terminal mientras el mismo controlador xHCI lee una memoria FAT32. Al retirar esa memoria, la terminal recibe el texto completo pendiente.
+
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
-1. **USB real:** entrada HID, hubs y UAS por xHCI, controlador EHCI, escritura y montaje, y pruebas con varios controladores físicos y pendrives.
+1. **USB real:** hubs, UAS y dispositivos con informes HID ajenos al modo de arranque por xHCI, controlador EHCI, escritura y montaje, y pruebas con varios controladores físicos y periféricos.
 2. **Multimedia fluida:** medir FPS de vídeo real y latencias, optimizar cómputo y framebuffer, codecs comprimidos, hardware de sonido HDA/ES1371, mezcla/buffering. El AVI sin comprimir es una muestra limitada.
 3. **Navegador moderno:** ejecución real de Chromium con HTTPS/CSS/JS, compatibilidad X y syscalls, usuarios y aislamiento; eliminar `--no-sandbox` antes de permitir información sensible.
 4. **Seguridad:** UID/GID y permisos reales, aislamiento de procesos, protección de memoria, autenticación, actualizaciones verificadas, APIs y drivers.
