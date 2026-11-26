@@ -31,6 +31,12 @@ jobs:
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/ps2_mouse_test.c -o /tmp/vortex-ps2-wheel-test
           /tmp/vortex-ps2-wheel-test
+      - name: Cuentas locales, derivación y persistencia (ASan/UBSan)
+        run: |
+          gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wno-misleading-indentation \
+            -fsanitize=address,undefined -fno-pie -no-pie tests/session_test.c \
+            kernel/session.c kernel/fs.c -o /tmp/vortex-session-test
+          /tmp/vortex-session-test
       - name: Seguridad de framebuffer, pitch y clipping
         run: |
           gcc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/gfx_dimensions_test.c kernel/gfx.c -o /tmp/vortex-gfx-test

@@ -7,12 +7,20 @@ on:
     paths:
       - '.github/workflows/vm-iso.yml'
       - 'kernel/gui.c'
+      - 'kernel/gui_session.inc'
+      - 'kernel/session.c'
+      - 'kernel/session.h'
+      - 'kernel/session_console.inc'
       # Los cambios en el nucleo propio de 64 bits también deben generar
       # la ISO única; antes Makefile/proc64.c quedaban fuera del filtro.
       - 'kernel64/Makefile'
       - 'kernel64/user/**'
       - 'tools/mkrootfs.py'
       - 'tools/ci_drive.py'
+      - 'tools/ci_firefox_desktop.py'
+      - 'tools/ci_session.py'
+      - 'tools/ci_usb_hid.py'
+      - 'tools/ci_usb_topology.py'
       - 'tools/ci/firefox/**'
       - 'tools/ci/firefox-funciones.sh'
       - 'tools/ci/firefox-funciones.txt'
@@ -98,6 +106,7 @@ jobs:
           grep -aFq 'Iniciando escritorio' vortex-64.log || {
             tail -80 vortex-64.log; echo 'FALLO: no arranco modo grafico de 64 bits'; exit 1;
           }
+          grep -aFq '[vortex-session] primera cuenta' vortex-64.log
           if grep -aFq '[PANIC]' vortex-64.log; then
             tail -100 vortex-64.log; echo 'FALLO: el nucleo 64 bits tuvo una excepcion'; exit 1;
           fi
@@ -118,6 +127,7 @@ jobs:
           grep -aFq 'Iniciando escritorio' vortex-32.log || {
             tail -80 vortex-32.log; echo 'FALLO: no arranco modo grafico de 32 bits'; exit 1;
           }
+          grep -aFq '[vortex-session] primera cuenta' vortex-32.log
           echo 'Vortex 32 bits grafico: OK'
       - name: Comprobar lanzadores del kit de pruebas
         run: |
@@ -147,6 +157,10 @@ jobs:
           grep -Eq '^\.?/?usr/bin/firefox-esr$' /tmp/vortex-debian-files.txt
           grep -Eq '^\.?/?usr/bin/Xvfb$' /tmp/vortex-debian-files.txt
           echo "Firefox ESR y Xvfb preinstalados: OK"
+      - name: Abrir Firefox desde Actividades y navegar en la ISO de 64 bits
+        run: |
+          set -o pipefail
+          python3 tools/ci_firefox_desktop.py out/VortexOS.iso firefox-escritorio.ppm | tee firefox-escritorio.log
       - name: Diagnosticar servidor X y navegador reales dentro del kernel de 64 bits
         shell: bash
         run: |
@@ -270,6 +284,9 @@ jobs:
             vortex-firefox.png
             vortex-web-funciones/*.log
             vortex-web-descarga/
+            firefox-escritorio.log
+            firefox-escritorio.ppm
+            firefox-escritorio.entrada.ppm
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
@@ -280,7 +297,7 @@ jobs:
           set -euo pipefail
           tag="iso-latest"
           short="${GITHUB_SHA:0:7}"
-          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Kernel propio grafico de 32 y 64 bits. Debian y Firefox ESR/Xvfb incorporados en el modo 64 bits. Los arranques 32/64 se prueban en QEMU; el servidor X arranca en QEMU, pero Firefox y xterm aun pueden fallar; sin garantia de navegacion web ni USB fisico en VMware. Sin instalador de disco."
+          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Kernel propio de 32 y 64 bits con cuentas locales al arrancar. Firefox ESR viene instalado en el modo grafico de 64 bits y abre directamente desde el escritorio. La suite QEMU comprueba JavaScript, navegacion local, video WebM y descarga de un adjunto. Quedan pendientes el aislamiento de Firefox y las pruebas en hardware fisico y VMware."
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Vortex OS - ISO actual" --notes "$notes"
           fi

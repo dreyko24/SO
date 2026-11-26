@@ -3,6 +3,10 @@
 #include "fs.h"
 static FsNode *root;
 static uint32_t gen;
+static const char accounts_name[]="cuentas.vsa";
+enum { ACCOUNTS_MAX_BYTES=4096 };
+typedef struct { const uint8_t *data; int bytes, present; } AccountsFile;
+static AccountsFile accounts_file;
 void (*fs_shm_hook)(void *shm);
 uint32_t (*fs_now)(void);
 int fs_track;
@@ -30,6 +34,34 @@ FsNode *fs_link_id(FsNode *n){ FsNode *b=n; if(n&&n->hl) for(FsNode *m=n->hl;m!=
 uint32_t fs_gen(void){ return gen; }
 FsNode *fs_root(void){ return root; }
 
+static int system_node(const FsNode *n){
+    return n&&n->parent==root&&!k_strcmp(n->name,"Sistema");
+}
+static int account_path(const FsNode *dir,const char *name){
+    return system_node(dir)&&!k_strcmp(name,accounts_name);
+}
+
+/* La entrada del checkpoint se conserva fuera de las listas de FsNode. Así
+ * tampoco se expone por recorridos directos como ZIP o getdents. */
+static int install_accounts(const AccountsFile *next,int (*save)(void)){
+    AccountsFile old=accounts_file;
+    uint8_t *copy=0;
+    if(next->bytes){
+        copy=kmalloc((size_t)next->bytes);
+        if(!copy)return -1;
+        memcpy(copy,next->data,(size_t)next->bytes);
+    }
+    accounts_file=(AccountsFile){copy,next->bytes,next->present};
+    gen++;
+    if(save&&save()){
+        accounts_file=old;
+        kfree(copy);
+        return -1;
+    }
+    kfree((void *)old.data);
+    return 0;
+}
+
 static FsNode *newnode(FsNode *parent,const char *name,int dir){
     FsNode *n=kmalloc(sizeof *n); if(!n) return 0;
     memset(n,0,sizeof *n); k_strcpy(n->name,name,sizeof n->name); n->dir=dir; n->parent=parent; touch(n);
@@ -41,13 +73,27 @@ FsNode *fs_find(FsNode *dir,const char *name){
     for(FsNode *c=dir->child;c;c=c->next) if(!k_strcmp(c->name,name)) return c;
     return 0;
 }
+static int accounts_available(void){
+    const FsNode *dir=fs_find(root,"Sistema");
+    return dir&&dir->dir&&!dir->dev&&!dir->link;
+}
+int fs_accounts_read(const uint8_t **data,int *bytes){
+    *data=accounts_file.data;
+    *bytes=accounts_file.bytes;
+    return accounts_available()?accounts_file.present:-1;
+}
+int fs_accounts_store(const uint8_t *data,int bytes,int (*save)(void)){
+    if(!data||bytes<=0||bytes>ACCOUNTS_MAX_BYTES||!accounts_available())return -1;
+    AccountsFile next={data,bytes,1};
+    return install_accounts(&next,save);
+}
 static int valid_name(const char *s){
     if(!*s || k_strlen(s)>=FS_NAME) return 0;
     for(;*s;s++) if(*s=='/') return 0;
     return 1;
 }
 FsNode *fs_mkdir(FsNode *dir,const char *name){
-    if(!dir||!dir->dir||!valid_name(name)||fs_find(dir,name))return 0;
+    if(!dir||!dir->dir||!valid_name(name)||account_path(dir,name)||fs_find(dir,name))return 0;
     FsNode *n=newnode(dir,name,1);
     if(n)gen++;
     return n;
@@ -104,13 +150,13 @@ int fs_resize(FsNode *n,int size){
     memset(n->data+n->size,0,(size_t)(size-n->size)); n->size=size; if(!n->shm||size<n->cap) n->data[size]=0; touch(n); hl_sync(n); gen++; return 0;
 }
 FsNode *fs_symlink(FsNode *dir,const char *name,const char *target){
-    if(!dir||!dir->dir||!valid_name(name)||fs_find(dir,name)) return 0;
+    if(!dir||!dir->dir||!valid_name(name)||account_path(dir,name)||fs_find(dir,name)) return 0;
     int l=k_strlen(target); char *t=kmalloc((size_t)l+1); if(!t) return 0; memcpy(t,target,(size_t)l+1);
     FsNode *n=newnode(dir,name,0); if(!n){ kfree(t); return 0; }
     n->link=t; gen++; return n;
 }
 FsNode *fs_create(FsNode *dir,const char *name,const char *data,int len){
-    if(!dir||!dir->dir||!valid_name(name)||len<0||(len&&!data))return 0;
+    if(!dir||!dir->dir||!valid_name(name)||account_path(dir,name)||len<0||(len&&!data))return 0;
     FsNode *n=fs_find(dir,name);
     if(n&&n->dir)return 0;
     int created=!n;
@@ -125,9 +171,9 @@ FsNode *fs_create(FsNode *dir,const char *name,const char *data,int len){
 static void destroy(FsNode *n){ drop_data(n); if(n->link) kfree(n->link); kfree(n); }
 void fs_node_ref(FsNode *n){ if(n) n->opens++; }
 void fs_node_unref(FsNode *n){ if(n&&--n->opens<=0&&n->dead) destroy(n); }
-int fs_remove(FsNode *n){
+static int remove_node(FsNode *n){
     if(!n||!n->parent) return -1;                      /* la raiz no se borra */
-    while(n->child) fs_remove(n->child);
+    while(n->child) remove_node(n->child);
     hl_leave(n);
     FsNode **pp=&n->parent->child; while(*pp&&*pp!=n) pp=&(*pp)->next;
     if(*pp) *pp=n->next;
@@ -135,9 +181,10 @@ int fs_remove(FsNode *n){
     if(n->opens>0){ n->dead=1; n->parent=0; n->next=0; return 0; }      /* sigue abierto: se libera cuando se cierre el ultimo descriptor */
     destroy(n); return 0;
 }
+int fs_remove(FsNode *n){ return system_node(n)?-1:remove_node(n); }
 
 FsNode *fs_link(FsNode *src,FsNode *dir,const char *name){
-    if(!src||src->dir||src->link||!dir||!dir->dir||!valid_name(name)||fs_find(dir,name)) return 0;
+    if(!src||src->dir||src->link||!dir||!dir->dir||!valid_name(name)||account_path(dir,name)||fs_find(dir,name)) return 0;
     FsNode *c=newnode(dir,name,0); if(!c) return 0;
     c->sys=src->sys; c->dev=src->dev;
     if(!src->hl) src->hl=src;
@@ -148,7 +195,7 @@ FsNode *fs_link(FsNode *src,FsNode *dir,const char *name){
 
 /* ---- renombrar, copiar y mover ---- */
 int fs_rename(FsNode *n,const char *name){
-    if(!n||!n->parent||!valid_name(name)) return -1;
+    if(!n||!n->parent||!valid_name(name)||system_node(n)||account_path(n->parent,name)) return -1;
     FsNode *e=fs_find(n->parent,name); if(e&&e!=n) return -1;
     k_strcpy(n->name,name,sizeof n->name); chg_rec(n); gen++; return 0;
 }
@@ -170,11 +217,11 @@ static FsNode *copy_rec(FsNode *src,FsNode *dir,const char *name){
     return d;
 }
 FsNode *fs_copy(FsNode *src,FsNode *dir,const char *name){        /* copia un archivo o una carpeta entera */
-    if(!src||!dir||!dir->dir||!valid_name(name)||fs_find(dir,name)||is_inside(dir,src)) return 0;
+    if(!src||!dir||!dir->dir||!valid_name(name)||account_path(dir,name)||fs_find(dir,name)||is_inside(dir,src)) return 0;
     return copy_rec(src,dir,name);
 }
 int fs_move(FsNode *n,FsNode *dir,const char *name){
-    if(!n||!n->parent||!dir||!dir->dir||!valid_name(name)||fs_find(dir,name)||is_inside(dir,n)) return -1;
+    if(!n||!n->parent||!dir||!dir->dir||!valid_name(name)||system_node(n)||account_path(dir,name)||fs_find(dir,name)||is_inside(dir,n)) return -1;
     FsNode **pp=&n->parent->child; while(*pp&&*pp!=n) pp=&(*pp)->next; if(*pp) *pp=n->next;
     n->next=0; n->parent=dir; k_strcpy(n->name,name,sizeof n->name);
     pp=&dir->child; while(*pp) pp=&(*pp)->next; *pp=n; chg_rec(n); gen++; return 0;
@@ -193,8 +240,22 @@ static void sput1(uint8_t *o,int k,int v){ if(o) o[k]=(uint8_t)v; }
 static int ser_room(int k,int bytes,int limit){
     return bytes>=0&&k>=0&&k<=limit&&bytes<=limit-k;
 }
+static int ser_file(uint8_t *o,int max,int k,const char *name,const void *data,int bytes){
+    int nl=k_strlen(name);
+    if(nl<1||nl>=FS_NAME||bytes<0||bytes>=0x7fffffff||
+       !ser_room(k,2+nl+4+1,max)||!ser_room(k+2+nl+4,bytes+1,max))return -1;
+    sput1(o,k++,1); sput1(o,k++,nl); sput(o,k,name,nl); k+=nl;
+    for(unsigned i=0;i<4;i++)sput1(o,k++,bytes>>(8*i));
+    if(bytes)sput(o,k,data,bytes);
+    return k+bytes;
+}
 static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
     if(depth>=FS_STREAM_MAX_DEPTH)return -1;
+    if(accounts_file.present&&system_node(d)){
+        k=ser_file(o,max,k,accounts_name,accounts_file.data,accounts_file.bytes);
+        if(k<0)return -1;
+        *any=1;
+    }
     for(FsNode *c=d->child;c;c=c->next){
         if(c->dev) continue;
         int keep=!c->sys||c->chg, nl=k_strlen(c->name);
@@ -209,20 +270,14 @@ static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
             if(!sub&&!keep) k=k0; else *any=1;
             continue; }
         if(!keep) continue;
-        if(nl<1||nl>=FS_NAME||c->size<0||c->size>=0x7fffffff||
-           !ser_room(k,2+nl+4+1,max)||
-           !ser_room(k+2+nl+4,c->size+1,max))return -1;
-        sput1(o,k++,1); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
-        sput1(o,k++,c->size); sput1(o,k++,c->size>>8); sput1(o,k++,c->size>>16); sput1(o,k++,c->size>>24);
-        if(c->size) sput(o,k,c->data,c->size);
-        k+=c->size; *any=1;
+        k=ser_file(o,max,k,c->name,c->data,c->size); *any=1;
         if(k<0) return -1;
     }
     if(!ser_room(k,1,max))return -1;
     sput1(o,k++,0);return k;
 }
 int fs_serialize(uint8_t *out,int max){
-    if(!root)return -1;
+    if(!root||(accounts_file.present&&!accounts_available()))return -1;
     int any=0;return ser_rec(root,out,out?max:0x7fffffff,0,&any,0);
 }
 /* La cabecera KNGFS usa Adler-32 para detectar errores accidentales;
@@ -272,14 +327,30 @@ static int fs_validate_image(const uint8_t *in,int len){
     if(fs_validate_rec(in,len,&cursor,0,&nodes))return -1;
     return cursor==len?0:-1;
 }
-static int de_rec(FsNode *d,const uint8_t *in,int len,int k){
+/* El árbol ya se validó. Los tipos no válidos para una cuenta, las entradas
+ * duplicadas y las de tamaño excesivo conservan un registro vacío corrupto. */
+static int capture_accounts(const uint8_t *in,int len,int k,int type,AccountsFile *next){
+    int seen=next->present;
+    *next=(AccountsFile){.present=1};
+    if(type==1){
+        int bytes=(int)((uint32_t)in[k]|((uint32_t)in[k+1]<<8)|
+                        ((uint32_t)in[k+2]<<16)|((uint32_t)in[k+3]<<24));
+        if(!seen&&bytes<=ACCOUNTS_MAX_BYTES){next->data=in+k+4;next->bytes=bytes;}
+        return k+4+bytes;
+    }
+    if(type==3)return k+2+((int)in[k]|((int)in[k+1]<<8));
+    int nodes=0;
+    return fs_validate_rec(in,len,&k,0,&nodes)?-1:k;
+}
+static int de_rec(FsNode *d,const uint8_t *in,int len,int k,AccountsFile *next){
     for(;;){
         if(k>=len) return -1;
         int t=in[k++]; if(t==0) return k;
         if(k>=len) return -1;
         int nl=in[k++]; if(k+nl>len||nl>=FS_NAME||nl==0) return -1;
         char nm[FS_NAME]; memcpy(nm,in+k,(size_t)nl); nm[nl]=0; k+=nl;
-        if(t==2){ FsNode *c=newnode(d,nm,1); if(!c) return -1; k=de_rec(c,in,len,k); if(k<0) return -1; }
+        if(account_path(d,nm)){k=capture_accounts(in,len,k,t,next);if(k<0)return -1;continue;}
+        if(t==2){ FsNode *c=newnode(d,nm,1); if(!c) return -1; k=de_rec(c,in,len,k,next); if(k<0) return -1; }
         else if(t==3){
             if(k+2>len) return -1;
             int tl=in[k]|(in[k+1]<<8); k+=2; if(k+tl>len) return -1;
@@ -292,26 +363,27 @@ static int de_rec(FsNode *d,const uint8_t *in,int len,int k){
         } else return -1;
     }
 }
-static int ov_rec(FsNode *d,const uint8_t *in,int len,int k){
+static int ov_rec(FsNode *d,const uint8_t *in,int len,int k,AccountsFile *next){
     for(;;){
         if(k>=len) return -1;
         int t=in[k++]; if(t==0) return k;
         if(k>=len) return -1;
         int nl=in[k++]; if(k+nl>len||nl>=FS_NAME||nl==0) return -1;
         char nm[FS_NAME]; memcpy(nm,in+k,(size_t)nl); nm[nl]=0; k+=nl;
+        if(account_path(d,nm)){k=capture_accounts(in,len,k,t,next);if(k<0)return -1;continue;}
         FsNode *e=fs_find(d,nm);
-        if(t==2){ if(e&&!e->dir){ fs_remove(e); e=0; } if(!e){ e=newnode(d,nm,1); if(!e) return -1; } e->chg=1; k=ov_rec(e,in,len,k); if(k<0) return -1; }
+        if(t==2){ if(e&&!e->dir){ remove_node(e); e=0; } if(!e){ e=newnode(d,nm,1); if(!e) return -1; } e->chg=1; k=ov_rec(e,in,len,k,next); if(k<0) return -1; }
         else if(t==3){
             if(k+2>len) return -1;
             int tl=in[k]|(in[k+1]<<8); k+=2; if(k+tl>len) return -1;
             char tg[300]; if(tl>=(int)sizeof tg) return -1; memcpy(tg,in+k,(size_t)tl); tg[tl]=0; k+=tl;
-            if(e) fs_remove(e);
+            if(e) remove_node(e);
             FsNode *l=fs_symlink(d,nm,tg); if(!l) return -1; l->chg=1;
         } else if(t==1){
             if(k+4>len) return -1;
             int sz=in[k]|(in[k+1]<<8)|(in[k+2]<<16)|(in[k+3]<<24); k+=4;
             if(sz<0||k+sz>len) return -1;
-            if(e&&(e->dir||e->link)){ fs_remove(e); e=0; }
+            if(e&&(e->dir||e->link)){ remove_node(e); e=0; }
             if(!e){ e=newnode(d,nm,0); if(!e) return -1; }
             if(fs_write(e,(const char*)in+k,sz)) return -1;
             e->chg=1; k+=sz;
@@ -320,15 +392,19 @@ static int ov_rec(FsNode *d,const uint8_t *in,int len,int k){
 }
 int fs_overlay(const uint8_t *in,int len){
     if(fs_validate_image(in,len))return -1;
-    int r=ov_rec(root,in,len,0);
-    if(r<0)return -1;
+    AccountsFile next={0};
+    if(ov_rec(root,in,len,0,&next)<0||(next.present&&install_accounts(&next,0)))return -1;
     gen++;return 0;
 }
 int fs_deserialize(const uint8_t *in,int len){  /* reemplaza TODO el arbol; solo antes de abrir ventanas */
     if(fs_validate_image(in,len))return -1;
     FsNode *old=root;root=newnode(0,"",1);if(!root){root=old;return -1;}
-    if(de_rec(root,in,len,0)<0){ while(root->child) fs_remove(root->child); kfree(root); root=old; return -1; }
-    while(old->child) fs_remove(old->child);
+    AccountsFile next={0};
+    if(de_rec(root,in,len,0,&next)<0||install_accounts(&next,0)){
+        while(root->child) remove_node(root->child);
+        kfree(root); root=old; return -1;
+    }
+    while(old->child) remove_node(old->child);
     kfree(old); gen++; return 0;
 }
 
@@ -378,6 +454,8 @@ int fs_list(FsNode *dir,FsNode **out,int max){
 }
 static void put(FsNode *d,const char *name,const char *txt){ fs_create(d,name,txt,k_strlen(txt)); }
 void fs_init(void){
+    kfree((void *)accounts_file.data);
+    accounts_file=(AccountsFile){0};
     root=newnode(0,"",1);
     FsNode *esc=fs_mkdir(root,"Escritorio"), *doc=fs_mkdir(root,"Documentos"), *img=fs_mkdir(root,"Imagenes"),
             *music=fs_mkdir(root,"Musica"), *videos=fs_mkdir(root,"Videos"),

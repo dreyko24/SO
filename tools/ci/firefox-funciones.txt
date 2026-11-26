@@ -4,8 +4,7 @@
 20|red
 20|run firefox-esr --version
 60|pantalla
-20|run mkdir -p /tmp/web-funciones
-30|abrir firefox-esr --no-remote --profile /tmp/web-funciones http://10.0.2.2:18192/funciones.html
-@esperar 145
+30|abrir firefox-esr http://10.0.2.2:18192/funciones.html
+220|run sh -c 'for i in $(seq 40);do xwininfo -root -tree|grep -Eq "Firefox funciones (OK|FALLO)"&&exit;sleep 5;done;exit 1'
 35|run xwininfo -root -tree
 35|run tail -n 30 /tmp/vortex-web.log

@@ -10,12 +10,14 @@
 void gfx_set_bpp(int bpp);
 #include "gui.h"
 #include "disk.h"
+#include "fs.h"
 void gui_open_terminal(void);
 #include "kbd.h"
 #include "net.h"
 #include "ps2_mouse.h"
 #include "usb_hid.h"
 #include "usb_xhci.h"
+#include "session.h"
 
 
 /* ---------- E/S de puertos ---------- */
@@ -912,6 +914,8 @@ uint32_t kticks(void){ return ticks; }
 int kgetc(void){ return getc_nb(); }
 void kshell_exec(char *l){ if(net_cmd(l)) return; run(l); }
 int kattach_pid; char kshell_cwd[96]; void (*kproc_done)(int pid,int code); void kproc_key(int c){ (void)c; }
+int kfirefox_open(void){ return -1; }
+int kfirefox_alive(void){ return 0; }
 void kinput_event(int type,int code,int value){ (void)type; (void)code; (void)value; }
 uint32_t kram_kb(void){ return ram_usable_kb; }
 static inline void outw(uint16_t p,uint16_t v){ __asm__ volatile("outw %0,%1"::"a"(v),"Nd"(p)); }
@@ -992,6 +996,8 @@ uint64_t krtc_epoch(void){
 }
 
 
+#include "session_console.inc"
+
 void kmain(uint32_t magic, struct mb_info *mi){
     serial_init(); clear();
     uint32_t fb_addr=0,fb_pitch=0,fb_w=0,fb_h=0,fb_ok=0;                  /* se copia ya: la estructura Multiboot puede ser pisada despues */
@@ -1009,12 +1015,18 @@ void kmain(uint32_t magic, struct mb_info *mi){
     if(net_init()==0){ char nb[90]; net_info(nb,sizeof nb); kprintf("[ok] %s\n",nb); } else kprintf("[i] sin tarjeta de red compatible (e1000 / RTL8139)\n");
     kprintf("[ok] RAM utilizable: %u KB\n", ram_usable_kb);
     kprintf("[ok] paginacion, heap %u KB, PMM %u paginas, hilos, ring 3 (TSS), syscalls int 0x80\n", heap_total/1024, pmm_pages);
+    int show_session=0;
+    if((mi->flags&4)&&mi->cmdline){
+        for(const char *c=(const char*)mi->cmdline;*c;c++)
+            if(k_startswith(c,"sesion")){show_session=1;break;}
+    }
     if(fb_ok){
         kprintf("[ok] framebuffer %ux%u 32 bpp en 0x%x. Iniciando escritorio...\n",fb_w,fb_h,fb_addr);
         fb_wc(fb_addr,fb_pitch*fb_h);
         if(gui_init((uint32_t*)fb_addr,(int)fb_w,(int)fb_h,(int)fb_pitch)==0){
             gui_mode=1; gui_storage_ready();
-            if((mi->flags&4)&&mi->cmdline){ const char *c=(const char*)mi->cmdline; for(;*c;c++) if(k_startswith(c,"terminal")){ gui_open_terminal(); break; } }   /* 'terminal' en la linea de GRUB */
+            int locked=gui_accounts_start(show_session);
+            if(!locked&&(mi->flags&4)&&mi->cmdline){ const char *c=(const char*)mi->cmdline; for(;*c;c++) if(k_startswith(c,"terminal")){ gui_open_terminal(); break; } }   /* 'terminal' en la linea de GRUB */
             for(;;){
                 usb_xhci_service();
                 int c; while((c=getc_nb())>=0) gui_key(c);
@@ -1029,6 +1041,11 @@ void kmain(uint32_t magic, struct mb_info *mi){
         }
         kprintf("[!] no se pudo iniciar la interfaz grafica (memoria). Modo texto.\n");
     } else kprintf("[i] sin framebuffer (arranque en modo texto).\n");
+    if(!fs_root())fs_init();
+    int mounted=vortexfs_mount();
+    fs_track=1;
+    if(mounted==0)kprintf("[ok] datos guardados cargados desde el disco (%s)\n",disk_kind());
+    console_accounts(show_session,mounted==-5);
     kprintf("Escribe 'help'.\n");
     char line[128]; int n=0;
     kprintf("vortex> ");

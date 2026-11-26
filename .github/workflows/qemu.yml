@@ -16,6 +16,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 gcc gcc-multilib binutils grub-pc-bin xorriso mtools python3
       - name: Compilar 32 y 64 bits
         run: make -C kernel && make -C kernel64
+      - name: Crear cuentas, reiniciar y autenticar en VortexFS
+        run: |
+          set -o pipefail
+          python3 tools/ci_session.py kernel/vortex-kernel.elf kernel64/vortex-kernel64.elf kernel64/vortex-kernel64-text.elf | tee session.log
       - name: Diagnosticar instruccion invalida del kernel 64 (sin modificar el binario)
         run: |
           echo '=== Compilador y enlazador ==='

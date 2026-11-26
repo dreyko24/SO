@@ -16,6 +16,7 @@ void gfx_set_bpp(int bpp);
 #include "ps2_mouse.h"
 #include "usb_hid.h"
 #include "usb_xhci.h"
+#include "session.h"
 
 typedef uint64_t u64;
 
@@ -440,12 +441,20 @@ static int cmd_pantalla(void){
     return 1;
 }
 /* abrir <programa> [argumentos]: arranca la pantalla X si hace falta y abre el programa dentro de ella */
-static void cmd_abrir(char *args){
-    char *a[40]; int n=tokenize(args,a,38); if(!n){ kprintf("uso: abrir <programa> [argumentos]   (ej: abrir brave)\n"); return; }
-    char w[160]; if(!find_program("abrir-x",w,sizeof w)){ kprintf("abrir: falta /usr/local/bin/abrir-x (sistema base incompleto)\n"); return; }
-    if(!cmd_pantalla()) return;
+static int cmd_abrir(char *args,int bg){
+    char *a[40]; int n=tokenize(args,a,38); if(!n){ kprintf("uso: abrir <programa> [argumentos]   (ej: abrir brave)\n"); return -1; }
+    char w[160]; if(!find_program("abrir-x",w,sizeof w)){ kprintf("abrir: falta /usr/local/bin/abrir-x (sistema base incompleto)\n"); return -1; }
+    if(!cmd_pantalla()) return -1;
     char *b[42]; b[0]="abrir-x"; for(int i=0;i<n;i++) b[i+1]=a[i]; b[n+1]=0;
-    proc_exec(w,n+1,b,1);
+    return proc_exec(w,n+1,b,bg);
+}
+static int firefox_pid;
+int kfirefox_alive(void){ return proc_alive(firefox_pid); }
+int kfirefox_open(void){
+    if(kfirefox_alive()) return cmd_pantalla()?firefox_pid:-1;
+    char app[]="firefox-esr";
+    firefox_pid=cmd_abrir(app,KPROC_BG_NOTIFY);
+    return firefox_pid;
 }
 static void run(char *l){
     while(*l==' ') l++;
@@ -465,7 +474,7 @@ static void run(char *l){
     else if(startswith(l,"xevento ")){                      /* prueba: manda un evento de entrada (tipo codigo valor, decimales) al servidor X */
         int v[3]={0,0,0},k=0,neg=0; for(const char *q=l+8;*q&&k<3;q++){ if(*q==' '){ k++; neg=0; } else if(*q=='-') neg=1; else if(*q>='0'&&*q<='9') v[k]=neg?v[k]*10-(*q-'0'):v[k]*10+(*q-'0'); }
         kinput_event(v[0],v[1],v[2]); kprintf("evento enviado %d %d %d\n",v[0],v[1],v[2]); }
-    else if(startswith(l,"abrir ")||streq(l,"abrir")) cmd_abrir(l+(l[5]?6:5));
+    else if(startswith(l,"abrir ")||streq(l,"abrir")) cmd_abrir(l+(l[5]?6:5),1);
     else if(streq(l,"pantalla")) cmd_pantalla();
     else if(streq(l,"procesos")||streq(l,"ps")) proc_ps();
     else if(startswith(l,"matar ")){ int pid=0; for(const char *q=l+6;*q>='0'&&*q<='9';q++) pid=pid*10+(*q-'0'); kprintf(proc_kill(pid,9)?"senal enviada\n":"no existe ese proceso\n"); }
@@ -483,7 +492,9 @@ void kserial_puts(const char *s){ while(*s){ if(*s=='\n') serial_put('\r'); seri
 void k_write_console(const char *s,int n){ for(int i=0;i<n;i++) putc(s[i]); }
 uint32_t kticks(void){ return ticks; }
 uint64_t kticks64(void){ return ticks; }
-int kgetc(void){ return getc_nb(); }
+/* En el escritorio solo la ventana de terminal entrega teclas al TTY.
+ * Los procesos nunca leen la cola usada por el inicio de sesión gráfico. */
+int kgetc(void){ return gui_mode?-1:getc_nb(); }
 void kshell_exec(char *l){ if(net_cmd(l)) return; run(l); }
 void proc_stdin_char(int c);
 void kproc_key(int c){ proc_stdin_char(c); }
@@ -554,6 +565,8 @@ int krtc_full(int *year,int *month,int *day,int *hour,int *minute){
 }
 
 static void idle64(void){ net_poll(); if(gui_mode) gui_frame(); }
+#include "session_console.inc"
+
 void kmain64(uint32_t magic, struct mb_info *mi){
     serial_init(); clear();
     uint32_t fb_addr=0,fb_pitch=0,fb_w=0,fb_h=0,fb_ok=0;
@@ -577,7 +590,7 @@ void kmain64(uint32_t magic, struct mb_info *mi){
     proc_set_idle(idle64);
     if(!fb_ok && (mi->flags&8) && mi->mods_n) rootfs_load(mi->mods_n,mi->mods_addr);
     vortex_mmio_map=mmio_map;
-    if(!fb_ok){ int r=vortexfs_mount(); fs_track=1; if(r==0) kprintf("[ok] datos guardados cargados desde el disco (%s)\n",disk_kind()); }
+    int show_session=(mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"sesion");
     if(net_init()==0){ char nb[90]; net_info(nb,sizeof nb); kprintf("[ok] %s\n",nb); } else kprintf("[i] sin tarjeta de red compatible (e1000 / RTL8139)\n");
     if(fb_ok){
         kprintf("[ok] framebuffer %ux%u 32 bpp en 0x%x. Iniciando escritorio...\n",fb_w,fb_h,fb_addr);
@@ -587,8 +600,9 @@ void kmain64(uint32_t magic, struct mb_info *mi){
             if((mi->flags&8) && mi->mods_n) rootfs_load(mi->mods_n,mi->mods_addr);
             vortex_disk_image=disk_image_mod;
             gui_storage_ready();
-            if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"instalador")) gui_open_installer();   /* arranque del USB en modo instalador */
-            if((mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"terminal")) gui_open_terminal();   /* linea de GRUB con 'terminal': abre la terminal sola */
+            int locked=gui_accounts_start(show_session);
+            if(!locked&&(mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"instalador")) gui_open_installer();   /* arranque del USB en modo instalador */
+            if(!locked&&(mi->flags&4)&&mi->cmdline&&cmd_has((const char*)(uintptr_t)mi->cmdline,"terminal")) gui_open_terminal();   /* linea de GRUB con 'terminal': abre la terminal sola */
             for(;;){
                 usb_xhci_service();
                 int raw;
@@ -608,6 +622,11 @@ void kmain64(uint32_t magic, struct mb_info *mi){
         }
         kprintf("[!] no se pudo iniciar la interfaz grafica (memoria). Modo texto.\n");
     } else kprintf("[i] sin framebuffer (arranque en modo texto).\n");
+    if(!fs_root())fs_init();
+    int mounted=vortexfs_mount();
+    fs_track=1;
+    if(mounted==0)kprintf("[ok] datos guardados cargados desde el disco (%s)\n",disk_kind());
+    console_accounts(show_session,mounted==-5);
     kprintf("Escribe 'help'.\n");
     char line[128]; int n=0; kprintf("vortex> ");
     for(;;){

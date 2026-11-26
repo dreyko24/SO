@@ -17,6 +17,7 @@ TERMINAL = b"[vortex-apps] Terminal"
 QEMU_HID = b"[vortex-xhci] VID=627 PID=1 clase=3"
 DISCONNECTED = b"[vortex-xhci] desconectado"
 REPORT_DELAY = 0.065
+KEY_CODES = {" ": "spc", ".": "dot", "/": "slash", "-": "minus"}
 
 
 def send_events(stream, *events):
@@ -38,7 +39,7 @@ def left_button(stream, down):
 def type_keys(stream, keys):
     for key in keys:
         shift = len(key) == 1 and key.isupper()
-        key = "spc" if key == " " else key.lower()
+        key = KEY_CODES.get(key, key.lower())
         qcodes = ["shift", key] if shift else [key]
         qmp(stream, "send-key", keys=[{"type": "qcode", "data": code} for code in qcodes],
             **{"hold-time": 35})

@@ -238,7 +238,7 @@ static void poll_wakeups(void){
         if(t->state==T_READY) continue;
         if(t->state==T_ZOMBIE){
             if(t!=cur&&!t->leader) t->state=T_FREE;                       /* hilo terminado: su hueco se reutiliza */
-            else if(t!=cur&&t->leader&&t->bg==2){ int pid=t->pid, code=t->exit_code; t->state=T_FREE; if(kproc_done) kproc_done(pid,code); }      /* programa pegado a la terminal: la ventana vuelve a mostrar el prompt */
+            else if(t!=cur&&t->leader&&(t->bg==2||t->bg==KPROC_BG_NOTIFY)){ int pid=t->pid, code=t->exit_code; t->state=T_FREE; if(kproc_done) kproc_done(pid,code); }
             else if(t!=cur&&t->leader&&t->bg){ kprintf("[proceso %d termino con codigo %d]\n",t->pid,t->exit_code); t->state=T_FREE; }
             else if(t!=cur&&t->leader&&!t->fg&&t->ppid==0) t->state=T_FREE;      /* huerfano ya terminado */
             continue; }

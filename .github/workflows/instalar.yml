@@ -23,7 +23,7 @@ jobs:
       - name: Construir la ISO (con instalador)
         run: |
           set -euo pipefail
-          VORTEX_INSTALADOR=1 bash tools/build-iso.sh 2>&1 | tee installer-build.log | tail -30
+          VORTEX_DEBIAN=0 VORTEX_INSTALADOR=1 bash tools/build-iso.sh 2>&1 | tee installer-build.log | tail -30
           test -s build/iso/boot/disco.img.gz
           test -s out/VortexOS.iso
           grep -Fq 'INSTALAR Vortex OS en el disco duro de esta PC' build/iso/boot/grub/grub.cfg
@@ -42,20 +42,24 @@ jobs:
           echo "=== 1) arrancar el USB (CD) en modo instalador e instalar ==="
           VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 1500 python3 tools/ci_drive.py tools/ci/instalar1.txt i1.log -- qemu-system-x86_64 $M -cdrom out/VortexOS.iso -boot order=dc || true
           echo "=== 2) arrancar SOLO desde el disco (BIOS) ==="
-          VORTEX_INICIO='Iniciando escritorio' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 600 python3 tools/ci_drive.py tools/ci/instalar2.txt i2.log -- qemu-system-x86_64 $M || true
+          printf '%s\n' '@entrada prueba' '@entrada vortexci987' '@entrada vortexci987' '@serie 60 escritorio desbloqueado' > /tmp/instalar-bios.txt
+          cat tools/ci/instalar2.txt >> /tmp/instalar-bios.txt
+          VORTEX_INICIO='primera cuenta' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 600 python3 tools/ci_drive.py /tmp/instalar-bios.txt i2.log -- qemu-system-x86_64 $M || true
           echo "=== 3) arrancar SOLO desde el disco (UEFI) ==="
           cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd vars.fd
           CODE=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
-          VORTEX_INICIO='Iniciando escritorio' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 600 python3 tools/ci_drive.py tools/ci/instalar2.txt i3.log -- qemu-system-x86_64 $M -drive if=pflash,format=raw,readonly=on,file=$CODE -drive if=pflash,format=raw,file=vars.fd || true
+          printf '%s\n' '@entrada prueba' '@entrada vortexci987' '@serie 60 escritorio desbloqueado' > /tmp/instalar-uefi.txt
+          cat tools/ci/instalar2.txt >> /tmp/instalar-uefi.txt
+          VORTEX_INICIO='cuentas listas' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 600 python3 tools/ci_drive.py /tmp/instalar-uefi.txt i3.log -- qemu-system-x86_64 $M -drive if=pflash,format=raw,readonly=on,file=$CODE -drive if=pflash,format=raw,file=vars.fd || true
           for f in i1 i2 i3; do echo "----- $f"; grep -a -E "Disco:|LISTO|No se pudo|Instalando|framebuffer|Iniciando|hola desde|guardado|NVMe|SATA|IDE" $f.log | head -10; done
           # Una prueba que imprime FALLO debe hacer fallar el workflow.
           grep -aq "LISTO" i1.log || { echo "FALLO: instalador no termino"; exit 1; }
           echo "PRUEBA instalacion: OK"
-          grep -aq "Iniciando escritorio" i2.log &&
+          grep -aFq "[vortex-session] escritorio desbloqueado" i2.log &&
             grep -aq "hola desde el disco" i2.log ||
             { echo "FALLO: arranque BIOS o datos persistentes"; exit 1; }
           echo "PRUEBA arranque BIOS desde el disco + datos: OK"
-          grep -aq "Iniciando escritorio" i3.log &&
+          grep -aFq "[vortex-session] escritorio desbloqueado" i3.log &&
             grep -aq "hola desde el disco" i3.log ||
             { echo "FALLO: arranque UEFI o datos persistentes"; exit 1; }
           echo "PRUEBA arranque UEFI desde el disco + datos: OK"

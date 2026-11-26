@@ -2,7 +2,8 @@
 """Maneja el kernel de vortex en QEMU por el puerto serie: espera el indicador "vortex> ", manda un comando, espera a que vuelva el indicador.
 Uso: ci_drive.py <archivo-de-comandos> <registro.log> -- <comando de qemu...>
 Cada linea del archivo:  [segundos|]comando     (segundos = tiempo maximo de espera, por omision 30). Las lineas con # se ignoran.
-Linea especial:  @esperar N   (espera N segundos sin mandar nada)
+Lineas especiales: @esperar N, @entrada TEXTO (sin registrar el valor),
+@serie N MARCA (espera una salida serie antes de continuar).
 Si hay un monitor de QEMU (variable QMON = ruta del socket) y la VM se cuelga, se vuelcan los registros y la pila con simbolos (variable KELF = kernel .elf)."""
 import os, subprocess, sys, time, threading, os, socket, re, bisect
 cmds_file, logf = sys.argv[1], sys.argv[2]
@@ -113,6 +114,21 @@ for c in cmds:
         except Exception: pass
         time.sleep(2); continue
     if c.startswith('@esperar'): time.sleep(float(c.split()[1])); continue
+    if c.startswith('@entrada '):
+        p.stdin.write(c[len('@entrada '):].encode() + b'\r')
+        p.stdin.flush()
+        time.sleep(0.4)
+        continue
+    if c.startswith('@serie '):
+        _, seconds, marker = c.split(maxsplit=2)
+        expected = marker.encode()
+        limit = time.monotonic() + float(seconds)
+        while expected not in buf and p.poll() is None and time.monotonic() < limit:
+            time.sleep(0.1)
+        if expected not in buf:
+            log.write(f'\n[ci_drive] no se recibió {marker}\n'.encode()); log.flush()
+            break
+        continue
     t = 30
     if '|' in c and c.split('|', 1)[0].isdigit(): t, c = int(c.split('|', 1)[0]), c.split('|', 1)[1]
     if p.poll() is not None: break

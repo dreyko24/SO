@@ -44,4 +44,8 @@ int     fs_move(FsNode *n, FsNode *dir, const char *name);
 void    fs_usage(int *files, int *dirs, int *bytes);
 int     fs_serialize(uint8_t *out, int max);                            /* bytes escritos, o -1 si no cabe */
 int     fs_deserialize(const uint8_t *in, int len);                     /* 0 ok */
+/* Almacenamiento interno de la sesión. No forma parte del árbol público.
+ * Lectura: 1 presente, 0 sin alta, -1 almacenamiento no disponible. */
+int     fs_accounts_read(const uint8_t **data,int *bytes);
+int     fs_accounts_store(const uint8_t *data,int bytes,int (*save)(void));
 #endif

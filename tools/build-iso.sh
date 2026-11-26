@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Genera out/VortexOS.iso (arranque BIOS con GRUB) con los kernels de 32 y de 64 bits. Sin Debian, sin Linux.
+# Genera out/VortexOS.iso con los kernels Vortex y Firefox ESR en el modo de 64 bits.
 set -e
 cd "$(dirname "$0")/.."
 faltan=""
@@ -16,9 +16,10 @@ rm -rf build/iso && mkdir -p build/iso/boot/grub out
 cp kernel/vortex-kernel.elf kernel/vortex-kernel-text.elf kernel64/vortex-kernel64.elf kernel64/vortex-kernel64-text.elf build/iso/boot/
 # rootfs (programas Linux + enlazador dinamico + libc del PC) como modulo de arranque; solo lo usa el kernel de 64 bits
 if python3 tools/mkrootfs.py build/iso/boot/rootfs.cpio; then ROOTFS=1; else ROOTFS=0; echo "[aviso] sin rootfs (falta libc estatica: sudo apt install libc6-dev). El ISO igual arranca, sin programas Linux."; fi
-# Debian real (opcional): la cache lleva huella del constructor y de los
+# Debian real para Firefox: la cache lleva huella del constructor y de los
 # archivos del rootfs. No reutilizar un Debian antiguo sin Firefox/X11.
-if [ "${VORTEX_DEBIAN:-0}" = 1 ]; then
+DEBIAN="${VORTEX_DEBIAN:-1}"
+if [ "$DEBIAN" = 1 ]; then
   DEB_KEY=$( {
     sha256sum tools/mkdebian.sh
     find tools/rootfs-es -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
@@ -41,12 +42,11 @@ if [ "${VORTEX_DEBIAN:-0}" = 1 ]; then
     fi
   fi
   printf '%s\n' "$DEB_KEY" > "$STAMP"
-fi
-if [ -f build/debian.cpio.gz ]; then
   cp build/debian.cpio.gz build/iso/boot/debian.cpio.gz
   python3 tools/mkrootfs.py --debian build/iso/boot/vortex-extra.cpio
-  DEBIAN=1
-else DEBIAN=0; echo "[aviso] sin Debian (para incluirlo:  VORTEX_DEBIAN=1 bash tools/build-iso.sh )."; fi
+else
+  echo "[iso] compilación ligera sin Firefox (VORTEX_DEBIAN=0)"
+fi
 python3 tools/check-mb.py build/iso/boot/*.elf
 # Menú de la ISO única: exactamente 64 bits gráfico y 32 bits gráfico.
 # Resolucion: primero 1920x1080 y, si la tarjeta no la tiene, la siguiente de la lista. En UEFI se usa la del firmware.
@@ -56,7 +56,7 @@ R64=""; [ "$ROOTFS" = 1 ] && R64="    module /boot/rootfs.cpio"
 DEB="    module /boot/debian.cpio.gz
     module /boot/vortex-extra.cpio"
 entrada(){ # titulo kernel modulos video
-  printf 'menuentry "%s" {\n    %s\n    multiboot /boot/%s\n%s\n    boot\n}\n' "$1" "$4" "$2" "$3"; }
+  printf 'menuentry "%s" {\n    %s\n    multiboot /boot/%s sesion\n%s\n    boot\n}\n' "$1" "$4" "$2" "$3"; }
 {
   echo 'set timeout=8'
   echo 'set default=0'

@@ -56,14 +56,15 @@ La ISO unica publicada como `VortexOS.iso` contiene **solamente dos entradas en 
 El boton de energia de la barra ofrece **Apagar**, **Suspender** y **Reiniciar**. Por ahora **Suspender apaga solo la pantalla y se recupera pulsando una tecla o haciendo clic**, no es un suspendido ACPI S3.
 
 ## Construir la ISO (Windows + WSL)
-1. Una sola vez, en WSL: `sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin xorriso mtools python3`
-2. Doble clic en `Construir-ISO.cmd` (o `wsl bash tools/build-iso.sh`). Resultado: `out/VortexOS.iso`. Para incluir Debian como la version publicada: `VORTEX_DEBIAN=1 bash tools/build-iso.sh`.
+1. Instala las herramientas en WSL con `sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin xorriso mtools python3 debootstrap cpio`.
+2. Ejecuta `Construir-ISO.cmd` o `wsl bash tools/build-iso.sh` para generar `out/VortexOS.iso` con Firefox ESR. Para una compilación ligera de desarrollo usa `VORTEX_DEBIAN=0 bash tools/build-iso.sh`.
 
 ## Probarla
 
 **La rama `main` contiene el Vortex OS unificado**, no una copia recortada del
 escritorio. Concentra el kernel propio de 32/64 bits, ventanas con varios espacios
-de trabajo, navegador externo Chromium/Firefox, reloj NTP con zona Lima, Vortex
+de trabajo, cuentas locales al arrancar, Firefox ESR preinstalado en la ISO oficial de
+64 bits, reloj NTP con zona Lima, Vortex
 Saber de 31 artículos, imágenes, WAV, AVI y almacenamiento USB UHCI. Las
 limitaciones de dispositivos modernos se detallan más abajo.
 
@@ -105,19 +106,18 @@ limitada y no está validada en todos los equipos.
 
 Pruebas reproducibles de componentes: `bash tools/verificar-vortex.sh`.
 Hora: terminal `fecha` o `hora`, y `hora sincronizar`; si NTP no responde
-se usa el RTC y la interfaz indica su origen. La sincronización NTP no sustituye
-una fuente segura autenticada. El lanzador Chromium actual requiere el modo Debian
-y usa `--no-sandbox` por limitaciones de aislamiento: no usar contraseñas ni
-datos privados en esta versión experimental.
+se usa el RTC y la interfaz indica su origen. La sincronización NTP carece de autenticación.
 
 - Máquina virtual preferentemente **BIOS/Legacy** para compatibilidad de entrada (UEFI probado en QEMU), 256 MB de RAM o más sin Debian; ratón PS/2 y tarjeta **Intel e1000** (o RTL8139) en **NAT**.
   - VirtualBox: Red → Adaptador 1 → NAT, tipo "Intel PRO/1000 MT Desktop". VMware: e1000. QEMU: `-device e1000,netdev=n0 -netdev user,id=n0`.
 - Menú de GRUB: **Vortex OS - 64 bits (gráfico)** y **Vortex OS - 32 bits (gráfico)**. Ambas opciones están en un único archivo ISO.
-- En el navegador: escribe `example.com` o `http://neverssl.com`. En la terminal: `red`.
+- Al arrancar por primera vez, crea la cuenta administradora. Usa **Actividades → Usuarios** para agregar cuentas, cambiar tu contraseña o bloquear la sesión. Para cambiar de usuario, reinicia y entra con la otra cuenta.
+- Las cuentas se conservan entre reinicios si hay un disco con VortexFS activo. En una sesión en vivo sin ese disco puedes entrar como invitado o crear una cuenta temporal.
+- En el modo gráfico de 64 bits, haz clic en **Firefox** en el escritorio o en **Actividades**. Escribe la URL o tu búsqueda en la barra de Firefox. El comando `red` muestra el estado de la conexión.
 
 ## Limitaciones actuales (sin rodeos)
-- El navegador nativo muestra un subconjunto de HTML sobre HTTP.
-- Firefox ESR en el modo de 64 bits mostró resultados públicos de Google y YouTube por HTTPS en QEMU. También pasó pruebas locales de JavaScript, almacenamiento web, Fetch, WebM VP8 sin audio y descarga de un adjunto binario con guardado automático. El diálogo de descarga, la reproducción con audio, las extensiones y el aislamiento siguen pendientes de validación. [Pruebas](VORTEX_ESTADO.md).
+- Firefox ESR en el modo de 64 bits mostró resultados públicos de Google y YouTube por HTTPS en QEMU. También pasó pruebas locales de JavaScript, almacenamiento web, Fetch, WebM VP8 sin audio y descarga de un adjunto binario con guardado automático. El primer arranque puede tardar. El diálogo de descarga, la reproducción con audio, las extensiones y el aislamiento siguen pendientes de validación. [Pruebas](VORTEX_ESTADO.md).
+- Las cuentas controlan el acceso al escritorio y a la consola de arranque. Los permisos de archivos por usuario y el cifrado de disco siguen pendientes.
 - El kernel de 64 bits tiene procesos e implementa numerosas llamadas compatibles con Linux, pero no todas las funciones de Linux están completas.
 - El escritorio y sus aplicaciones nativas aún comparten componentes con el kernel. Los archivos viven en RAM y pueden persistir en discos compatibles mediante VortexFS (firma histórica KNGFS) si se activa el guardado.
 - El escritorio acepta PS/2 y un teclado y un ratón relativo USB compatibles con HID Boot en puertos directos xHCI. En QEMU, ambos núcleos pasaron pruebas de escritura, clic y reconexión con PS/2 desactivado. Quedan pendientes los hubs xHCI, los dispositivos con informes HID distintos del modo de arranque y las pruebas con periféricos físicos.

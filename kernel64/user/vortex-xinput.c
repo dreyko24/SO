@@ -15,6 +15,7 @@
 
 struct ev { long sec, usec; uint16_t type, code; int32_t value; };
 static int xs;
+static uint32_t root_window;
 static int rd_all(int fd,void *b,size_t n){ size_t d=0; while(d<n){ ssize_t r=read(fd,(char*)b+d,n-d); if(r<=0){ if(r<0&&errno==EINTR) continue; return -1; } d+=(size_t)r; } return 0; }
 static int wr_all(int fd,const void *b,size_t n){ size_t d=0; while(d<n){ ssize_t r=write(fd,(const char*)b+d,n-d); if(r<=0){ if(r<0&&errno==EINTR) continue; return -1; } d+=(size_t)r; } return 0; }
 
@@ -37,7 +38,12 @@ static int xconnect(int disp){
     uint8_t req[12]={'l',0,11,0,0,0,0,0,0,0,0,0};                       /* orden little-endian, protocolo 11.0, sin autorizacion (Xvfb -ac) */
     if(wr_all(s,req,sizeof req)) { close(s); return -1; }
     uint8_t h[8]; if(rd_all(s,h,8)||h[0]!=1){ close(s); return -1; }
-    size_t extra=(size_t)(h[6]|(h[7]<<8))*4; uint8_t *buf=malloc(extra?extra:1); if(!buf||rd_all(s,buf,extra)){ close(s); return -1; }
+    size_t extra=(size_t)(h[6]|(h[7]<<8))*4; uint8_t *buf=malloc(extra?extra:1);
+    if(!buf||rd_all(s,buf,extra)||extra<32){ free(buf); close(s); return -1; }
+    size_t vendor=(size_t)(buf[16]|(buf[17]<<8));
+    size_t first_screen=32+((vendor+3)&~(size_t)3)+8*(size_t)buf[21];
+    if(!buf[20]||first_screen+4>extra){ free(buf); close(s); return -1; }
+    memcpy(&root_window,buf+first_screen,sizeof root_window);
     free(buf); return s;
 }
 static int xtest_opcode(void){
@@ -51,6 +57,30 @@ static void fake(int type,int detail,int x,int y){
     uint8_t q[36]; memset(q,0,sizeof q); q[0]=(uint8_t)xop; q[1]=2; q[2]=9; q[4]=(uint8_t)type; q[5]=(uint8_t)detail;
     q[24]=(uint8_t)(x&255); q[25]=(uint8_t)((x>>8)&255); q[26]=(uint8_t)(y&255); q[27]=(uint8_t)((y>>8)&255);
     wr_all(xs,q,sizeof q);
+}
+static int xreply(uint8_t reply[32]){
+    do {
+        if(rd_all(xs,reply,32))return -1;
+    } while(reply[0]!=1); /* Los errores asíncronos de XTEST preceden a la respuesta. */
+    return 0;
+}
+/* Xvfb corre sin un gestor de ventanas. Cuando el foco queda en PointerRoot,
+ * enfocar el cliente bajo el puntero antes de entregar el teclado. */
+static void focus_client(void){
+    uint8_t focus_request[4]={43,0,1,0}, reply[32];
+    if(wr_all(xs,focus_request,sizeof focus_request)||xreply(reply))return;
+    uint32_t focus;
+    memcpy(&focus,reply+8,sizeof focus);
+    if(focus>1&&focus!=root_window)return;
+    uint8_t pointer_request[8]={38,0,2,0};
+    memcpy(pointer_request+4,&root_window,sizeof root_window);
+    if(wr_all(xs,pointer_request,sizeof pointer_request)||xreply(reply))return;
+    uint32_t client;
+    memcpy(&client,reply+12,sizeof client);
+    if(!reply[1]||!client)return;
+    uint8_t set_focus[12]={42,2,3,0};
+    memcpy(set_focus+4,&client,sizeof client);
+    wr_all(xs,set_focus,sizeof set_focus);
 }
 /* los errores que devuelve X (32 bytes) se descartan sin bloquear */
 static void drain(void){ uint8_t b[512]; int fl=fcntl(xs,F_GETFL); fcntl(xs,F_SETFL,fl|O_NONBLOCK); while(read(xs,b,sizeof b)>0); fcntl(xs,F_SETFL,fl); }
@@ -71,7 +101,10 @@ int main(int argc,char **argv){
         else if(e.type==1){
             int down=e.value!=0;
             if(e.code>=0x110&&e.code<=0x112){ int b=e.code==0x110?1:e.code==0x112?2:3; fake(down?4:5,b,ax,ay); }     /* botones: izq, medio, der */
-            else if(e.code<0x100){ fake(down?2:3,e.code+8,0,0); }                                                       /* teclas: codigo X = codigo evdev + 8 */
+            else if(e.code<0x100){
+                if(down)focus_client();
+                fake(down?2:3,e.code+8,0,0);                                  /* codigo X = evdev + 8 */
+            }
         }
         else if(e.type==2&&e.code==8){ int b=e.value>0?4:5; fake(4,b,ax,ay); fake(5,b,ax,ay); }                       /* rueda */
         if(++n%16==0) drain();

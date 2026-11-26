@@ -21,11 +21,13 @@ void *kmalloc(size_t n){
 void kfree(void *p){ free(p); }
 static uint32_t T=1000;
 uint32_t kticks(void){ return T; }
+uint64_t krtc_epoch(void){ return 1795440000ull+T/100; }
 int kgetc(void){ return -1; }
 void (*kcon_hook)(char);
 static void out(const char *s){ while(*s){ if(kcon_hook) kcon_hook(*s); s++; } }
 void kprintf(const char *f,...){ (void)f; }
 static char host_last_shell[256];
+static int host_firefox_pid,host_firefox_starts,host_firefox_cannot_start;
 void kshell_exec(char *l){
     k_strcpy(host_last_shell,l,sizeof host_last_shell);
     if(!strcmp(l,"info")) out("vortex-kernel 0.5 (i386, Multiboot)\nParte de Vortex OS.\n");
@@ -68,6 +70,14 @@ int net_time_synced(void){return 0;} /* GUI host sigue usando el RTC simulado */
 #include "../kernel/html.c"
 #include "../kernel/kbd.c"
 #include "../kernel/gui.c"
+
+int kfirefox_alive(void){ return host_firefox_pid>0; }
+int kfirefox_open(void){
+    if(host_firefox_cannot_start)return -1;
+    if(!host_firefox_pid) host_firefox_pid=1000+(++host_firefox_starts);
+    gui_open_xscreen(640,480);
+    return host_firefox_pid;
+}
 
 #define W 1024
 #define H 768
@@ -163,6 +173,48 @@ int main(void){
        * directamente con HTTPS y búsquedas Google, no caer a una maqueta. */
       FsNode *firefox=bin?fs_create(bin,"firefox-esr","test",4):0;
       if(!firefox){puts("FALLO crear Firefox ESR para prueba");return 1;}
+      FsNode *local=fs_find(usr,"local"); if(!local)local=fs_mkdir(usr,"local");
+      FsNode *localbin=fs_find(local,"bin"); if(!localbin)localbin=fs_mkdir(local,"bin");
+      FsNode *wrapper=fs_create(localbin,"abrir-x","#",1);
+      if(!wrapper){puts("FALLO preparar inicio directo Firefox");return 1;}
+      dock(1);
+      int pantalla=win_top();
+      if(pantalla<0||wins[pantalla].type!=A_XSCR||!wins[pantalla].xfirefox||host_firefox_starts!=1){
+          puts("FALLO acceso del dock no abre Firefox directamente");return 1;
+      }
+      gui_open_xscreen(640,480);
+      if(!wins[pantalla].xfirefox||strcmp(wins[pantalla].title,"Firefox")){
+          puts("FALLO pantalla genérica borra el título de Firefox activo");return 1;
+      }
+      closeall();
+      dock(0);
+      typestr("firefox\\");
+      pantalla=win_top();
+      if(pantalla<0||!wins[pantalla].xfirefox||host_firefox_starts!=1){
+          puts("FALLO Actividades no recupera Firefox activo sin duplicarlo");return 1;
+      }
+      int pid=host_firefox_pid;
+      host_firefox_pid=0;
+      kproc_done(pid,0);
+      dock(1);
+      if(win_top()!=pantalla||!wins[pantalla].xfirefox||host_firefox_starts!=2){
+          puts("FALLO el dock no reinicia Firefox tras cerrar su proceso");return 1;
+      }
+      pid=host_firefox_pid;
+      host_firefox_pid=0;
+      kproc_done(pid,1);
+      if(firefox_exit_code!=1||firefox_start_failed){
+          puts("FALLO no se muestra el error de salida de Firefox");return 1;
+      }
+      host_firefox_cannot_start=1;
+      dock(1);
+      if(win_top()!=pantalla||!firefox_start_failed||host_firefox_starts!=2){
+          puts("FALLO no se distingue un arranque imposible de Firefox");return 1;
+      }
+      host_firefox_cannot_start=0;
+      closeall();
+      fs_remove(wrapper);
+      puts("VORTEX FIREFOX DIRECTO: DOCK, ACTIVIDADES Y REINICIO OK");
       host_last_shell[0]=0;
       if(!browser_modern_available()||!browser_open_modern("https://www.google.com/")||
          strcmp(host_last_shell,"abrir firefox-esr https://www.google.com/")){
@@ -551,7 +603,7 @@ int main(void){
     closeall();
     dock(3); typestr("help\\ls /\\cd /Documentos\\ls\\cat notas.txt\\write hola.txt Hola desde vortex\\cat hola.txt\\info\\"); shot("03_terminal");
     closeall();
-    dock(1); shot("04_navegador");
+    (void)open_app(A_BROWSER); shot("04_navegador");
     click(190,254); shot("05_navegador_enlace");
     /* navegador con http simulado: cargando -> pagina -> enlaces relativos */
     /* Minimizar y restaurar no destruye contenido ni dimensiones. */
@@ -597,7 +649,7 @@ int main(void){
       }
       puts("VORTEX BARRA: TRES MINIMIZADAS VISIBLES Y RESTAURABLES OK");
     }
-    closeall(); dock(1);
+    closeall(); (void)open_app(A_BROWSER);
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("example.test/dir/index.html\\"); }
     shot("05b_http_cargando");
     gui_frame(); gui_frame(); gui_frame(); gui_frame(); shot("05c_http_pagina");
@@ -624,7 +676,7 @@ int main(void){
     dock(7); { Win *st=&wins[win_top()]; click(st->x+1+20+44+14,st->y+TB+54); click(st->x+1+20+112,st->y+TB+114+30); } shot("08_ajustes_cambio");
     closeall();
     /* buscador */
-    dock(1);
+    (void)open_app(A_BROWSER);
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("bienvenida\\"); } shot("09_buscar");
     { Win *b=&wins[win_top()]; click(b->x+200,b->y+TB+18); typestr("vortex\\"); } shot("09b_buscar_vortex");
     { Win *b=&wins[win_top()]; if(strcmp(b->url,"http://10.0.2.2:8080/search?q=vortex")){ puts(b->url); puts("FALLO buscador web url"); return 1; } }
@@ -779,7 +831,9 @@ int main(void){
     }
     { int ox=dobj[0].x+dobj[0].w/2, oy=dobj[0].y+25; gui_mouse_abs(ox,oy,0); gui_frame(); gui_mouse_abs(ox,oy,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,1); gui_frame(); gui_mouse_abs(ox+300,oy+200,0); gui_frame(); T+=100;
       if(dobj[0].x<200){ puts("FALLO arrastrar icono"); return 1; }
-      dclick(ox+300,oy+200); if(nord<1||wins[win_top()].type!=A_BROWSER){ puts("FALLO abrir icono"); return 1; } }
+      dclick(ox+300,oy+200); if(nord<1||wins[win_top()].type!=A_FIREFOX){ puts("FALLO abrir icono Firefox sin Debian"); return 1; } }
+    closeall();
+    open_app(A_BROWSER);
     shot("14_escritorio_modular");
     { Win *b=&wins[win_top()]; int tx=b->x+300, ty=b->y+TB/2; T+=100; click(tx,ty); T+=3; click(tx,ty); if(!b->maxed||b->x!=desktop_work_x()||b->w!=W-desktop_work_x()){
          puts("FALLO maximizar con reserva del dock");return 1;
@@ -1273,7 +1327,7 @@ int main(void){
     puts("VORTEX ENERGIA Y REPOSO OK");
     /* Tiempo real de composicion al arrastrar una ventana.
      * Solo es una medicion comparativa en el host, NO fps de VMware. */
-    closeall();dock(1);
+    closeall();(void)open_app(A_BROWSER);
     { Win *v=&wins[win_top()];
       int px=v->x+60,py=v->y+12;
       gui_mouse_abs(px,py,0);gui_frame();gui_mouse_abs(px,py,1);gui_frame();
@@ -1319,6 +1373,6 @@ int main(void){
       puts("VORTEX USB: INSTANTÁNEA REEMPLAZADA CON VENTANAS ABIERTAS");
     }
     /* escritorio lleno */
-    dock(1); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
+    (void)open_app(A_BROWSER); dock(2); dock(3); dock(4); dock(5); dock(6); shot("13_escritorio_lleno");
     return 0;
 }

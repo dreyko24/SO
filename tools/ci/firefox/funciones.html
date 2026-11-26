@@ -89,9 +89,10 @@
     });
     await probar("webm", probarVideo);
     const resultado = Array.from(resultados.values()).every(valor => valor === "OK") ? "OK" : "FALLO";
-    document.title = `Vortex Firefox funciones ${resultado}`;
     resultados.set("resultado", resultado);
-    await fetch(`funciones-dato.txt?${resultados}`, {cache: "no-store"});
+    const reporte = await fetch(`funciones-dato.txt?${resultados}`, {cache: "no-store"});
+    comprobar(reporte.ok, "falló el envío del resultado");
+    document.title = `Vortex Firefox funciones ${resultado}`;
   }
 
   iniciar().catch(error => {

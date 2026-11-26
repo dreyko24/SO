@@ -1,6 +1,7 @@
 /* gui.c — escritorio de Vortex OS: fondo, barra, dock, ventanas y aplicaciones integradas.
  * Todo se dibuja por software en un backbuffer; el cursor se pinta directo sobre el frontbuffer. */
 #include "gui.h"
+#include "session.h"
 #include "kbd.h"
 #include "gfx.h"
 #include "fs.h"
@@ -20,7 +21,7 @@
 #include "clock_calendar.h"
 #include "timeutil.h"
 
-enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA, A_CALENDAR };
+enum { A_ABOUT, A_BROWSER, A_FILES, A_TERM, A_SETTINGS, A_VIEWER, A_NOTES, A_CALC, A_SNAKE, A_MONITOR, A_XSCR, A_PROGS, A_MEDIA, A_OFFICE, A_AUDIO, A_VIDEO, A_ENCARTA, A_CALENDAR, A_FIREFOX, A_ACCOUNTS };
 #define SGW 20
 #define SGH 16
 #define SCELL 20
@@ -36,7 +37,7 @@ typedef struct {
     int used, type, x, y, w, h; char title[40];
     char grid[TH][TW]; int tr, tc; char in[256]; int inlen; FsNode *cwd;          /* terminal */
     int busy, bpid, esc, escp, escv[6], escq, savr, savc;                         /* terminal: programa pegado, secuencias ANSI */
-    int xw, xh; uint32_t xnext; int xlx, xly;                                     /* pantalla X (servidor Xvfb) */
+    int xw, xh; uint32_t xnext; int xlx, xly, xfirefox;                           /* pantalla X (servidor Xvfb) */
     int store_cat, store_search_len;
     char store_search[40];
     uint32_t store_state;
@@ -474,7 +475,9 @@ static void term_put(Win *w,char c){
 }
 static void tp(Win *w,const char *s){ kserial_puts(s); while(*s) term_put(w,*s++); }
 static void term_prompt(Win *w){ char p[110]; fs_path(w->cwd,p,sizeof p); cat(p,sizeof p,"> "); tp(w,p); kserial_puts("\n"); kserial_puts(p); }
+static int firefox_gui_pid,firefox_exit_code,firefox_start_failed;
 static void term_done(int pid,int code){                 /* un programa pegado a una terminal termino: mensaje y prompt otra vez */
+    if(pid==firefox_gui_pid){ firefox_exit_code=code; dirty=1; return; }
     for(int i=0;i<MAXW;i++){ Win *w=&wins[i]; if(!w->used||w->type!=A_TERM||!w->busy||w->bpid!=pid) continue;
         w->busy=0; char b[64]="";
         if(w->tc>0) tp(w,"\n");
@@ -488,7 +491,17 @@ static void snake_reset(Win *w);
 static Win *open_app(int type);
 static void open_file(FsNode *n);
 static int xs_w=1024, xs_h=640;
-void gui_open_xscreen(int w,int h){ xs_w=w; xs_h=h; open_app(A_XSCR); dirty=1; }
+static int starting_firefox,account_mount_error;
+void gui_open_xscreen(int w,int h){
+    xs_w=w; xs_h=h;
+    Win *screen=open_app(A_XSCR);
+    if(screen){
+        screen->xfirefox=starting_firefox||(screen->xfirefox&&kfirefox_alive());
+        set_title(screen,screen->xfirefox?"Firefox":"Pantalla X (programas de Linux)");
+        if(screen->xfirefox)firefox_start_failed=0;
+    }
+    dirty=1;
+}
 void gui_open_terminal(void){ open_app(A_TERM); dirty=1; }                    /* opcion de arranque 'terminal' (pruebas automaticas del modo grafico) */
 int  gui_screen_size(int *w,int *h){ if(!gw) return -1; *w=gw; *h=gh; return 0; }
 
@@ -555,6 +568,28 @@ static void render(void);
 static void run_in_terminal(const char *cmd){ Win *t=open_app(A_TERM); if(!t||t->busy) return; for(const char *q=cmd;*q;q++) gui_key((unsigned char)*q); gui_key('\n'); }
 void gui_open_installer(void){ run_in_terminal("instalar-sistema"); }
 static void run_quiet(const char *cmd){ char l[256]; k_strcpy(l,cmd,sizeof l); term_target=0; kcon_hook=0; kshell_exec(l); }
+static void account_manage(void);
+static int firefox_launch(void){
+    if(!papp_installed(P_FIREFOX)||!papp_exists("/usr/local/bin/abrir-x"))return 0;
+    if(!firefox_start_failed&&kfirefox_alive())for(int i=0;i<nord;i++){
+        Win *screen=&wins[order[i]];
+        if(screen->type==A_XSCR&&screen->xfirefox&&screen->workspace==active_workspace){
+            focus(order[i]);
+            return 1;
+        }
+    }
+    kserial_puts("[vortex-browser] Firefox directo\n");
+    starting_firefox=1;
+    term_target=0;
+    kcon_hook=0;
+    int pid=kfirefox_open();
+    if(pid<0)gui_open_xscreen(xs_w,xs_h);
+    starting_firefox=0;
+    if(pid>0)firefox_gui_pid=pid;
+    firefox_start_failed=pid<0;
+    firefox_exit_code=0;
+    return 1;
+}
 static void urlenc(char *o,int max,const char *q);
 /* Puente a un navegador moderno REAL de Debian, si esta instalado.
  * El renderizador nativo solo soporta una parte de HTML/CSS sin JS/TLS.
@@ -608,6 +643,8 @@ static void enc_progress_load(Win *w);
 static void enc_progress_save(Win *w);
 static void enc_article_open(Win *w,int id);
 static Win *open_app(int type){
+    if(type==A_ACCOUNTS){account_manage();return 0;}
+    if(type==A_FIREFOX&&firefox_launch())return 0;
     /* Abrir la misma aplicacion en otro espacio no transporta al usuario. */
     if(!open_new)for(int i=0;i<nord;i++){
         Win *e=&wins[order[i]];
@@ -622,7 +659,8 @@ static Win *open_app(int type){
     int off=(nord%5)*28;
     switch(type){
     case A_ABOUT:    w->w=440; w->h=320; set_title(w,"Acerca de Vortex OS"); break;
-    case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Navegador"); break;
+    case A_BROWSER:  w->w=720; w->h=500; set_title(w,"Visor HTML"); break;
+    case A_FIREFOX:  w->w=470; w->h=170; set_title(w,"Firefox"); break;
     case A_FILES:    w->w=660; w->h=440; set_title(w,"Archivos"); w->dir=fs_root(); break;
     case A_TERM:     w->w=TW*8+2; w->h=TH*16+TB+1; set_title(w,"Terminal"); w->cwd=fs_root();
                      memset(w->grid,' ',sizeof w->grid); tp(w,"Vortex OS - terminal. Escribe 'help'.\n"); term_prompt(w); break;
@@ -1216,6 +1254,7 @@ static void draw_doc(int x,int y){ rrect(x+2,y+1,16,20,2,0xe8eaf4,255); fill(x+5
 
 /* ---------------- gestor de archivos: portapapeles, menu contextual, papelera, arrastrar y soltar ---------------- */
 static int in_rect(int px,int py,int x,int y,int w,int h);
+#include "gui_session.inc"
 static int dock_hit(int px,int py);
 static void dsk_sync(void);
 static int  dsk_find(const char *name);
@@ -2360,12 +2399,22 @@ static void x_read_notice(char msg[110]){
     int n=end-begin;
     if(n>0){memcpy(msg,log->data+begin,(size_t)n);msg[n]=0;}
 }
-static void x_draw_frame(int x,int y,int width,int height){
-    XFrame frame=x_read_frame();
+static void x_draw_frame(const Win *w,int x,int y,int width,int height){
     fill(x,y,width,height,0x000000,255);
+    if(w->xfirefox&&(firefox_start_failed||!kfirefox_alive())){
+        if(width>250&&height>150)rrect(x+20,y+20,width-40,92,12,0x14233d,245);
+        const char *title=firefox_start_failed?"No se pudo abrir Firefox":
+                          firefox_exit_code?"Firefox se cerró con un error":"Firefox se cerró";
+        text_bold(x+35,y+33,title,0xffffff);
+        text(x+35,y+57,"Vuelve a abrir Firefox desde el dock.",0xd7e6ff);
+        if(firefox_start_failed)text(x+35,y+83,"Revisa Debian y ejecuta pantalla en la terminal.",0xffc995);
+        else if(firefox_exit_code)text(x+35,y+83,"Consulta /tmp/vortex-web.log",0xffc995);
+        return;
+    }
+    XFrame frame=x_read_frame();
     if(frame.state==XFRAME_WAIT){
-        text(x+20,y+20,"Esperando al servidor X (Xvfb)...",0xd6dbe8);
-        text(x+20,y+44,"Inicia: pantalla   (en la terminal)",C_DIM);
+        text(x+20,y+20,w->xfirefox?"Abriendo Firefox…":"Esperando al servidor X (Xvfb)...",0xd6dbe8);
+        if(!w->xfirefox)text(x+20,y+44,"Inicia: pantalla   (en la terminal)",C_DIM);
         return;
     }
     if(frame.state==XFRAME_FORMAT){
@@ -2377,12 +2426,13 @@ static void x_draw_frame(int x,int y,int width,int height){
         blit32(x,y,frame.pixels,frame.stride,bw,bh);
     }else if(width>250&&height>150){
         rrect(x+20,y+20,width-40,116,12,0x14233d,245);
-        text_bold(x+35,y+33,"La pantalla X sigue vacia",0xffffff);
-        text(x+35,y+57,"Inicia una aplicacion de Linux con abrir.",0xd7e6ff);
         char msg[110];
         x_read_notice(msg);
+        text_bold(x+35,y+33,w->xfirefox?"Abriendo Firefox…":"La pantalla X sigue vacia",0xffffff);
+        text(x+35,y+57,w->xfirefox?"Cargando la primera ventana del navegador.":
+                                   "Inicia una aplicacion de Linux con abrir.",0xd7e6ff);
         while(k_strlen(msg)>1&&text_w(msg)>width-74)msg[k_strlen(msg)-1]=0;
-        text(x+35,y+83,msg,0xffc995);
+        if(!w->xfirefox)text(x+35,y+83,msg,0xffc995);
         text(x+35,y+107,"No uses cuentas personales hasta validar el navegador.",0xb9cade);
     }
 }
@@ -2509,7 +2559,11 @@ static void draw_window(int wi,int focused){
         for(int r=0;r<TH;r++){ char u[TW*2+1]; l1_to_utf8((unsigned char*)w->grid[r],TW,u); text(cx,cy+r*16,u,0xd6dbe8); }
         if(focused && ((kticks()/50)&1)) fill(cx+w->tc*8,cy+w->tr*16+13,8,3,ACCENT,255);
         break; }
-    case A_XSCR: x_draw_frame(cx,cy,cw,ch); break;
+    case A_XSCR: x_draw_frame(w,cx,cy,cw,ch); break;
+    case A_FIREFOX:
+        text_bold(cx+20,cy+20,"Firefox está incluido en Vortex OS de 64 bits.",C_TXT);
+        text(cx+20,cy+51,"Arranca el modo gráfico de 64 bits de la ISO oficial.",C_DIM);
+        break;
     case A_ENCARTA:
         enc_render(w,cx,cy,cw,ch);
         break;
@@ -2702,7 +2756,7 @@ static void draw_window(int wi,int focused){
         html_render(src,src_len,vx,vy,vw,vh,w->bscroll,
                     light_theme?0x184fa9:mix(0x8ab4ff,ACCENT,60),1,&w->page);
         { int maxs=k_max(0,w->page.content_h-vh); if(w->bscroll>maxs) w->bscroll=maxs; }
-        if(w->page.title[0]){ char t[40]="Navegador - "; cat(t,40,w->page.title); k_strcpy(w->title,t,40); }
+        if(w->page.title[0]){ char t[40]="Visor HTML - "; cat(t,40,w->page.title); k_strcpy(w->title,t,40); }
         if(w->page.content_h>vh){ int bh=vh*vh/w->page.content_h; int by=vy+w->bscroll*(vh-bh)/k_max(1,w->page.content_h-vh); rrect(cx+cw-8,by,4,bh,2,C_DIM,160); }
         break; }
     case A_PROGS: store_draw(w,cx,cy,cw,ch); break;
@@ -3000,8 +3054,8 @@ static void dock_damage(void){
     /* Incluye el globo contextual a la derecha del dock. */
     dmark(bx-10,by-42,bw+235,bh+55);
 }
-static const int DOCK_APP[NDOCK]={-1,A_BROWSER,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
-static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Navegador","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
+static const int DOCK_APP[NDOCK]={-1,A_FIREFOX,A_FILES,A_TERM,A_NOTES,A_CALC,A_SNAKE,A_SETTINGS,A_MONITOR};
+static const char *DOCK_LBL[NDOCK]={"Aplicaciones","Firefox","Archivos","Terminal","Notas","Calculadora","Snake","Ajustes","Monitor"};
 static void draw_icon(int i,int x,int y){
     rrect(x,y,TILE,TILE,13,light_theme?0xb6c9e5:0x23314d,255);
     rrect(x+1,y+1,TILE-2,TILE-2,12,light_theme?0xe8f0fa:0x2b3b59,230);
@@ -3064,7 +3118,8 @@ static void draw_dock(void){
         draw_icon(i,x,y);
         int active=i==0?appmenu_open:0,mini=0;
         if(i>0)for(int k=0;k<nord;k++)
-            if(wins[order[k]].type==DOCK_APP[i]){
+            if(wins[order[k]].type==DOCK_APP[i]||
+               (i==1&&wins[order[k]].type==A_XSCR&&wins[order[k]].xfirefox)){
                 active=1;if(wins[order[k]].minimized)mini=1;
                 break;
             }
@@ -3083,7 +3138,7 @@ typedef struct {const char *label; int app,tab,cat,icon;} AppMenuEntry;
 enum { MC_ALL,MC_MULTIMEDIA,MC_OFICINA,MC_INTERNET,MC_SISTEMA,MC_UTIL,MC_JUEGOS,MC_EDUCACION };
 static const char *const APP_CATS[]={"Todas","Multimedia","Oficina","Internet","Sistema","Utilidades","Juegos","Educacion"};
 static const AppMenuEntry APPMENU[]={
-    {"Navegador",A_BROWSER,0,MC_INTERNET,1},
+    {"Firefox",A_FIREFOX,0,MC_INTERNET,1},
     {"Archivos",A_FILES,0,MC_SISTEMA,2},
     {"Galeria",A_MEDIA,0,MC_MULTIMEDIA,10},
     {"Musica",A_MEDIA,1,MC_MULTIMEDIA,11},
@@ -3094,6 +3149,7 @@ static const AppMenuEntry APPMENU[]={
     {"Notas",A_NOTES,0,MC_UTIL,4},
     {"Calculadora",A_CALC,0,MC_UTIL,5},
     {"Ajustes",A_SETTINGS,0,MC_SISTEMA,7},
+    {"Usuarios",A_ACCOUNTS,0,MC_SISTEMA,7},
     {"Monitor",A_MONITOR,0,MC_SISTEMA,8},
     {"Snake",A_SNAKE,0,MC_JUEGOS,6},
     {"Acerca de",A_ABOUT,0,MC_SISTEMA,15},
@@ -3511,6 +3567,15 @@ static void render(void){
 }
 static int w_files_editing(void){ int top=win_top(); if(top>=0&&wins[top].type==A_FILES&&wins[top].editing){ static int p; int q=(kticks()/50)&1; if(q!=p){ p=q; dwin(&wins[top]); } } return dren>=0; }
 void gui_frame(void){
+    if(accounts.page!=ACCOUNT_DESKTOP){
+        if(dirty||cursor_dirty){
+            if(cur_x>=0)cursor_restore();
+            if(dirty){account_draw();gfx_present();ndamage=0;}
+            dirty=0;cursor_dirty=0;cur_x=-100;
+            cursor_draw();
+        }
+        return;
+    }
     uint32_t t=kticks();
     browser_poll();
     if(t>=clk_next){
@@ -3750,6 +3815,7 @@ static void store_click(Win *w,int x,int y,int width,int height){
     if(i<0)return;
     const PApp *app=&PAPPS[i];
     if(state&(1u<<i)){
+        if(i==P_FIREFOX){(void)open_app(A_FIREFOX);return;}
         char cmd[100]="abrir ";
         cat(cmd,sizeof cmd,app->cmd);
         run_quiet(cmd);
@@ -4094,6 +4160,7 @@ static void mouse_set(int x,int y,int b){
     int omb=mb;
     if(x!=mx||y!=my) cursor_dirty=1;
     mx=x; my=y; mb=b;
+    if(accounts.page!=ACCOUNT_DESKTOP){if(pressed)account_mouse(mx,my);return;}
     if(power_sleep){if(pressed){power_sleep=0;dirty=1;}return;}
     { int top=win_top();                                       /* sobre la pantalla X, el raton se le entrega al programa de Linux */
       if(top>=0&&wins[top].type==A_XSCR&&drag<0){ Win *xw=&wins[top]; int lx=x-(xw->x+1), ly=y-(xw->y+TB);
@@ -4161,6 +4228,7 @@ static void mouse_set(int x,int y,int b){
 }
 void gui_rawkey(int byte){                                       /* teclas crudas para X11, salvo el atajo global Alt+Tab */
     static int e0;
+    if(accounts.page!=ACCOUNT_DESKTOP){e0=0;return;}
     if(byte==0xE0){ e0=1; return; }
     int top=win_top(); int down=!(byte&0x80), sc=byte&0x7F, code=sc, extended=e0;
     if(e0){ e0=0; switch(sc){ case 0x1C: code=96; break; case 0x1D: code=97; break; case 0x35: code=98; break; case 0x38: code=100; break; case 0x47: code=102; break; case 0x48: code=103; break;
@@ -4171,14 +4239,14 @@ void gui_rawkey(int byte){                                       /* teclas cruda
         if(down&&xraw_left_alt)xraw_tab_intercept=1;
         if(xraw_tab_intercept){if(!down)xraw_tab_intercept=0;return;}
     }
-    if(top<0||wins[top].type!=A_XSCR)return;
+    if(top<0||wins[top].type!=A_XSCR||(appmenu_open&&down))return;
     if(!extended&&sc==0x38)xraw_alt_forwarded=down;
     kinput_event(1,code,down); kinput_event(0,0,0);
 }
 void gui_mouse_abs(int x,int y,int b){ mouse_set(x,y,b); }
 void gui_mouse_event(int dx,int dy,int b){ mouse_set(mx+dx,my+dy,b); }
 void gui_mouse_wheel(int steps){
-    if(!steps||power_sleep)return;
+    if(!steps||power_sleep||accounts.page!=ACCOUNT_DESKTOP)return;
     if(steps>8)steps=8;
     if(steps< -8)steps=-8;
     if(appmenu_open){
@@ -4264,6 +4332,7 @@ void gui_mouse_wheel(int steps){
 
 static void scroll_by(int *s,int d,int max){ *s+=d; if(*s<0) *s=0; if(*s>max) *s=max; { int t=win_top(); if(t>=0) dwin(&wins[t]); else dirty=1; } }
 void gui_key(int c){
+    if(accounts.page!=ACCOUNT_DESKTOP){account_key(c);return;}
     if(dren>=0){ if(c=='\n') dren_commit(); else if(c==27){ dren=-1; dirty=1; } else if(c<0x400){ fm_edit_key(c,dren_buf,&dren_len,&dren_all,FS_NAME); DObj *o=&dobj[dren]; dmark(o->x-60,o->y+TILE,o->w+120,30); } return; }
     if(c==KBD_ACTIVITIES){
         appmenu_open=!appmenu_open;appmenu_cat=MC_ALL;
@@ -4466,7 +4535,7 @@ void gui_key(int c){
 
 /* despues de cargar el sistema base: se lee lo guardado en el disco (encima) y se aplican los ajustes guardados */
 void gui_storage_ready(void){
-    (void)vortexfs_mount(); fs_track=1;
+    account_mount_error=vortexfs_mount()==-5; fs_track=1;
     { char theme[16];if(cfg_get("tema",theme,sizeof theme))light_theme=!k_strcmp(theme,"claro"); }
     { char accent[12];if(cfg_get("acento",accent,sizeof accent)&&accent[0]>='0'&&
        accent[0]<='5'&&!accent[1])acc_i=accent[0]-'0'; }

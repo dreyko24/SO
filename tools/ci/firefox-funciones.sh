@@ -17,7 +17,7 @@ sleep 1
 kill -0 "$servidor"
 
 SECONDS=0
-VORTEX_PROMPT='vortex> ' KELF=$1 timeout --signal=TERM --kill-after=5s 280s \
+VORTEX_PROMPT='vortex> ' KELF=$1 timeout --signal=TERM --kill-after=5s 320s \
   python3 "$tools/ci_drive.py" "$tools/ci/firefox-funciones.txt" "$salida/serie.log" -- \
   qemu-system-x86_64 -m 4096 -kernel "$1" -initrd "$2,$3" \
   -display none -serial stdio -monitor none -no-reboot \
@@ -26,6 +26,8 @@ printf 'QEMU finalizó en %s s. Registros en %s\n' "$SECONDS" "$salida"
 
 if ! grep -aq '^\[ok\] modo largo (64 bits)' "$salida/serie.log" ||
    ! grep -aq '"Vortex Firefox funciones OK[^"]*": ("Navigator" "firefox-esr")' "$salida/serie.log" ||
+   ! grep -aFq '"GET /funciones.html HTTP/1.1" 200' "$salida/http.log" ||
+   ! grep -aFq '"GET /funciones.html?segunda=1 HTTP/1.1" 200' "$salida/http.log" ||
    ! grep -aFq '"GET /funciones-dato.txt?sessionStorage=OK&localStorage=OK&fetch=OK&webm=OK&resultado=OK HTTP/1.1" 200' "$salida/http.log"; then
   tail -n 20 "$salida/http.log" "$salida/serie.log" >&2
   exit 1
