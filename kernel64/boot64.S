@@ -37,7 +37,7 @@ gdt64:
 gdt64_ptr:
     .word gdt64_ptr - gdt64 - 1
     .long gdt64
-msg_nolong: .asciz "vortex64: este procesador no soporta 64 bits (modo largo). Use el kernel de 32 bits."
+msg_nolong: .asciz "Vortex OS requiere un procesador o una maquina virtual x86_64."
 
 .section .text
 .code32

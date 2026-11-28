@@ -2,7 +2,7 @@
 
 **Repositorio oficial:** `https://github.com/dreyko24/SO`  
 **Única línea de desarrollo vigente:** rama `main`  
-**Producto:** **Vortex OS**, un sistema operativo propio de 32/64 bits. El nombre histórico `kng` puede permanecer en identificadores y archivos por compatibilidad; **no** renombrar indiscriminadamente símbolos del kernel.
+**Producto:** **Vortex OS**, un sistema operativo propio cuya ISO oficial usa exclusivamente el kernel x86_64 e incluye Firefox ESR. El código i386 se conserva para pruebas independientes. El nombre histórico `kng` puede permanecer en identificadores y archivos por compatibilidad.
 
 ## Regla fundamental: NO REINICIAR EL PROYECTO
 
@@ -27,7 +27,7 @@ Para comenzar cualquier sesión/chat:
 ## Evidencia y compilación
 
 - `bash tools/verificar-vortex.sh`: construye ambos kernels y ejecuta pruebas nativas de componentes en host Linux con dependencias.
-- `bash tools/build-iso.sh`: crea `out/VortexOS.iso`; revisar `README.md` sobre Debian opcional.
+- `bash tools/build-iso.sh`: crea `out/VortexOS.iso` con una sola entrada gráfica x86_64. La publicación oficial incluye el entorno de Firefox y comprueba que el equipo muestre un aviso si el cargador no logra cargarlo.
 - `Probar-VortexOS.cmd` / `bash tools/probar-vortex.sh`: QEMU Windows/Linux. Permiten una imagen USB FAT32/exFAT opcional **de solo lectura**.
 - En Actions, revisar `vortex-unificacion-integracion`, `vortex-escritorio-host`, `vortex-iso-unica`, `arranque-qemu`, `vortex-usb-mass-storage`, `vortex-audio-sb16` y `vortex-reproductores`. Comprobar jobs de la revisión concreta, no resultados viejos.
 

@@ -2561,8 +2561,10 @@ static void draw_window(int wi,int focused){
         break; }
     case A_XSCR: x_draw_frame(w,cx,cy,cw,ch); break;
     case A_FIREFOX:
-        text_bold(cx+20,cy+20,"Firefox está incluido en Vortex OS de 64 bits.",C_TXT);
-        text(cx+20,cy+51,"Arranca el modo gráfico de 64 bits de la ISO oficial.",C_DIM);
+        text_bold(cx+20,cy+20,"Faltan los archivos de Firefox en este arranque.",C_TXT);
+        text(cx+20,cy+51,"Arranca desde la ISO oficial VortexOS.iso.",C_DIM);
+        if(kram_kb()<1024u*1024u)
+            text(cx+20,cy+76,"Apaga la VM y asígnale 4 GB de RAM.",C_DIM);
         break;
     case A_ENCARTA:
         enc_render(w,cx,cy,cw,ch);

@@ -21,7 +21,7 @@
 | Vídeo e imágenes | `kernel/video.c`, `kernel/image.c`, `kernel/jpeg.c`, `kernel/gfx.c`, `kernel/media_demo.c` | PNG, JPEG básico, BMP y PPM; AVI RGB 24/32 bits sin compresión, controles y escalado incremental sin división por píxel. Muestra propia de 75 cuadros a 25 FPS durante 3 s; la cadencia de la muestra no demuestra FPS garantizados en hardware. Sin H.264/HEVC/MP4/WebM nativos. |
 | USB | `kernel/usb_storage.c`, `kernel/usb_xhci.c`, `kernel/usb_hid.c` | UHCI y xHCI comparten BOT/SCSI e importan FAT32 y exFAT de solo lectura en `/Dispositivos/Unidad-USB`. Los puertos raíz xHCI también admiten un teclado y un ratón relativo HID Boot en el escritorio. Pruebas en QEMU. |
 | Vortex Saber | `kernel/encyclopedia.h`, `kernel/saber_progress.h`, `kernel/gui.c` | Enciclopedia educativa de 31 artículos, preguntas/juegos, resultados y registro de progreso. Incluye migración desde resultados previos de cuatro/seis materias. Mantener esta versión: no regresar a la enciclopedia básica antigua. |
-| Herramientas/ISO/CI | `tools/build-iso.sh`, `tools/verificar-vortex.sh`, `tools/hostgui.c`, `tests/`, `.github/workflows/` | Construcción de ambos kernels, ISO única con modos 32/64 y Debian opcional, ejecución QEMU, pruebas nativas y trabajos de integración. Los tests host no sustituyen pruebas de hardware. |
+| Herramientas/ISO/CI | `tools/build-iso.sh`, `tools/verificar-vortex.sh`, `tools/hostgui.c`, `tests/`, `.github/workflows/` | ISO oficial con una sola entrada x86_64 y Firefox ESR. QEMU valida el arranque y navegador con 4 GiB. Las pruebas independientes pueden compilar ambos kernels. |
 
 ### Reglas de diseño y compatibilidad
 
@@ -80,7 +80,7 @@ bash tools/build-iso.sh
 bash tools/probar-vortex.sh out/VortexOS.iso
 ```
 
-En Windows con QEMU instalado: `Probar-VortexOS.cmd "out\VortexOS.iso"`. Los lanzadores aceptan una imagen FAT32/exFAT opcional como **segundo argumento** para USB virtual solo lectura. No conectan ni formatean directamente discos físicos. Para construir el espacio Debian opcional: `VORTEX_DEBIAN=1 bash tools/build-iso.sh`; exige dependencias y recursos adicionales. Antes de utilizar la ISO, comparar la suma SHA-256 generada.
+En Windows con QEMU instalado, usa `Probar-VortexOS.cmd "out\VortexOS.iso"`. Los lanzadores asignan 4 GiB de RAM y aceptan como segundo argumento una imagen FAT32/exFAT de solo lectura. La compilación normal incorpora Firefox ESR. `VORTEX_DEBIAN=0` genera una imagen ligera de desarrollo.
 
 ### Correcciones de interfaz y dispositivos: noviembre de 2026
 
@@ -194,6 +194,11 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 - **Arranque de Firefox.** En QEMU con 4 GiB y un perfil nuevo, una prueba previa recibió la primera petición local a los 65 segundos y ejecutó JavaScript en la segunda página a los 103 segundos. El aviso sobre `dbus-launch` apareció antes de que ambas páginas se mostraran. La regresión de la ISO usa el perfil normal y comprueba las dos páginas, almacenamiento web, Fetch y reproducción WebM.
 - **Inicio de sesión.** Las dos opciones gráficas de la ISO ofrecen crear la primera cuenta. Los arranques siguientes con un registro en VortexFS solicitan usuario y contraseña, incluso en la consola. Desde Actividades → Usuarios, el administrador puede crear cuentas y cada usuario puede cambiar su contraseña y bloquear su sesión. Para cambiar de usuario se reinicia el sistema.
 - **Credenciales.** VortexFS guarda derivaciones PBKDF2-HMAC-SHA256 con una sal de 128 bits por cuenta y 600.000 iteraciones. El kernel conserva el registro fuera de las rutas que pueden leer o modificar las aplicaciones. Con un arranque en vivo sin VortexFS activo, las cuentas son temporales y se puede entrar como invitado.
+
+### ISO oficial solo x86_64 — 26 de noviembre de 2026
+
+- En QEMU con 256 MiB, la ISO anterior arrancaba el kernel x86_64 y cargaba el módulo auxiliar de 6 MiB. GRUB dejaba fuera el módulo Debian descomprimido y el escritorio mostraba un aviso de Firefox que apuntaba a la arquitectura.
+- La ISO oficial contiene una sola entrada gráfica de 64 bits. GRUB exige cargar ambos módulos de Firefox antes de iniciar el sistema. Si la carga falla, la pantalla recomienda configurar 4 GB de RAM y comprobar el archivo. La edición ligera conserva un aviso específico cuando faltan los archivos de Firefox.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 

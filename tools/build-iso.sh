@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# Genera out/VortexOS.iso con los kernels Vortex y Firefox ESR en el modo de 64 bits.
-set -e
+# Genera out/VortexOS.iso con el kernel Vortex x86_64 y Firefox ESR.
+set -eo pipefail
 cd "$(dirname "$0")/.."
 faltan=""
-for c in gcc make grub-mkrescue xorriso mformat objcopy python3; do command -v "$c" >/dev/null || faltan="$faltan $c"; done
+for c in gcc make grub-mkrescue grub-script-check xorriso mformat objcopy python3; do command -v "$c" >/dev/null || faltan="$faltan $c"; done
 if [ -n "$faltan" ] || [ ! -d /usr/lib/grub/i386-pc ]; then
   echo "Faltan herramientas:$faltan"
   echo "Instala con:  sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 dosfstools fdisk debootstrap cpio gzip"
   exit 1
 fi
-make -C kernel clean >/dev/null; make -C kernel64 clean >/dev/null
-make -C kernel      # kernel de 32 bits
-make -C kernel64    # kernel de 64 bits
+make -C kernel64 clean >/dev/null
+make -C kernel64
 rm -rf build/iso && mkdir -p build/iso/boot/grub out
-cp kernel/vortex-kernel.elf kernel/vortex-kernel-text.elf kernel64/vortex-kernel64.elf kernel64/vortex-kernel64-text.elf build/iso/boot/
-# rootfs (programas Linux + enlazador dinamico + libc del PC) como modulo de arranque; solo lo usa el kernel de 64 bits
-if python3 tools/mkrootfs.py build/iso/boot/rootfs.cpio; then ROOTFS=1; else ROOTFS=0; echo "[aviso] sin rootfs (falta libc estatica: sudo apt install libc6-dev). El ISO igual arranca, sin programas Linux."; fi
+cp kernel64/vortex-kernel64.elf build/iso/boot/
 # Debian real para Firefox: la cache lleva huella del constructor y de los
 # archivos del rootfs. No reutilizar un Debian antiguo sin Firefox/X11.
 DEBIAN="${VORTEX_DEBIAN:-1}"
@@ -42,37 +39,57 @@ if [ "$DEBIAN" = 1 ]; then
     fi
   fi
   printf '%s\n' "$DEB_KEY" > "$STAMP"
-  cp build/debian.cpio.gz build/iso/boot/debian.cpio.gz
+  ln build/debian.cpio.gz build/iso/boot/debian.cpio.gz ||
+    cp build/debian.cpio.gz build/iso/boot/debian.cpio.gz
   python3 tools/mkrootfs.py --debian build/iso/boot/vortex-extra.cpio
 else
   echo "[iso] compilación ligera sin Firefox (VORTEX_DEBIAN=0)"
+  if python3 tools/mkrootfs.py build/iso/boot/rootfs.cpio; then
+    LIGHT_MODULE='    module /boot/rootfs.cpio'
+  else
+    rm -f build/iso/boot/rootfs.cpio
+    echo "[aviso] sin programas Linux (instala libc6-dev para construir el rootfs ligero)"
+  fi
 fi
-python3 tools/check-mb.py build/iso/boot/*.elf
-# Menú de la ISO única: exactamente 64 bits gráfico y 32 bits gráfico.
+python3 tools/check-mb.py build/iso/boot/vortex-kernel64.elf
 # Resolucion: primero 1920x1080 y, si la tarjeta no la tiene, la siguiente de la lista. En UEFI se usa la del firmware.
 VIDEO='if [ "$grub_platform" = efi ]; then set gfxpayload=keep; elif [ -n "$vortex_res" ]; then set gfxpayload=$vortex_res; else set gfxpayload=1920x1080x32,1600x900x32,1366x768x32,1280x1024x32,1280x720x32,1024x768x32,800x600x32,1920x1080x24,1366x768x24,1280x1024x24,1024x768x24,800x600x24; fi'
-TEXTO='set gfxpayload=text'
-R64=""; [ "$ROOTFS" = 1 ] && R64="    module /boot/rootfs.cpio"
-DEB="    module /boot/debian.cpio.gz
-    module /boot/vortex-extra.cpio"
-entrada(){ # titulo kernel modulos video
-  printf 'menuentry "%s" {\n    %s\n    multiboot /boot/%s sesion\n%s\n    boot\n}\n' "$1" "$4" "$2" "$3"; }
 {
   echo 'set timeout=8'
   echo 'set default=0'
   echo 'insmod all_video'
   echo 'insmod gzio'
-  # Una sola ISO: el usuario escoge el kernel gráfico de 64 o 32 bits.
-  # La capa Debian (si está presente) se carga solo en modo 64 bits.
+  echo 'menuentry "Vortex OS - 64 bits (grafico)" {'
+  printf '    %s\n' "$VIDEO"
   if [ "$DEBIAN" = 1 ]; then
-    entrada "Vortex OS - 64 bits (grafico)" vortex-kernel64.elf "$DEB" "$VIDEO"
+    # GRUB puede arrancar pese a que un comando module previo haya fallado.
+    # Para esta edición ambos módulos son necesarios.
+    cat <<'GRUB'
+    if multiboot /boot/vortex-kernel64.elf sesion; then
+        if module /boot/debian.cpio.gz; then
+            if module /boot/vortex-extra.cpio; then
+                boot
+            fi
+        fi
+    fi
+    if serial --unit=0 --speed=115200; then
+        terminal_output --append serial
+    fi
+    echo 'No se pudo cargar el entorno de Firefox.'
+    echo 'Asigna 4 GB de RAM a la VM y comprueba VortexOS.iso.'
+    # Mantener el aviso en pantalla. GRUB puede intentar un arranque implícito al salir.
+    while true; do
+        sleep 3600
+    done
+GRUB
   else
-    entrada "Vortex OS - 64 bits (grafico)" vortex-kernel64.elf "$R64" "$VIDEO"
+    echo '    multiboot /boot/vortex-kernel64.elf sesion'
+    printf '%s\n' "$LIGHT_MODULE"
+    echo '    boot'
   fi
-  entrada "Vortex OS - 32 bits (grafico)" vortex-kernel.elf "" "$VIDEO"
+  echo '}'
 } > build/iso/boot/grub/grub.cfg
-# La ISO de evaluación no modifica el disco. Para activar el instalador
-# experimental (tercera entrada) se requiere VORTEX_INSTALADOR=1 explícito.
+# El instalador experimental de 64 bits requiere VORTEX_INSTALADOR=1.
 # Instalador: imagen de disco arrancable (MBR + GRUB BIOS/UEFI + FAT32) que vortex copia al disco duro de la PC.
 if [ "$VORTEX_INSTALADOR" = 1 ] && bash tools/mkdisk.sh; then
   DEBIAN=$DEBIAN python3 - <<'PY'
@@ -90,6 +107,7 @@ open(p,'w').write(s)
 PY
   echo "[iso] con instalador en el disco duro"
 else echo "[iso] imagen para VM: sin instalador peligroso (opcional VORTEX_INSTALADOR=1)"; rm -f build/iso/boot/disco.img.gz; fi
+grub-script-check build/iso/boot/grub/grub.cfg
 # ISO hibrida: arranca con BIOS/Legacy y, si esta instalado grub-efi-amd64-bin, tambien en PCs solo UEFI.
 # (En UEFI sin "CSM/Legacy" algunos PC no emulan teclado/raton PS/2: si no responden, activa Legacy/CSM en la BIOS.)
 if [ -d /usr/lib/grub/x86_64-efi ]; then
@@ -101,5 +119,5 @@ fi
 ( cd out && sha256sum VortexOS.iso > VortexOS.iso.sha256 )
 ls -la out/VortexOS.iso
 echo "Listo: out/VortexOS.iso"
-echo "PC real o VM: mejor en BIOS/Legacy (CSM). RAM: 256 MB o mas (con Debian: 4 GB o mas). Red: solo tarjetas Intel e1000/RTL8139 (en PC real puede no haber red)."
+echo "Usa una máquina virtual de 64 bits con 4 GB de RAM para ejecutar Firefox."
 echo "USB booteable: Rufus en modo \"imagen DD\" o balenaEtcher."

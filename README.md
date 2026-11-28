@@ -1,9 +1,8 @@
-# Vortex OS — sistema operativo propio, 32 y 64 bits
+# Vortex OS — sistema operativo propio de 64 bits
 
 > **Continuidad del proyecto:** este es el repositorio oficial y `main` es su versión de desarrollo activa. Antes de iniciar un trabajo o retomar otro chat, leer **[AGENTS.md](AGENTS.md)** y **[VORTEX_ESTADO.md](VORTEX_ESTADO.md)**. Todas las ramas históricas se evalúan frente a `main`; no crear otro SO ni sobreescribir avances. Los antiguos traspasos y auditorías están **integrados en [VORTEX_ESTADO.md](VORTEX_ESTADO.md)**; sus originales se pueden recuperar en el historial Git, sin ensuciar la raíz.
 
-Sistema operativo **independiente**: dos kernels propios (`vortex-kernel` de 32 y de 64 bits), interfaz gráfica propia, gestor de archivos,
-terminal, navegador con red, ajustes. **No utiliza el kernel Linux.** Su núcleo es propio; opcionalmente puede ejecutar binarios Linux y un espacio de usuario Debian 12 mediante la capa de compatibilidad de 64 bits.
+Vortex OS usa un **kernel propio de 64 bits**, un escritorio con gestor de archivos, terminal y ajustes, y una capa de compatibilidad que permite ejecutar aplicaciones de Debian 12.
 
 ## Funciones principales
 - **Red en más VMs**: además de e1000 y RTL8139, ahora AMD PCnet (VirtualBox por omisión) y virtio-net. Si no reconoce tu tarjeta, el error muestra su identificador PCI.
@@ -13,8 +12,7 @@ terminal, navegador con red, ajustes. **No utiliza el kernel Linux.** Su núcleo
 - **Rendimiento (v21)**: repintado solo de la zona que cambia, sombras baratas, ventanas tapadas no se dibujan, framebuffer en *write-combining* (PAT) en vez de sin caché.
 - **Web real vía `vortex-proxy`**: `Proxy-vortex.cmd` (o `python tools/vortex-proxy.py`) en tu PC; vortex busca en DuckDuckGo y abre https:// a través de él (el cifrado lo hace el proxy, vortex sigue sin TLS). VM en NAT: el PC es 10.0.2.2:8080.
 - **Escritorio modular**: iconos y widgets (reloj, sistema) arrastrables; doble clic abre; ventanas se maximizan con doble clic en el título y se ajustan arrastrando a los bordes.
-- **Kernel de 32 bits** (`kernel/`): procesos en ring 3, ELF, fork/exec/wait, memoria virtual.
-- **Kernel de 64 bits** (`kernel64/`): modo largo, misma interfaz y misma red. Incluye procesos y compatibilidad con binarios Linux ELF en el estado documentado en v24.
+- **Kernel de 64 bits** (`kernel64/`): modo largo, procesos en ring 3 y compatibilidad con ejecutables ELF de Linux.
 - **Escritorio gráfico** con el nombre Vortex OS en la barra superior, lanzador **Aplicaciones** con el logotipo oficial en el primer icono del dock, ventanas y reloj. Resoluciones dependientes del framebuffer (hasta 1920x1080 probadas en QEMU).
 - **Archivos**, **Terminal**, **Ajustes** y **Navegador** (con **buscador**: palabras sueltas buscan en páginas y archivos; opcionalmente en la web por http con `buscador=http://.../?q=%s` en `/Sistema/vortex.cfg`).
 - **Apps simples**: **Notas** (guarda en /Documentos; los .txt se abren aquí), **Calculadora**, **Snake**.
@@ -49,24 +47,19 @@ La apariencia anterior y la lentitud percibida en VMware exigian intervenir la *
 
 El compositor sigue siendo por software y **todavia no existe controlador grafico acelerado VMware SVGA ni codecs de video actuales**. Para lograr fluidez y experiencia a nivel de sistemas comerciales esas piezas siguen siendo trabajo real pendiente, no una funcion declarada completa.
 
-## Una sola ISO para 32 y 64 bits graficos
+## ISO oficial de 64 bits
 
-La ISO unica publicada como `VortexOS.iso` contiene **solamente dos entradas en GRUB**: `Vortex OS - 64 bits (grafico)` y `Vortex OS - 32 bits (grafico)`. La ISO de GitHub Releases incluye Debian 12 para el modo de 64 bits; LibreOffice se instala despues. La misma imagen permite usar ambos kernels propios, sin instalar el SO en un disco. Documentacion para VMware: [docs/VMWARE.md](docs/VMWARE.md).
+La ISO oficial `VortexOS.iso` arranca el escritorio de Vortex OS de 64 bits y trae Firefox ESR preinstalado. Configura **4 GB de RAM** en la máquina virtual y monta el archivo como CD/DVD de arranque. En GRUB verás una sola entrada, **Vortex OS - 64 bits (grafico)**. [Descargar ISO](https://github.com/dreyko24/SO/releases/download/iso-latest/VortexOS.iso) · [Guía de VMware](docs/VMWARE.md)
 
 El boton de energia de la barra ofrece **Apagar**, **Suspender** y **Reiniciar**. Por ahora **Suspender apaga solo la pantalla y se recupera pulsando una tecla o haciendo clic**, no es un suspendido ACPI S3.
 
 ## Construir la ISO (Windows + WSL)
-1. Instala las herramientas en WSL con `sudo apt update && sudo apt install -y build-essential gcc-multilib grub-pc-bin xorriso mtools python3 debootstrap cpio`.
+1. Instala las herramientas en WSL con `sudo apt update && sudo apt install -y build-essential grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 debootstrap debian-archive-keyring cpio`.
 2. Ejecuta `Construir-ISO.cmd` o `wsl bash tools/build-iso.sh` para generar `out/VortexOS.iso` con Firefox ESR. Para una compilación ligera de desarrollo usa `VORTEX_DEBIAN=0 bash tools/build-iso.sh`.
 
 ## Probarla
 
-**La rama `main` contiene el Vortex OS unificado**, no una copia recortada del
-escritorio. Concentra el kernel propio de 32/64 bits, ventanas con varios espacios
-de trabajo, cuentas locales al arrancar, Firefox ESR preinstalado en la ISO oficial de
-64 bits, reloj NTP con zona Lima, Vortex
-Saber de 31 artículos, imágenes, WAV, AVI y almacenamiento USB UHCI. Las
-limitaciones de dispositivos modernos se detallan más abajo.
+**La rama `main` contiene el Vortex OS unificado**, con cuentas locales al arrancar, Firefox ESR, reloj NTP con zona Lima, Vortex Saber, reproducción WAV y AVI y acceso a almacenamiento USB.
 
 Descarga el artefacto **`VortexOS-ISO-unica`** de un workflow exitoso en
 [Actions — vortex-iso-unica](https://github.com/dreyko24/SO/actions/workflows/vm-iso.yml).
@@ -78,8 +71,7 @@ Para iniciar la ISO sin tocar discos reales, desde el repositorio:
 - Windows: `Probar-VortexOS.cmd "ruta\\a\\VortexOS.iso"` (QEMU instalado).
 - Linux: `bash tools/probar-vortex.sh ruta/a/VortexOS.iso`.
 - Ambos lanzadores usan QEMU, 4 GiB de RAM, red Intel e1000, audio PCI AC'97,
-  bus USB UHCI, vídeo VGA estándar y reloj base UTC. Selecciona 64 bits
-  gráfico en GRUB. No formatees un disco real para probar.
+  bus USB UHCI, vídeo VGA estándar y reloj base UTC.
 
 **Probar USB de almacenamiento sin conectar un pendrive real:** ambos lanzadores
 aceptan un **segundo argumento opcional** con la ruta de un archivo `.img` FAT32 o exFAT.
@@ -108,9 +100,9 @@ Pruebas reproducibles de componentes: `bash tools/verificar-vortex.sh`.
 Hora: terminal `fecha` o `hora`, y `hora sincronizar`; si NTP no responde
 se usa el RTC y la interfaz indica su origen. La sincronización NTP carece de autenticación.
 
-- Máquina virtual preferentemente **BIOS/Legacy** para compatibilidad de entrada (UEFI probado en QEMU), 256 MB de RAM o más sin Debian; ratón PS/2 y tarjeta **Intel e1000** (o RTL8139) en **NAT**.
+- Máquina virtual de 64 bits con **4 GB de RAM**, ratón PS/2 y tarjeta **Intel e1000** (o RTL8139) en **NAT**. Usa **BIOS/Legacy** si necesitas compatibilidad con entrada PS/2.
   - VirtualBox: Red → Adaptador 1 → NAT, tipo "Intel PRO/1000 MT Desktop". VMware: e1000. QEMU: `-device e1000,netdev=n0 -netdev user,id=n0`.
-- Menú de GRUB: **Vortex OS - 64 bits (gráfico)** y **Vortex OS - 32 bits (gráfico)**. Ambas opciones están en un único archivo ISO.
+- Si el arranque indica que no pudo cargar el entorno de Firefox, comprueba la memoria de la VM y la suma SHA-256 de la ISO.
 - Al arrancar por primera vez, crea la cuenta administradora. Usa **Actividades → Usuarios** para agregar cuentas, cambiar tu contraseña o bloquear la sesión. Para cambiar de usuario, reinicia y entra con la otra cuenta.
 - Las cuentas se conservan entre reinicios si hay un disco con VortexFS activo. En una sesión en vivo sin ese disco puedes entrar como invitado o crear una cuenta temporal.
 - En el modo gráfico de 64 bits, haz clic en **Firefox** en el escritorio o en **Actividades**. Escribe la URL o tu búsqueda en la barra de Firefox. El comando `red` muestra el estado de la conexión.

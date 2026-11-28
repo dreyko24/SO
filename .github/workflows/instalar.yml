@@ -26,10 +26,16 @@ jobs:
           VORTEX_DEBIAN=0 VORTEX_INSTALADOR=1 bash tools/build-iso.sh 2>&1 | tee installer-build.log | tail -30
           test -s build/iso/boot/disco.img.gz
           test -s out/VortexOS.iso
-          grep -Fq 'INSTALAR Vortex OS en el disco duro de esta PC' build/iso/boot/grub/grub.cfg
-          test "$(grep -c '^menuentry ' build/iso/boot/grub/grub.cfg)" -eq 3
           ( cd out && sha256sum -c VortexOS.iso.sha256 )
-          head -18 build/iso/boot/grub/grub.cfg
+          grub_cfg=$(mktemp)
+          trap 'rm -f "$grub_cfg"' EXIT
+          xorriso -osirrox on -indev out/VortexOS.iso -extract /boot/grub/grub.cfg "$grub_cfg"
+          cat "$grub_cfg"
+          grub-script-check "$grub_cfg"
+          test "$(grep -Ec '^[[:space:]]*(menuentry|submenu)[[:space:]]' "$grub_cfg")" -eq 2
+          grep -Fxq 'menuentry "INSTALAR Vortex OS en el disco duro de esta PC" {' "$grub_cfg"
+          grep -Fxq 'menuentry "Vortex OS - 64 bits (grafico)" {' "$grub_cfg"
+          test "$(grep -Ec '(^|[[:space:]])multiboot[[:space:]]+/boot/vortex-kernel64\.elf([[:space:]]|$)' "$grub_cfg")" -eq 2
       - name: Instalar y arrancar desde el disco
         run: |
           qemu-img create -f raw disco.img 2G

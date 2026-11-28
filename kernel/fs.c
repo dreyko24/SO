@@ -465,7 +465,7 @@ void fs_init(void){
     put(doc,"bienvenida.txt","Bienvenido a Vortex OS\n\nEste es un sistema operativo propio, con kernel propio (vortex-kernel).\nNo es Linux ni usa codigo de Linux.\n\nPuedes explorar los archivos, abrir la terminal,\ncambiar colores y fondos en Ajustes, y probar el navegador.\n\nLos archivos viven en memoria: al reiniciar se pierden\n(todavia no hay controlador de disco).\n");
     put(doc,"notas.txt","Notas\n-----\n- Crear controlador de disco\n- Pasar el kernel a 64 bits\n- Red (tarjeta virtual) para el navegador\n");
     put(doc,"pagina.html","<title>Mi pagina</title><h1>Hola, Vortex</h1><p>Esta pagina es un archivo del sistema, abierto con el navegador de vortex.</p><p><a href=\"vortex://inicio\">Volver al inicio</a></p>");
-    put(sys,"version.txt","Vortex OS\nkernel: vortex-kernel 0.5\narquitectura: i386 (x86_64 en desarrollo)\n");
+    put(sys,"version.txt","Vortex OS\nkernel: vortex-kernel " VORTEX_VERSION "\narquitectura: " VORTEX_ARCH "\n");
     put(sys,"vortex.cfg","# configuracion de ejemplo\nidioma=es\nteclado=us\n# buscador web: vortex-proxy (tools/vortex-proxy.py en tu PC, host = 10.0.2.2 en NAT). Borra la linea para buscar solo en vortex:\nbuscador=http://10.0.2.2:8080/search?q=%s\n");
     put(prog,"terminal","aplicacion integrada\n");
     put(prog,"archivos","aplicacion integrada\n");

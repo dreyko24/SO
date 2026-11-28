@@ -1,6 +1,5 @@
 name: vortex-iso-unica
-# Unico medio de evaluacion: arranque grafico del kernel propio de 32 y 64 bits.
-# Construccion de Vortex Flow: compositor por regiones, UI proporcional, acceso rapido y 32/64 grafico.
+# Medio oficial de evaluación: arranque gráfico x86_64 con Firefox ESR.
 on:
   push:
     branches: [main, cambio-nombre-vortex-os, vortex/integracion-total-20261114]
@@ -60,6 +59,7 @@ on:
       - 'kernel/html.c'
       - 'kernel/html.h'
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: write
 concurrency:
@@ -76,24 +76,36 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-multilib libc6-dev binutils grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 cpio gzip qemu-system-x86 debootstrap debian-archive-keyring ca-certificates dosfstools fdisk
-      # Se inicia al modificar este workflow para crear una ISO de la revision
-      # actual. La ISO se publica solo tras arrancar ambos modos en QEMU.
       - name: Identificar revision incluida en la ISO
         run: echo "Construyendo Vortex OS desde commit $GITHUB_SHA"
-      - name: Construir VortexOS.iso (32/64 grafico, Debian solo en 64)
+      - name: Construir VortexOS.iso (x86_64 gráfico con Firefox ESR)
         shell: bash
         run: |
           set -euo pipefail
           VORTEX_DEBIAN=1 bash tools/build-iso.sh
+      - name: Verificar el contenido de VortexOS.iso
+        shell: bash
+        run: |
+          set -euo pipefail
           test -s out/VortexOS.iso
-          test "$(grep -c '^menuentry ' build/iso/boot/grub/grub.cfg)" -eq 2
-          grep -Fq 'Vortex OS - 64 bits (grafico)' build/iso/boot/grub/grub.cfg
-          grep -Fq 'Vortex OS - 32 bits (grafico)' build/iso/boot/grub/grub.cfg
-          test -s build/iso/boot/vortex-kernel.elf
-          test -s build/iso/boot/vortex-kernel64.elf
           ( cd out && sha256sum -c VortexOS.iso.sha256 )
-          cat build/iso/boot/grub/grub.cfg
-          ls -lh out/VortexOS.iso
+          iso_kernels=$(xorriso -indev out/VortexOS.iso -find / -type f -name '*.elf' -exec echo --)
+          printf '%s\n' "$iso_kernels"
+          test "$iso_kernels" = "'/boot/vortex-kernel64.elf'"
+          iso_boot=$(xorriso -indev out/VortexOS.iso -ls /boot -- | LC_ALL=C sort)
+          printf '%s\n' "$iso_boot"
+          test "$iso_boot" = "$(printf '%s\n' "'debian.cpio.gz'" "'grub'" "'vortex-extra.cpio'" "'vortex-kernel64.elf'")"
+          boot_catalog=$(xorriso -indev out/VortexOS.iso -report_el_torito plain)
+          printf '%s\n' "$boot_catalog"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]+[0-9]+[[:space:]]+BIOS[[:space:]]+y[[:space:]]' <<<"$boot_catalog"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]+[0-9]+[[:space:]]+UEFI[[:space:]]+y[[:space:]]' <<<"$boot_catalog"
+          grub_cfg=$(mktemp)
+          trap 'rm -f "$grub_cfg"' EXIT
+          xorriso -osirrox on -indev out/VortexOS.iso -extract /boot/grub/grub.cfg "$grub_cfg"
+          cat "$grub_cfg"
+          grub-script-check "$grub_cfg"
+          test "$(grep -E '^[[:space:]]*(menuentry|submenu)[[:space:]]' "$grub_cfg")" = 'menuentry "Vortex OS - 64 bits (grafico)" {'
+          grep -Eq '(^|[[:space:]])multiboot[[:space:]]+/boot/vortex-kernel64\.elf([[:space:]]|$)' "$grub_cfg"
       - name: Verificar ISO real 64 bits en QEMU
         shell: bash
         run: |
@@ -111,24 +123,23 @@ jobs:
             tail -100 vortex-64.log; echo 'FALLO: el nucleo 64 bits tuvo una excepcion'; exit 1;
           fi
           echo 'Vortex 64 bits grafico: OK'
-      - name: Verificar segundo modo grafico de la misma imagen (32 bits)
+      - name: Verificar el aviso de memoria insuficiente con 256 MiB en QEMU
         shell: bash
         run: |
           set -euo pipefail
-          sed -i 's/^set default=0$/set default=1/' build/iso/boot/grub/grub.cfg
-          grub-mkrescue -o /tmp/vortex32-check.iso build/iso >/tmp/vortex-grub32.log 2>&1 || {
-            cat /tmp/vortex-grub32.log; exit 1;
+          rc=0
+          timeout --signal=TERM --kill-after=5s 45s qemu-system-x86_64 \
+            -m 256M -cdrom out/VortexOS.iso -boot order=d -display none \
+            -vga std -serial file:vortex-256m.log -monitor none -no-reboot || rc=$?
+          cat vortex-256m.log
+          if [[ "$rc" != 0 && "$rc" != 124 ]]; then echo "QEMU con 256 MiB falló: $rc"; exit 1; fi
+          grep -aFq 'No se pudo cargar el entorno de Firefox.' vortex-256m.log &&
+            grep -aFq 'Asigna 4 GB de RAM a la VM y comprueba VortexOS.iso.' vortex-256m.log || {
+            echo 'FALLO: falta el aviso de GRUB sobre Firefox y la memoria de la VM'; exit 1;
           }
-          set +e
-          timeout --signal=TERM --kill-after=5s 95s qemu-system-x86_64             -m 1024 -cdrom /tmp/vortex32-check.iso -boot order=d -display none             -vga std -serial file:vortex-32.log -monitor none -no-reboot
-          rc=$?
-          set -e
-          if [[ "$rc" != 0 && "$rc" != 124 ]]; then echo "QEMU 32 fallo: $rc"; exit 1; fi
-          grep -aFq 'Iniciando escritorio' vortex-32.log || {
-            tail -80 vortex-32.log; echo 'FALLO: no arranco modo grafico de 32 bits'; exit 1;
-          }
-          grep -aFq '[vortex-session] primera cuenta' vortex-32.log
-          echo 'Vortex 32 bits grafico: OK'
+          if grep -aEq '== vortex-kernel |\[PANIC\]' vortex-256m.log; then
+            echo 'FALLO: se inició el kernel sin el entorno requerido'; exit 1
+          fi
       - name: Comprobar lanzadores del kit de pruebas
         run: |
           bash -n tools/probar-vortex.sh
@@ -142,7 +153,7 @@ jobs:
             out/VortexOS.iso
             out/VortexOS.iso.sha256
             vortex-64.log
-            vortex-32.log
+            vortex-256m.log
             Probar-VortexOS.cmd
             tools/probar-vortex.sh
             README.md
@@ -290,6 +301,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -297,7 +309,7 @@ jobs:
           set -euo pipefail
           tag="iso-latest"
           short="${GITHUB_SHA:0:7}"
-          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Kernel propio de 32 y 64 bits con cuentas locales al arrancar. Firefox ESR viene instalado en el modo grafico de 64 bits y abre directamente desde el escritorio. La suite QEMU comprueba JavaScript, navegacion local, video WebM y descarga de un adjunto. Quedan pendientes el aislamiento de Firefox y las pruebas en hardware fisico y VMware."
+          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Arranque gráfico x86_64 con cuentas locales y Firefox ESR preinstalado, accesible desde el escritorio. Asigna 4 GB de RAM a la VM. La suite QEMU comprueba el arranque, el aviso con 256 MiB, JavaScript, navegación local, vídeo WebM y descarga de un adjunto. Quedan pendientes el aislamiento de Firefox y las pruebas en hardware físico y VMware."
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Vortex OS - ISO actual" --notes "$notes"
           fi

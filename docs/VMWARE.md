@@ -1,15 +1,12 @@
 # Vortex OS en VMware Workstation: uso real y limitaciones
 
-Esta guía corresponde al Vortex OS integrado en `main`. Los kernels de 32 y 64 bits son propios de Vortex OS; **no se usa Linux como núcleo**. Ver `VORTEX_ESTADO.md` para el estado técnico actualizado.
+Esta guía corresponde al Vortex OS integrado en `main`. Firefox y las aplicaciones Debian se ejecutan sobre el kernel propio de 64 bits mediante su capa de compatibilidad. [Estado técnico](../VORTEX_ESTADO.md)
 
 ## Una sola ISO
 
-La publicación de desarrollo distribuye **VortexOS.iso** con dos entradas:
+La ISO oficial **VortexOS.iso** tiene una sola entrada en GRUB, **Vortex OS - 64 bits (grafico)**, con Firefox ESR preinstalado.
 
-- **Vortex OS - 64 bits (grafico)**: kernel propio x86_64. Si la ISO incluye Debian 12, sus programas se ejecutan mediante la capa de compatibilidad del kernel Vortex.
-- **Vortex OS - 32 bits (grafico)**: kernel propio i386, escritorio nativo. No ejecuta los binarios Debian x86_64.
-
-En VMware Workstation, crear una VM de sistema operativo «Other 64-bit», BIOS/Legacy, 4 GB RAM, 2 vCPU, vídeo SVGA, tarjeta Intel e1000 si puede seleccionarse, montar VortexOS.iso como CD/DVD y marcar conectar al iniciar. **No instalar VMware Tools dentro de Vortex:** sus controladores están diseñados para huéspedes Linux/Windows que el kernel Vortex no implementa.
+En VMware Workstation, apaga completamente la VM y configura **Other 64-bit**, BIOS/Legacy, **4 GB de RAM**, 2 vCPU y red Intel e1000 en NAT si está disponible. En **CD/DVD**, elige la nueva `VortexOS.iso`, marca **Conectar al encender** e inicia desde esa unidad. La RAM es un ajuste separado del tipo de sistema operativo. [Descargar ISO](https://github.com/dreyko24/SO/releases/download/iso-latest/VortexOS.iso)
 
 ## Pendrive Kingston USB físico
 
