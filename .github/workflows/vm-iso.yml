@@ -1,5 +1,5 @@
 name: vortex-iso-unica
-# Medio oficial de evaluación: arranque gráfico x86_64 con Firefox ESR.
+# Medio oficial de evaluación: arranque gráfico x86_64 con Firefox ESR y LibreOffice.
 on:
   push:
     branches: [main, cambio-nombre-vortex-os, vortex/integracion-total-20261114]
@@ -25,6 +25,7 @@ on:
       - 'tools/ci/firefox-funciones.txt'
       - 'tools/ci/firefox-descarga.py'
       - 'tools/ci/firefox-descarga.txt'
+      - 'tools/ci/oficina-preinstalada.txt'
       - 'tools/xwd2png.py'
       - 'tests/test_xwd2png.py'
       - 'kernel64/kernel64.c'
@@ -78,7 +79,7 @@ jobs:
           sudo apt-get install -y build-essential gcc-multilib libc6-dev binutils grub-pc-bin grub-efi-amd64-bin xorriso mtools python3 cpio gzip qemu-system-x86 debootstrap debian-archive-keyring ca-certificates dosfstools fdisk
       - name: Identificar revision incluida en la ISO
         run: echo "Construyendo Vortex OS desde commit $GITHUB_SHA"
-      - name: Construir VortexOS.iso (x86_64 gráfico con Firefox ESR)
+      - name: Construir VortexOS.iso (x86_64 gráfico con Firefox ESR y LibreOffice)
         shell: bash
         run: |
           set -euo pipefail
@@ -159,7 +160,7 @@ jobs:
             README.md
           if-no-files-found: error
           retention-days: 30
-      - name: Comprobar que Firefox ESR y Xvfb vienen dentro de Debian
+      - name: Comprobar que Firefox ESR, Xvfb y LibreOffice vienen dentro de Debian
         shell: bash
         run: |
           set -euo pipefail
@@ -167,7 +168,10 @@ jobs:
           gzip -dc build/iso/boot/debian.cpio.gz | cpio -t 2>/dev/null > /tmp/vortex-debian-files.txt
           grep -Eq '^\.?/?usr/bin/firefox-esr$' /tmp/vortex-debian-files.txt
           grep -Eq '^\.?/?usr/bin/Xvfb$' /tmp/vortex-debian-files.txt
-          echo "Firefox ESR y Xvfb preinstalados: OK"
+          for app in libreoffice lowriter localc loimpress lodraw lomath; do
+            grep -Eq "^\\.?/?usr/bin/${app}$" /tmp/vortex-debian-files.txt
+          done
+          echo "Firefox ESR, Xvfb y LibreOffice preinstalados: OK"
       - name: Abrir Firefox desde Actividades y navegar en la ISO de 64 bits
         run: |
           set -o pipefail
@@ -283,7 +287,14 @@ jobs:
         run: |
           python3 tools/ci/firefox-descarga.py kernel64/vortex-kernel64-text.elf \
             /tmp/vortex-ci-debian.cpio build/iso/boot/vortex-extra.cpio vortex-web-descarga
-      - name: Guardar diagnostico X11 y Firefox
+      - name: Abrir, guardar y exportar un documento con Writer
+        run: |
+          python3 tools/ci_drive.py tools/ci/oficina-preinstalada.txt vortex-oficina.log -- \
+            qemu-system-x86_64 -kernel kernel64/vortex-kernel64-text.elf \
+            -initrd /tmp/vortex-ci-debian.cpio -m 4096 -display none -serial stdio -monitor none -nic none -no-reboot
+          tr -d '\r' < vortex-oficina.log > vortex-oficina-salida.log
+          grep -x 'VORTEX_OFICINA_OK' vortex-oficina-salida.log
+      - name: Guardar diagnostico X11, Firefox y LibreOffice
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -298,6 +309,7 @@ jobs:
             firefox-escritorio.log
             firefox-escritorio.ppm
             firefox-escritorio.entrada.ppm
+            vortex-oficina.log
           if-no-files-found: ignore
           retention-days: 14
       - name: Publicar la ISO unica actualizada (no crear releases por cada version)
@@ -309,7 +321,7 @@ jobs:
           set -euo pipefail
           tag="iso-latest"
           short="${GITHUB_SHA:0:7}"
-          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Arranque gráfico x86_64 con cuentas locales y Firefox ESR preinstalado, accesible desde el escritorio. Asigna 4 GB de RAM a la VM. La suite QEMU comprueba el arranque, el aviso con 256 MiB, JavaScript, navegación local, vídeo WebM y descarga de un adjunto. Quedan pendientes el aislamiento de Firefox y las pruebas en hardware físico y VMware."
+          notes="ISO de Vortex OS del commit ${GITHUB_SHA}. Arranque gráfico x86_64 con cuentas locales, Firefox ESR y LibreOffice preinstalados. Asigna 4 GB de RAM a la VM. QEMU comprueba la navegación y descargas de Firefox, la reproducción WebM y la apertura, guardado y exportación de documentos en Writer. Quedan pendientes el aislamiento de Firefox y las pruebas en hardware físico y VMware."
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Vortex OS - ISO actual" --notes "$notes"
           fi

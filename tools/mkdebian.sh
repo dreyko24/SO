@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Crea build/debian.cpio.gz: Debian 12 (bookworm) con Firefox ESR y Xvfb PREINSTALADOS.
-# El entorno Debian vive en la ISO de 64 bits; instalar navegadores en RAM
-# durante una sesion no los conserva despues de reiniciar.
+# Crea build/debian.cpio.gz: Debian 12 (bookworm) con Firefox ESR, Xvfb y LibreOffice.
+# Estas aplicaciones viven en la ISO de 64 bits y estan disponibles desde el arranque.
 # Se usa como modulo de arranque de vortex 64 bits. Necesita sudo y debootstrap:  sudo apt install -y debootstrap cpio gzip
-set -e
+set -eo pipefail
 cd "$(dirname "$0")/.."
 for c in debootstrap cpio gzip sudo; do command -v "$c" >/dev/null || { echo "Falta '$c'. Instala con:  sudo apt update && sudo apt install -y debootstrap cpio gzip"; exit 1; }; done
 RAIZ=${VORTEX_DEBROOT:-/var/tmp/vortex-debroot}   # disco de Linux (en /mnt/c, NTFS, debootstrap falla)
@@ -18,7 +17,7 @@ sudo debootstrap --variant=minbase \
     sudo test -f "$RAIZ/debootstrap/debootstrap.log" && sudo tail -85 "$RAIZ/debootstrap/debootstrap.log" || true
     exit 1
   }
-echo "[2/4] Instalando Firefox ESR y Xvfb en Debian ya configurado..."
+echo "[2/4] Instalando Firefox ESR, Xvfb y LibreOffice en Debian ya configurado..."
 sudo mkdir -p "$RAIZ"/dev "$RAIZ"/proc "$RAIZ"/run "$RAIZ"/root "$RAIZ"/tmp "$RAIZ"/var/lib/xvfb "$RAIZ"/tmp/.X11-unix
 sudo tee "$RAIZ"/etc/apt/sources.list >/dev/null <<'L'
 deb http://deb.debian.org/debian bookworm main
@@ -42,8 +41,10 @@ sudo chroot "$RAIZ" /usr/bin/env DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTER
 }
 sudo chroot "$RAIZ" /usr/bin/env DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
   apt-get -y --no-install-recommends install \
-    firefox-esr xvfb xterm x11-utils x11-xserver-utils fonts-dejavu-core fonts-liberation libgl1 >> build/vortex-apt.log 2>&1 || {
-  echo "FALLO instalando navegador/servidor X en chroot"; tail -120 build/vortex-apt.log; exit 1;
+    firefox-esr xvfb xterm x11-utils x11-xserver-utils fonts-dejavu-core fonts-liberation libgl1 \
+    libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-math \
+    libreoffice-l10n-es >> build/vortex-apt.log 2>&1 || {
+  echo "FALLO instalando Firefox ESR, Xvfb y LibreOffice en chroot"; tail -120 build/vortex-apt.log; exit 1;
 }
 cleanup_chroot
 trap - EXIT
@@ -55,6 +56,7 @@ sudo chmod 1777 "$RAIZ"/tmp "$RAIZ"/tmp/.X11-unix
 echo "vortex" | sudo tee "$RAIZ"/etc/hostname >/dev/null
 sudo test -e "$RAIZ/usr/bin/firefox-esr" || { echo "FALLO: Firefox ESR ausente"; exit 1; }
 sudo test -e "$RAIZ/usr/bin/Xvfb" || { echo "FALLO: Xvfb ausente"; exit 1; }
+sudo chroot "$RAIZ" /usr/bin/test -x /usr/bin/libreoffice || { echo "FALLO: LibreOffice ausente"; exit 1; }
 sudo rm -rf "$RAIZ"/var/lib/apt/lists/* "$RAIZ"/var/cache/apt/*.bin "$RAIZ"/var/cache/apt/archives/*.deb "$RAIZ"/usr/share/doc/* "$RAIZ"/usr/share/man/* "$RAIZ"/usr/share/info/*
 echo "[3/4] Empaquetando..."
 ( cd "$RAIZ" && sudo find . | sudo cpio -o -H newc --quiet ) | gzip -6 > build/debian.cpio.gz

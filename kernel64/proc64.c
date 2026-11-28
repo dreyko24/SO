@@ -196,9 +196,13 @@ static Task *task_alloc(void){
         t->tid=next_tid++; return t; }
     return 0;
 }
-static void task_prepare(Task *t,const struct regs *fr){      /* pila de kernel: [r15..rbp][task_start][marco] */
+static void task_prepare(Task *t,const struct regs *fr){      /* pila de kernel: [r15..rbp][RFLAGS][task_start][marco] */
     u8 *top=t->kstk+KSTK; struct regs *f=(struct regs*)(top-sizeof(struct regs)); *f=*fr; t->frame=f;
-    u64 *sp=(u64*)f; *--sp=(u64)(uintptr_t)task_start; for(int i=0;i<6;i++) *--sp=0; t->ksp=(u64)(uintptr_t)sp;
+    u64 *sp=(u64*)f;
+    *--sp=(u64)(uintptr_t)task_start;
+    *--sp=0x2;  /* IF permanece apagado hasta que iretq restaure el marco de usuario. */
+    for(int i=0;i<6;i++) *--sp=0;
+    t->ksp=(u64)(uintptr_t)sp;
 }
 static void shm_free(KObj *o);
 static void obj_unref(KObj *o){ if(o&&--o->refs<=0){ if(o->kind==12) shm_free(o); if(o->data) kfree(o->data); kfree(o); } }

@@ -1,0 +1,6 @@
+# Ejecutar con ci_drive.py y el kernel x86_64 de texto sobre el modulo Debian de la ISO.
+# Writer guarda un ODT y luego vuelve a abrirlo para exportar un PDF, sin red.
+30|sh -c 'mkdir /tmp/oficina && printf "Vortex OS Writer\n" >/tmp/oficina/prueba.txt'
+240|libreoffice --headless -env:UserInstallation=file:///tmp/lo --convert-to odt --outdir /tmp/oficina /tmp/oficina/prueba.txt
+240|libreoffice --headless -env:UserInstallation=file:///tmp/lo --convert-to pdf --outdir /tmp/oficina /tmp/oficina/prueba.odt
+30|sh -c 'test -s /tmp/oficina/prueba.odt && test "$(head -c 5 /tmp/oficina/prueba.pdf)" = %PDF- && echo VORTEX_OFICINA_OK'

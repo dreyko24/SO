@@ -103,9 +103,13 @@ ret_to_user_frame:        /* rsp -> marco de la tarea (en su pila de kernel) */
     pop %rcx
     iretq
 
-/* void switch_to(u64 *prev_ksp, u64 next_ksp) */
+/* void switch_to(u64 *prev_ksp, u64 next_ksp)
+ * Cada continuación recupera su IF. El escritorio necesita interrupciones
+ * para que los plazos de USB y otras esperas del temporizador avancen. */
 .global switch_to
 switch_to:
+    pushfq
+    cli
     push %rbp
     push %rbx
     push %r12
@@ -120,6 +124,7 @@ switch_to:
     pop %r12
     pop %rbx
     pop %rbp
+    popfq
     ret
 
 .global task_start        /* primera vez que corre una tarea nueva: rsp -> su marco */
