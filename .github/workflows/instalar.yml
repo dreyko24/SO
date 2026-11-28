@@ -46,7 +46,7 @@ jobs:
           esac
           M="-monitor unix:/tmp/qmon.sock,server,nowait -vga std -display none -serial stdio -m 3G $D"
           echo "=== 1) arrancar el USB (CD) en modo instalador e instalar ==="
-          VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 1500 python3 tools/ci_drive.py tools/ci/instalar1.txt i1.log -- qemu-system-x86_64 $M -cdrom out/VortexOS.iso -boot order=dc || true
+          VORTEX_INICIO='Vortex OS - terminal' VORTEX_PROMPT='> ' QMON=/tmp/qmon.sock timeout 1500 python3 tools/ci_drive.py tools/ci/instalar1.txt i1.log -- qemu-system-x86_64 $M -cdrom out/VortexOS.iso -boot order=dc || true
           echo "=== 2) arrancar SOLO desde el disco (BIOS) ==="
           printf '%s\n' '@entrada prueba' '@entrada vortexci987' '@entrada vortexci987' '@serie 60 escritorio desbloqueado' > /tmp/instalar-bios.txt
           cat tools/ci/instalar2.txt >> /tmp/instalar-bios.txt

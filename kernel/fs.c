@@ -249,12 +249,19 @@ static int ser_file(uint8_t *o,int max,int k,const char *name,const void *data,i
     if(bytes)sput(o,k,data,bytes);
     return k+bytes;
 }
-static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
+/* Decidir si se guarda una carpeta del sistema antes de reservar su cabecera.
+ * La pasada de escritura puede disponer solo de los bytes finales calculados. */
+static int ser_dir_needed(FsNode *d,int depth){
+    if(depth>=FS_STREAM_MAX_DEPTH||(accounts_file.present&&system_node(d)))return 1;
+    for(FsNode *c=d->child;c;c=c->next)
+        if(!c->dev&&(!c->sys||c->chg||(c->dir&&ser_dir_needed(c,depth+1))))return 1;
+    return 0;
+}
+static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int depth){
     if(depth>=FS_STREAM_MAX_DEPTH)return -1;
     if(accounts_file.present&&system_node(d)){
         k=ser_file(o,max,k,accounts_name,accounts_file.data,accounts_file.bytes);
         if(k<0)return -1;
-        *any=1;
     }
     for(FsNode *c=d->child;c;c=c->next){
         if(c->dev) continue;
@@ -262,15 +269,15 @@ static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
         if(c->link){ if(!keep) continue;
             int tl=k_strlen(c->link);
             if(nl<1||nl>=FS_NAME||tl>299||!ser_room(k,2+nl+2+tl+1,max))return -1;
-            sput1(o,k++,3); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl; sput1(o,k++,tl); sput1(o,k++,tl>>8); sput(o,k,c->link,tl); k+=tl; *any=1; continue; }
+            sput1(o,k++,3); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl; sput1(o,k++,tl); sput1(o,k++,tl>>8); sput(o,k,c->link,tl); k+=tl; continue; }
         if(c->dir){
+            if(!keep&&!ser_dir_needed(c,depth+1))continue;
             if(nl<1||nl>=FS_NAME||!ser_room(k,2+nl+1,max))return -1;
-            int k0=k, sub=0; sput1(o,k++,2); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
-            k=ser_rec(c,o,max,k,&sub,depth+1); if(k<0) return -1;
-            if(!sub&&!keep) k=k0; else *any=1;
+            sput1(o,k++,2); sput1(o,k++,nl); sput(o,k,c->name,nl); k+=nl;
+            k=ser_rec(c,o,max,k,depth+1); if(k<0) return -1;
             continue; }
         if(!keep) continue;
-        k=ser_file(o,max,k,c->name,c->data,c->size); *any=1;
+        k=ser_file(o,max,k,c->name,c->data,c->size);
         if(k<0) return -1;
     }
     if(!ser_room(k,1,max))return -1;
@@ -278,7 +285,7 @@ static int ser_rec(FsNode *d,uint8_t *o,int max,int k,int *any,int depth){
 }
 int fs_serialize(uint8_t *out,int max){
     if(!root||(accounts_file.present&&!accounts_available()))return -1;
-    int any=0;return ser_rec(root,out,out?max:0x7fffffff,0,&any,0);
+    return ser_rec(root,out,out?max:0x7fffffff,0,0);
 }
 /* La cabecera KNGFS usa Adler-32 para detectar errores accidentales;
  * además debemos validar el árbol ANTES de modificar un nodo en RAM.

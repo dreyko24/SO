@@ -38,6 +38,36 @@ static int contains(const uint8_t *data,int bytes,const char *value){
     return 0;
 }
 
+static void snapshot_exact_size(void){
+    FsNode *temporary=fs_mkdir(fs_root(),"Temporal-del-sistema");
+    assert(temporary);
+    temporary->sys=1;
+    FsNode *sub=fs_mkdir(temporary,"Subcarpeta-temporal");
+    assert(sub);
+    sub->sys=1;
+    FsNode *file=fs_create(sub,"archivo-temporal","temporal",8);
+    assert(file);
+    file->sys=1;
+
+    int needed=fs_serialize(0,0);
+    assert(needed>0);
+    uint8_t *bytes=malloc((size_t)needed);
+    assert(bytes);
+    assert(fs_serialize(bytes,needed)==needed);
+    assert(!contains(bytes,needed,temporary->name));
+
+    file->chg=1;
+    int updated=fs_serialize(0,0);
+    assert(updated>needed);
+    uint8_t *changed=malloc((size_t)updated);
+    assert(changed);
+    assert(fs_serialize(changed,updated)==updated);
+    assert(contains(changed,updated,file->name));
+    free(changed);
+    free(bytes);
+    assert(!fs_remove(temporary));
+}
+
 static void overlay_account(unsigned type,const uint8_t *data,int bytes){
     uint8_t snapshot[512]={2,7,'S','i','s','t','e','m','a',0,11,'c','u','e','n','t','a','s','.','v','s','a'};
     snapshot[9]=(uint8_t)type;
@@ -156,6 +186,7 @@ static void known_password_vector(void){
 
 int main(void){
     fs_init();
+    snapshot_exact_size();
     protected_path();
     clean_size=fs_serialize(clean_checkpoint,sizeof clean_checkpoint);
     assert(clean_size>0);

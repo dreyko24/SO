@@ -199,6 +199,7 @@ Todo este trabajo se hizo sobre el único `main` de Vortex OS, conservando los n
 
 - En QEMU con 256 MiB, la ISO anterior arrancaba el kernel x86_64 y cargaba el módulo auxiliar de 6 MiB. GRUB dejaba fuera el módulo Debian descomprimido y el escritorio mostraba un aviso de Firefox que apuntaba a la arquitectura.
 - La ISO oficial contiene una sola entrada gráfica de 64 bits. GRUB exige cargar ambos módulos de Firefox antes de iniciar el sistema. Si la carga falla, la pantalla recomienda configurar 4 GB de RAM y comprobar el archivo. La edición ligera conserva un aviso específico cuando faltan los archivos de Firefox.
+- La prueba del instalador experimental detectó un fallo en el primer guardado de VortexFS al cambiar el texto de la arquitectura. El serializador ahora decide qué carpetas del sistema incluir antes de reservar su cabecera. La regresión comprueba la escritura con el tamaño exacto calculado y conserva los archivos modificados de esas carpetas.
 
 ## 4. Limitaciones y trabajo de ingeniería que continúa
 
